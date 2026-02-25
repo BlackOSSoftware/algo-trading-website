@@ -1,4 +1,27 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { fetchSession, type SessionUser } from "@/lib/session";
+
 export default function ProfilePage() {
+  const [user, setUser] = useState<SessionUser | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      const session = await fetchSession(undefined, () => {});
+      if (!active) return;
+      setUser(session);
+    };
+
+    run();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div className="content">
       <div className="page-header">
@@ -19,19 +42,35 @@ export default function ProfilePage() {
               <label className="label" htmlFor="name">
                 Full name
               </label>
-              <input className="input" id="name" defaultValue="Aman" />
+              <input
+                className="input"
+                id="name"
+                value={user?.name ?? ""}
+                readOnly
+              />
             </div>
             <div className="input-group">
               <label className="label" htmlFor="email">
                 Email
               </label>
-              <input className="input" id="email" defaultValue="aman@trade.com" />
+              <input
+                className="input"
+                id="email"
+                value={user?.email ?? ""}
+                readOnly
+              />
             </div>
             <div className="input-group">
               <label className="label" htmlFor="phone">
                 Phone
               </label>
-              <input className="input" id="phone" defaultValue="+91 90000 00000" />
+              <input
+                className="input"
+                id="phone"
+                value=""
+                placeholder="+91 90000 00000"
+                readOnly
+              />
             </div>
           </div>
         </div>
@@ -58,3 +97,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+

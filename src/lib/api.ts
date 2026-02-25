@@ -20,6 +20,7 @@ export async function apiPost(
 ) {
   return request(path, {
     method: "POST",
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -31,6 +32,7 @@ export async function apiPost(
 export async function apiGet(path: string, token?: string | null) {
   return request(path, {
     method: "GET",
+    cache: "no-store",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },

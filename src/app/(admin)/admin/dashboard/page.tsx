@@ -37,21 +37,21 @@ export default function AdminDashboardPage() {
             <div className="list-item">
               <div>
                 <strong>Breakout Scan</strong>
-                <div className="helper">User: aman</div>
+                <div className="helper">User: sample</div>
               </div>
               <div className="badge">12:37 PM</div>
             </div>
             <div className="list-item">
               <div>
                 <strong>Midcap Momentum</strong>
-                <div className="helper">User: piyush</div>
+                <div className="helper">User: sample</div>
               </div>
               <div className="badge">12:35 PM</div>
             </div>
             <div className="list-item">
               <div>
                 <strong>Options Flow</strong>
-                <div className="helper">User: sara</div>
+                <div className="helper">User: sample</div>
               </div>
               <div className="badge">12:31 PM</div>
             </div>

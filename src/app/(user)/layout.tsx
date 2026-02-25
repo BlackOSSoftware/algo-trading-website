@@ -37,6 +37,17 @@ const navItems = [
     ),
   },
   {
+    href: "/trade",
+    label: "Trade",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" strokeWidth="2">
+        <path d="M7 7h10v10H7z" />
+        <path d="M7 12h10" />
+        <path d="M12 7v10" />
+      </svg>
+    ),
+  },
+  {
     href: "/subscription",
     label: "Subscription",
     icon: (
