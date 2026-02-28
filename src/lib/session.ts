@@ -6,6 +6,8 @@ export type SessionUser = {
   name: string;
   email: string;
   role: "user" | "admin";
+  phone?: string | null;
+  emailVerified?: boolean;
 };
 
 export async function fetchSession(

@@ -50,6 +50,11 @@ export default function AdminTelegramPage() {
   const [chatId, setChatId] = useState("");
   const [broadcast, setBroadcast] = useState(false);
   const [text, setText] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [emailTarget, setEmailTarget] = useState("");
+  const [emailBroadcast, setEmailBroadcast] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -107,6 +112,31 @@ export default function AdminTelegramPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to send";
       setError(msg);
+    }
+  };
+
+  const handleEmailSend = async () => {
+    setError(null);
+    setMessage(null);
+    setSendingEmail(true);
+    try {
+      const token = getAdminToken();
+      const payload = {
+        subject: emailSubject,
+        message: emailBody,
+        email: emailBroadcast ? undefined : emailTarget,
+        broadcast: emailBroadcast,
+      };
+      await apiPost("/api/v1/admin/email/send", payload, token);
+      setMessage(emailBroadcast ? "Email broadcast sent." : "Email sent.");
+      setEmailSubject("");
+      setEmailBody("");
+      setEmailTarget("");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to send email";
+      setError(msg);
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -212,6 +242,59 @@ export default function AdminTelegramPage() {
             disabled={!text || (!broadcast && !chatId)}
           >
             Send message
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="page-title">Send email</div>
+        <div className="form" style={{ marginTop: "16px" }}>
+          <div className="input-group">
+            <label className="label">Subject</label>
+            <input
+              className="input"
+              value={emailSubject}
+              onChange={(event) => setEmailSubject(event.target.value)}
+              placeholder="Announcement subject"
+            />
+          </div>
+          <div className="input-group">
+            <label className="label">Message</label>
+            <textarea
+              className="textarea"
+              rows={4}
+              value={emailBody}
+              onChange={(event) => setEmailBody(event.target.value)}
+              placeholder="Write an email message..."
+            />
+          </div>
+          <div className="input-group">
+            <label className="label">Email (optional)</label>
+            <input
+              className="input"
+              value={emailTarget}
+              onChange={(event) => setEmailTarget(event.target.value)}
+              placeholder="Leave blank for broadcast"
+              disabled={emailBroadcast}
+            />
+          </div>
+          <div className="list-item" style={{ justifyContent: "space-between" }}>
+            <span>Broadcast to all users</span>
+            <input
+              type="checkbox"
+              checked={emailBroadcast}
+              onChange={(event) => setEmailBroadcast(event.target.checked)}
+            />
+          </div>
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={handleEmailSend}
+            disabled={
+              sendingEmail || !emailSubject || !emailBody || (!emailBroadcast && !emailTarget)
+            }
+          >
+            {sendingEmail ? "Sending..." : "Send email"}
           </button>
         </div>
       </div>

@@ -67,7 +67,7 @@ export default function ProfilePage() {
               <input
                 className="input"
                 id="phone"
-                value=""
+                value={user?.phone ?? ""}
                 placeholder="+91 90000 00000"
                 readOnly
               />

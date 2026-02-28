@@ -18,6 +18,7 @@ type PlanRequest = {
   planId: string;
   status: string;
   createdAt: string;
+  amount?: number;
 };
 
 type AdminUser = {
@@ -85,14 +86,32 @@ export default function AdminPlansPage() {
     }
   };
 
-  const handleUpdateRequest = async (requestId: string, status: string) => {
+  const handleApprove = async (requestId: string) => {
     setError(null);
     setMessage(null);
     try {
       const token = getAdminToken();
       await apiPost(
-        "/api/v1/admin/plan-requests/update",
-        { requestId, status },
+        `/api/v1/admin/plan-request/${requestId}/approve`,
+        {},
+        token
+      );
+      setMessage("Request updated.");
+      await loadData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Update failed";
+      setError(msg);
+    }
+  };
+
+  const handleReject = async (requestId: string) => {
+    setError(null);
+    setMessage(null);
+    try {
+      const token = getAdminToken();
+      await apiPost(
+        `/api/v1/admin/plan-request/${requestId}/reject`,
+        {},
         token
       );
       setMessage("Request updated.");
@@ -191,7 +210,9 @@ export default function AdminPlansPage() {
             >
               <option value="all">All</option>
               <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
+              <option value="paid">Paid</option>
+              <option value="active">Active</option>
+              <option value="failed">Failed</option>
               <option value="rejected">Rejected</option>
             </select>
           </div>
@@ -207,7 +228,8 @@ export default function AdminPlansPage() {
             <div className="helper">No requests yet.</div>
           ) : (
             requests.map((req) => {
-              const isPending = req.status === "pending";
+              const isPaid = req.status === "paid";
+              const canReject = req.status === "pending" || req.status === "paid";
               return (
                 <div className="table-row" key={req._id}>
                   <span data-label="User">
@@ -222,16 +244,16 @@ export default function AdminPlansPage() {
                       <button
                         className="btn btn-secondary"
                         type="button"
-                        onClick={() => handleUpdateRequest(req._id, "approved")}
-                        disabled={!isPending}
+                        onClick={() => handleApprove(req._id)}
+                        disabled={!isPaid}
                       >
                         Approve
                       </button>
                       <button
                         className="btn btn-ghost"
                         type="button"
-                        onClick={() => handleUpdateRequest(req._id, "rejected")}
-                        disabled={!isPending}
+                        onClick={() => handleReject(req._id)}
+                        disabled={!canReject}
                       >
                         Reject
                       </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiPost } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
@@ -14,8 +14,36 @@ function pretty(value: unknown) {
   }
 }
 
+function parseRatioMultiplier(value: string) {
+  const raw = value.trim();
+  if (!raw) return null;
+  if (raw.includes(":") || raw.includes("/")) {
+    const divider = raw.includes(":") ? ":" : "/";
+    const [left, right] = raw.split(divider).map((item) => item.trim());
+    const a = Number(left);
+    const b = Number(right);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+    return b / a;
+  }
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric;
+}
+
+function computeRatioTarget(slValue: string, ratioValue: string) {
+  const sl = Number(slValue.trim());
+  if (!Number.isFinite(sl) || sl <= 0) return null;
+  const multiplier = parseRatioMultiplier(ratioValue);
+  if (!multiplier) return null;
+  const target = sl * multiplier;
+  if (!Number.isFinite(target)) return null;
+  return String(Number(target.toFixed(6)));
+}
+
 export default function TradePage() {
   const [tokenInput, setTokenInput] = useState("");
+  const [showTokenModal, setShowTokenModal] = useState(true);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const [execute, setExecute] = useState(false);
 
   const [exchange, setExchange] = useState("NSE");
@@ -55,6 +83,38 @@ export default function TradePage() {
   const showDerivativeFields =
     !usingSymbolCode && (normalizedSegment === "FUT" || normalizedSegment === "OPT");
   const showOptionFields = !usingSymbolCode && normalizedSegment === "OPT";
+  const isRatioTarget = targetBy === "Ratio";
+  const ratioComputed = isRatioTarget ? computeRatioTarget(sl, target) : null;
+  const targetPlaceholder = isRatioTarget ? "e.g. 1:2" : "e.g. 50";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem("wt_marketmaya_token");
+    if (saved) {
+      setTokenInput(saved);
+      setShowTokenModal(false);
+    } else {
+      setShowTokenModal(true);
+    }
+  }, []);
+
+  const handleSaveToken = () => {
+    const trimmed = tokenInput.trim();
+    if (!trimmed) {
+      setTokenError("Market Maya token is required.");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      localStorage.setItem("wt_marketmaya_token", trimmed);
+    }
+    setTokenError(null);
+    setShowTokenModal(false);
+  };
+
+  const handleChangeToken = () => {
+    setTokenError(null);
+    setShowTokenModal(true);
+  };
 
   const fillExample = () => {
     setExecute(false);
@@ -83,6 +143,15 @@ export default function TradePage() {
     setResult(null);
 
     try {
+      if (!tokenTrimmed) {
+        setTokenError("Market Maya token is required.");
+        setShowTokenModal(true);
+        return;
+      }
+      if (targetBy === "Ratio" && !sl.trim()) {
+        setError("Stop loss is required when Target by is Ratio.");
+        return;
+      }
       if (!usingSymbolCode && !symbol.trim()) {
         setError("Symbol is required (or use Symbol code).");
         return;
@@ -225,6 +294,9 @@ export default function TradePage() {
         <button className="btn btn-secondary" type="button" onClick={fillExample}>
           Fill example
         </button>
+        <button className="btn btn-ghost" type="button" onClick={handleChangeToken}>
+          Change token
+        </button>
       </div>
 
       {error ? <div className="alert alert-error">{error}</div> : null}
@@ -237,21 +309,6 @@ export default function TradePage() {
         </div>
 
         <form className="form" onSubmit={submitTrade} style={{ marginTop: "16px" }}>
-          <div className="input-group">
-            <label className="label" htmlFor="mm-token">
-              Market Maya token (optional)
-            </label>
-            <input
-              className="input"
-              id="mm-token"
-              value={tokenInput}
-              onChange={(event) => setTokenInput(event.target.value)}
-              placeholder="Leave empty to use backend MARKETMAYA_TOKEN"
-            />
-            <div className="helper">Token is sent only to your backend.</div>
-            {tokenWarning ? <div className="helper">{tokenWarning}</div> : null}
-          </div>
-
           <div className="grid-2">
             <div className="input-group">
               <label className="label" htmlFor="mm-exchange">
@@ -480,13 +537,17 @@ export default function TradePage() {
               <label className="label" htmlFor="mm-qty-distribution">
                 Qty distribution
               </label>
-              <input
-                className="input"
+              <select
+                className="select"
                 id="mm-qty-distribution"
                 value={qtyDistribution}
                 onChange={(event) => setQtyDistribution(event.target.value)}
-                placeholder="Fix / Capital(%) / Capital Risk(%)"
-              />
+              >
+                <option value="">Select distribution</option>
+                <option value="Fix">Fix</option>
+                <option value="Capital(%)">Capital(%)</option>
+                <option value="Capital Risk(%)">Capital Risk(%)</option>
+              </select>
             </div>
             <div className="input-group">
               <label className="label" htmlFor="mm-qty-value">
@@ -507,13 +568,19 @@ export default function TradePage() {
               <label className="label" htmlFor="mm-target-by">
                 Target by
               </label>
-              <input
-                className="input"
+              <select
+                className="select"
                 id="mm-target-by"
                 value={targetBy}
                 onChange={(event) => setTargetBy(event.target.value)}
-                placeholder="Money / Point / Percentage / Price"
-              />
+              >
+                <option value="">Select target type</option>
+                <option value="Money">Money</option>
+                <option value="Point">Point</option>
+                <option value="Percentage">Percentage</option>
+                <option value="Price">Price</option>
+                <option value="Ratio">Ratio</option>
+              </select>
             </div>
             <div className="input-group">
               <label className="label" htmlFor="mm-target">
@@ -524,8 +591,17 @@ export default function TradePage() {
                 id="mm-target"
                 value={target}
                 onChange={(event) => setTarget(event.target.value)}
-                placeholder="e.g. 50"
+                placeholder={targetPlaceholder}
               />
+              {isRatioTarget ? (
+                <div className="helper">
+                  {!sl.trim()
+                    ? "Set SL to use ratio."
+                    : ratioComputed
+                      ? `Computed target: ${ratioComputed}`
+                      : "Enter ratio like 1:2 or 2"}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -534,13 +610,18 @@ export default function TradePage() {
               <label className="label" htmlFor="mm-sl-by">
                 SL by
               </label>
-              <input
-                className="input"
+              <select
+                className="select"
                 id="mm-sl-by"
                 value={slBy}
                 onChange={(event) => setSlBy(event.target.value)}
-                placeholder="Money / Point / Percentage / Price"
-              />
+              >
+                <option value="">Select SL type</option>
+                <option value="Money">Money</option>
+                <option value="Point">Point</option>
+                <option value="Percentage">Percentage</option>
+                <option value="Price">Price</option>
+              </select>
             </div>
             <div className="input-group">
               <label className="label" htmlFor="mm-sl">
@@ -618,6 +699,43 @@ export default function TradePage() {
           <pre className="mono" style={{ marginTop: "12px", whiteSpace: "pre-wrap" }}>
             {pretty(result)}
           </pre>
+        </div>
+      ) : null}
+
+      {showTokenModal ? (
+        <div className="modal-overlay">
+          <div className="modal card" onClick={(event) => event.stopPropagation()}>
+            <div className="page-title">Market Maya token</div>
+            <div className="helper" style={{ marginTop: "6px" }}>
+              Enter your token before placing trades.
+            </div>
+            {tokenError ? (
+              <div className="alert alert-error" style={{ marginTop: "12px" }}>
+                {tokenError}
+              </div>
+            ) : null}
+            <div className="input-group" style={{ marginTop: "12px" }}>
+              <label className="label" htmlFor="mm-token-modal">
+                Token
+              </label>
+              <input
+                className="input"
+                id="mm-token-modal"
+                value={tokenInput}
+                onChange={(event) => {
+                  setTokenInput(event.target.value);
+                  if (tokenError) setTokenError(null);
+                }}
+                placeholder="Paste Market Maya token"
+              />
+              {tokenWarning ? <div className="helper">{tokenWarning}</div> : null}
+            </div>
+            <div className="cta-row" style={{ marginTop: "16px" }}>
+              <button className="btn btn-primary" type="button" onClick={handleSaveToken}>
+                Save token
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

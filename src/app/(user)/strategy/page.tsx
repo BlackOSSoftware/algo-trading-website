@@ -27,6 +27,9 @@ type Strategy = {
     trailSl?: boolean;
     slMove?: string;
     profitMove?: string;
+    dailyTradeLimit?: number | string;
+    tradeWindowStart?: string;
+    tradeWindowEnd?: string;
   };
   enabled: boolean;
   telegramEnabled?: boolean;
@@ -43,6 +46,32 @@ type TelegramToken = {
 };
 
 const TELEGRAM_BOT_URL = "https://t.me/Alert_vibhav_bot";
+
+function parseRatioMultiplier(value: string) {
+  const raw = value.trim();
+  if (!raw) return null;
+  if (raw.includes(":") || raw.includes("/")) {
+    const divider = raw.includes(":") ? ":" : "/";
+    const [left, right] = raw.split(divider).map((item) => item.trim());
+    const a = Number(left);
+    const b = Number(right);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+    return b / a;
+  }
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric;
+}
+
+function computeRatioTarget(slValue: string, ratioValue: string) {
+  const sl = Number(slValue.trim());
+  if (!Number.isFinite(sl) || sl <= 0) return null;
+  const multiplier = parseRatioMultiplier(ratioValue);
+  if (!multiplier) return null;
+  const target = sl * multiplier;
+  if (!Number.isFinite(target)) return null;
+  return String(Number(target.toFixed(6)));
+}
 
 export default function StrategyPage() {
   const [name, setName] = useState("");
@@ -61,6 +90,9 @@ export default function StrategyPage() {
   const [trailSl, setTrailSl] = useState(false);
   const [slMove, setSlMove] = useState("");
   const [profitMove, setProfitMove] = useState("");
+  const [dailyTradeLimit, setDailyTradeLimit] = useState("");
+  const [tradeWindowStart, setTradeWindowStart] = useState("");
+  const [tradeWindowEnd, setTradeWindowEnd] = useState("");
   const [telegramEnabled, setTelegramEnabled] = useState(false);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(false);
@@ -68,6 +100,8 @@ export default function StrategyPage() {
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recentWebhookUrl, setRecentWebhookUrl] = useState<string | null>(null);
+  const [recentStrategyName, setRecentStrategyName] = useState<string | null>(null);
   const [telegramToken, setTelegramToken] = useState<TelegramToken | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Strategy | null>(null);
@@ -87,6 +121,9 @@ export default function StrategyPage() {
   const [editTrailSl, setEditTrailSl] = useState(false);
   const [editSlMove, setEditSlMove] = useState("");
   const [editProfitMove, setEditProfitMove] = useState("");
+  const [editDailyTradeLimit, setEditDailyTradeLimit] = useState("");
+  const [editTradeWindowStart, setEditTradeWindowStart] = useState("");
+  const [editTradeWindowEnd, setEditTradeWindowEnd] = useState("");
   const [editTelegramEnabled, setEditTelegramEnabled] = useState(false);
 
   const webhookBase = useMemo(() => {
@@ -166,9 +203,18 @@ export default function StrategyPage() {
     loadTokens();
   }, []);
 
-  const handleCopy = async () => {
-    await copyToClipboard(webhookBase);
-  };
+  const showModalError = Boolean(error) && (showModal || editing);
+  const showPageError = Boolean(error) && !showModalError;
+
+  const isRatioTarget = targetBy === "Ratio";
+  const ratioComputed = isRatioTarget ? computeRatioTarget(sl, target) : null;
+  const targetPlaceholder = isRatioTarget ? "e.g. 1:2" : "e.g. 50";
+
+  const isEditRatioTarget = editTargetBy === "Ratio";
+  const editRatioComputed = isEditRatioTarget
+    ? computeRatioTarget(editSl, editTarget)
+    : null;
+  const editTargetPlaceholder = isEditRatioTarget ? "e.g. 1:2" : "e.g. 50";
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -177,6 +223,10 @@ export default function StrategyPage() {
     setLoading(true);
 
     try {
+      if (targetBy === "Ratio" && !sl.trim()) {
+        setError("Stop loss is required when Target by is Ratio.");
+        return;
+      }
       const token = getToken();
       const marketMaya: Record<string, unknown> = {
         symbolMode,
@@ -196,6 +246,13 @@ export default function StrategyPage() {
         ...(trailSl ? { trailSl: true } : {}),
         ...(slMove.trim() ? { slMove: slMove.trim() } : {}),
         ...(profitMove.trim() ? { profitMove: profitMove.trim() } : {}),
+        ...(dailyTradeLimit.trim()
+          ? { dailyTradeLimit: Number(dailyTradeLimit.trim()) }
+          : {}),
+        ...(tradeWindowStart.trim()
+          ? { tradeWindowStart: tradeWindowStart.trim() }
+          : {}),
+        ...(tradeWindowEnd.trim() ? { tradeWindowEnd: tradeWindowEnd.trim() } : {}),
       };
       const payload: Record<string, unknown> = {
         name,
@@ -207,11 +264,19 @@ export default function StrategyPage() {
       if (marketMayaToken.trim()) {
         payload.marketMayaToken = marketMayaToken;
       }
-      await apiPost(
+      const data = await apiPost(
         "/api/v1/strategies",
         payload,
         token
       );
+      const created = (data as { strategy?: Strategy }).strategy;
+      if (created) {
+        setRecentWebhookUrl(resolveWebhookUrl(created));
+        setRecentStrategyName(created.name || name);
+      } else {
+        setRecentWebhookUrl(null);
+        setRecentStrategyName(null);
+      }
       setName("");
       setMarketMayaToken("");
       setSymbolMode("stocksFirst");
@@ -227,9 +292,12 @@ export default function StrategyPage() {
       setTrailSl(false);
       setSlMove("");
       setProfitMove("");
+      setDailyTradeLimit("");
+      setTradeWindowStart("");
+      setTradeWindowEnd("");
       setEnabled(false);
       setTelegramEnabled(false);
-      setMessage("Strategy saved.");
+      setMessage("Strategy saved. Webhook URL is ready to copy.");
       setShowModal(false);
       await loadStrategies();
     } catch (err) {
@@ -243,7 +311,7 @@ export default function StrategyPage() {
   const openEdit = (item: Strategy) => {
     setError(null);
     setMessage(null);
-    setEditing(item);
+    setEditing({ ...item, _id: normalizeId(item._id) });
     setEditName(item.name || "");
     setEditEnabled(Boolean(item.enabled));
     setEditMarketMayaToken("");
@@ -261,6 +329,13 @@ export default function StrategyPage() {
     setEditTrailSl(Boolean(mm.trailSl));
     setEditSlMove(mm.slMove || "");
     setEditProfitMove(mm.profitMove || "");
+    setEditDailyTradeLimit(
+      mm.dailyTradeLimit !== undefined && mm.dailyTradeLimit !== null
+        ? String(mm.dailyTradeLimit)
+        : ""
+    );
+    setEditTradeWindowStart(mm.tradeWindowStart || "");
+    setEditTradeWindowEnd(mm.tradeWindowEnd || "");
     setEditTelegramEnabled(Boolean(item.telegramEnabled));
   };
 
@@ -282,6 +357,9 @@ export default function StrategyPage() {
     setEditTrailSl(false);
     setEditSlMove("");
     setEditProfitMove("");
+    setEditDailyTradeLimit("");
+    setEditTradeWindowStart("");
+    setEditTradeWindowEnd("");
     setEditTelegramEnabled(false);
   };
 
@@ -294,6 +372,15 @@ export default function StrategyPage() {
     setEditLoading(true);
 
     try {
+      const strategyId = normalizeId(editing._id);
+      if (!strategyId) {
+        setError("Strategy id missing");
+        return;
+      }
+      if (editTargetBy === "Ratio" && !editSl.trim()) {
+        setError("Stop loss is required when Target by is Ratio.");
+        return;
+      }
       const token = getToken();
       const marketMaya: Record<string, unknown> = {
         symbolMode: editSymbolMode,
@@ -313,9 +400,19 @@ export default function StrategyPage() {
         ...(editTrailSl ? { trailSl: true } : {}),
         ...(editSlMove.trim() ? { slMove: editSlMove.trim() } : {}),
         ...(editProfitMove.trim() ? { profitMove: editProfitMove.trim() } : {}),
+        ...(editDailyTradeLimit.trim()
+          ? { dailyTradeLimit: Number(editDailyTradeLimit.trim()) }
+          : {}),
+        ...(editTradeWindowStart.trim()
+          ? { tradeWindowStart: editTradeWindowStart.trim() }
+          : {}),
+        ...(editTradeWindowEnd.trim()
+          ? { tradeWindowEnd: editTradeWindowEnd.trim() }
+          : {}),
       };
       const payload: Record<string, unknown> = {
-        strategyId: editing._id,
+        strategyId,
+        webhookKey: editing.webhookKey,
         name: editName,
         enabled: editEnabled,
         telegramEnabled: editTelegramEnabled,
@@ -331,15 +428,20 @@ export default function StrategyPage() {
       );
 
       const updated = (data as { strategy?: Strategy }).strategy;
-      if (updated?._id) {
+      const normalizedUpdated = updated
+        ? { ...updated, _id: normalizeId(updated._id) }
+        : null;
+      if (normalizedUpdated?._id) {
         setStrategies((prev) =>
-          prev.map((item) => (item._id === updated._id ? { ...item, ...updated } : item))
+          prev.map((item) =>
+            item._id === normalizedUpdated._id ? { ...item, ...normalizedUpdated } : item
+          )
         );
       }
 
       setMessage("Strategy updated.");
       closeEdit();
-      if (!updated?._id) {
+      if (!normalizedUpdated?._id) {
         await loadStrategies();
       }
     } catch (err) {
@@ -427,8 +529,39 @@ export default function StrategyPage() {
         </button>
       </div>
 
-      {error ? <div className="alert alert-error">{error}</div> : null}
+      {showPageError ? <div className="alert alert-error">{error}</div> : null}
       {message ? <div className="alert alert-success">{message}</div> : null}
+      {recentWebhookUrl ? (
+        <div className="card">
+          <div className="page-title">Webhook URL ready</div>
+          <div className="helper">
+            Use this URL in Chartink for{" "}
+            {recentStrategyName ? `"${recentStrategyName}"` : "your strategy"}.
+          </div>
+          <div className="list-item" style={{ justifyContent: "space-between", marginTop: "12px" }}>
+            <code className="mono">{recentWebhookUrl}</code>
+            <div className="cta-row" style={{ gap: "8px" }}>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => copyToClipboard(recentWebhookUrl)}
+              >
+                Copy
+              </button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => {
+                  setRecentWebhookUrl(null);
+                  setRecentStrategyName(null);
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="card">
         <div className="page-title">Telegram access</div>
@@ -544,19 +677,6 @@ export default function StrategyPage() {
                   placeholder="e.g. Banknifty Breakout"
                   required
                 />
-              </div>
-
-              <div className="input-group">
-                <label className="label">Webhook URL</label>
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <code className="mono">{webhookBase}</code>
-                  <button className="btn btn-ghost" type="button" onClick={handleCopy}>
-                    Copy
-                  </button>
-                </div>
-                <div className="helper">
-                  Webhook key will be generated after saving the strategy.
-                </div>
               </div>
 
               <div className="input-group">
@@ -702,18 +822,73 @@ export default function StrategyPage() {
                 <div className="helper">Only used for LIMIT orders.</div>
               </div>
 
+              <div className="input-group">
+                <label className="label" htmlFor="market-daily-trade-limit">
+                  Daily trade limit
+                </label>
+                <input
+                  className="input"
+                  id="market-daily-trade-limit"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={dailyTradeLimit}
+                  onChange={(event) => setDailyTradeLimit(event.target.value)}
+                  placeholder="e.g. 5"
+                />
+                <div className="helper">
+                  Max trades per day for this strategy. Leave blank for no limit.
+                </div>
+              </div>
+
+              <div className="grid-2">
+                <div className="input-group">
+                  <label className="label" htmlFor="market-trade-start">
+                    Trade start time
+                  </label>
+                  <input
+                    className="input"
+                    id="market-trade-start"
+                    type="time"
+                    value={tradeWindowStart}
+                    onChange={(event) => setTradeWindowStart(event.target.value)}
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="label" htmlFor="market-trade-end">
+                    Trade end time
+                  </label>
+                  <input
+                    className="input"
+                    id="market-trade-end"
+                    type="time"
+                    value={tradeWindowEnd}
+                    onChange={(event) => setTradeWindowEnd(event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="helper">
+                Trades execute only within this time window (server time).
+              </div>
+
               <div className="grid-2">
                 <div className="input-group">
                   <label className="label" htmlFor="market-target-by">
                     Target by
                   </label>
-                  <input
-                    className="input"
+                  <select
+                    className="select"
                     id="market-target-by"
                     value={targetBy}
                     onChange={(event) => setTargetBy(event.target.value)}
-                    placeholder="Money / Point / Percentage / Price"
-                  />
+                  >
+                    <option value="">Select target type</option>
+                    <option value="Money">Money</option>
+                    <option value="Point">Point</option>
+                    <option value="Percentage">Percentage</option>
+                    <option value="Price">Price</option>
+                    <option value="Ratio">Ratio</option>
+                  </select>
                 </div>
                 <div className="input-group">
                   <label className="label" htmlFor="market-target">
@@ -724,8 +899,17 @@ export default function StrategyPage() {
                     id="market-target"
                     value={target}
                     onChange={(event) => setTarget(event.target.value)}
-                    placeholder="e.g. 50"
+                    placeholder={targetPlaceholder}
                   />
+                  {isRatioTarget ? (
+                    <div className="helper">
+                      {!sl.trim()
+                        ? "Set SL (or provide SL via webhook) to use ratio."
+                        : ratioComputed
+                          ? `Computed target: ${ratioComputed}`
+                          : "Enter ratio like 1:2 or 2"}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -734,13 +918,18 @@ export default function StrategyPage() {
                   <label className="label" htmlFor="market-sl-by">
                     Stop loss by
                   </label>
-                  <input
-                    className="input"
+                  <select
+                    className="select"
                     id="market-sl-by"
                     value={slBy}
                     onChange={(event) => setSlBy(event.target.value)}
-                    placeholder="Money / Point / Percentage / Price"
-                  />
+                  >
+                    <option value="">Select SL type</option>
+                    <option value="Money">Money</option>
+                    <option value="Point">Point</option>
+                    <option value="Percentage">Percentage</option>
+                    <option value="Price">Price</option>
+                  </select>
                 </div>
                 <div className="input-group">
                   <label className="label" htmlFor="market-sl">
@@ -1010,18 +1199,73 @@ export default function StrategyPage() {
                 <div className="helper">Only used for LIMIT orders.</div>
               </div>
 
+              <div className="input-group">
+                <label className="label" htmlFor="edit-market-daily-trade-limit">
+                  Daily trade limit
+                </label>
+                <input
+                  className="input"
+                  id="edit-market-daily-trade-limit"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={editDailyTradeLimit}
+                  onChange={(event) => setEditDailyTradeLimit(event.target.value)}
+                  placeholder="e.g. 5"
+                />
+                <div className="helper">
+                  Max trades per day for this strategy. Leave blank for no limit.
+                </div>
+              </div>
+
+              <div className="grid-2">
+                <div className="input-group">
+                  <label className="label" htmlFor="edit-market-trade-start">
+                    Trade start time
+                  </label>
+                  <input
+                    className="input"
+                    id="edit-market-trade-start"
+                    type="time"
+                    value={editTradeWindowStart}
+                    onChange={(event) => setEditTradeWindowStart(event.target.value)}
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="label" htmlFor="edit-market-trade-end">
+                    Trade end time
+                  </label>
+                  <input
+                    className="input"
+                    id="edit-market-trade-end"
+                    type="time"
+                    value={editTradeWindowEnd}
+                    onChange={(event) => setEditTradeWindowEnd(event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="helper">
+                Trades execute only within this time window (server time).
+              </div>
+
               <div className="grid-2">
                 <div className="input-group">
                   <label className="label" htmlFor="edit-market-target-by">
                     Target by
                   </label>
-                  <input
-                    className="input"
+                  <select
+                    className="select"
                     id="edit-market-target-by"
                     value={editTargetBy}
                     onChange={(event) => setEditTargetBy(event.target.value)}
-                    placeholder="Money / Point / Percentage / Price"
-                  />
+                  >
+                    <option value="">Select target type</option>
+                    <option value="Money">Money</option>
+                    <option value="Point">Point</option>
+                    <option value="Percentage">Percentage</option>
+                    <option value="Price">Price</option>
+                    <option value="Ratio">Ratio</option>
+                  </select>
                 </div>
                 <div className="input-group">
                   <label className="label" htmlFor="edit-market-target">
@@ -1032,8 +1276,17 @@ export default function StrategyPage() {
                     id="edit-market-target"
                     value={editTarget}
                     onChange={(event) => setEditTarget(event.target.value)}
-                    placeholder="e.g. 50"
+                    placeholder={editTargetPlaceholder}
                   />
+                  {isEditRatioTarget ? (
+                    <div className="helper">
+                      {!editSl.trim()
+                        ? "Set SL (or provide SL via webhook) to use ratio."
+                        : editRatioComputed
+                          ? `Computed target: ${editRatioComputed}`
+                          : "Enter ratio like 1:2 or 2"}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1042,13 +1295,18 @@ export default function StrategyPage() {
                   <label className="label" htmlFor="edit-market-sl-by">
                     Stop loss by
                   </label>
-                  <input
-                    className="input"
+                  <select
+                    className="select"
                     id="edit-market-sl-by"
                     value={editSlBy}
                     onChange={(event) => setEditSlBy(event.target.value)}
-                    placeholder="Money / Point / Percentage / Price"
-                  />
+                  >
+                    <option value="">Select SL type</option>
+                    <option value="Money">Money</option>
+                    <option value="Point">Point</option>
+                    <option value="Percentage">Percentage</option>
+                    <option value="Price">Price</option>
+                  </select>
                 </div>
                 <div className="input-group">
                   <label className="label" htmlFor="edit-market-sl">
@@ -1130,6 +1388,22 @@ export default function StrategyPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {showModalError ? (
+        <div className="modal-overlay" onClick={() => setError(null)}>
+          <div className="modal card" onClick={(event) => event.stopPropagation()}>
+            <div className="page-title">Error</div>
+            <div className="alert alert-error" style={{ marginTop: "12px" }}>
+              {error}
+            </div>
+            <div className="cta-row" style={{ marginTop: "16px" }}>
+              <button className="btn btn-primary" type="button" onClick={() => setError(null)}>
+                OK
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

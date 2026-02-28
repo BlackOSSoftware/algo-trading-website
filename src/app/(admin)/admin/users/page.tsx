@@ -92,6 +92,16 @@ export default function AdminUsersPage() {
     }
   };
 
+  const getDaysLeftLabel = (planExpiresAt?: string | null) => {
+    if (!planExpiresAt) return "-";
+    const expiresAt = new Date(planExpiresAt).getTime();
+    if (Number.isNaN(expiresAt)) return "-";
+    const diffMs = expiresAt - Date.now();
+    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    if (daysLeft <= 0) return "Expired";
+    return `${daysLeft} days`;
+  };
+
   return (
     <div className="content">
       <div className="page-header">
@@ -112,6 +122,7 @@ export default function AdminUsersPage() {
             <span>Email</span>
             <span>Role</span>
             <span>Plan</span>
+            <span>Days left</span>
             <span>Action</span>
           </div>
           {users.length === 0 ? (
@@ -128,6 +139,7 @@ export default function AdminUsersPage() {
                     ? `(${new Date(user.planExpiresAt).toLocaleDateString()})`
                     : ""}
                 </span>
+                <span data-label="Days left">{getDaysLeftLabel(user.planExpiresAt)}</span>
                 <div className="table-cell" data-label="Action">
                   <div className="cta-row">
                     <button
