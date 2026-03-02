@@ -516,6 +516,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .status-pill {
@@ -537,6 +538,7 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .page-title {
@@ -815,6 +817,8 @@ textarea {
   display: grid;
   gap: 8px;
   width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table-row {
@@ -827,6 +831,14 @@ textarea {
   background: rgba(255, 255, 255, 0.85);
   font-size: 0.9rem;
   width: 100%;
+  align-items: start;
+}
+
+.table-row > span,
+.table-row > .table-cell {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .table-row.alerts-row {
@@ -1098,6 +1110,11 @@ textarea {
     grid-template-columns: 1fr;
     gap: 10px;
     padding: 14px;
+  }
+
+  .table-row .cta-row {
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .table-row.alerts-row.table-head {
