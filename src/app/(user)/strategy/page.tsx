@@ -105,6 +105,7 @@ export default function StrategyPage() {
   const [useTarget, setUseTarget] = useState(false);
   const [targetBy, setTargetBy] = useState("");
   const [target, setTarget] = useState("");
+  const [useStopLoss, setUseStopLoss] = useState(false);
   const [slBy, setSlBy] = useState("");
   const [sl, setSl] = useState("");
   const [trailSl, setTrailSl] = useState(false);
@@ -148,6 +149,7 @@ export default function StrategyPage() {
   const [editUseTarget, setEditUseTarget] = useState(false);
   const [editTargetBy, setEditTargetBy] = useState("");
   const [editTarget, setEditTarget] = useState("");
+  const [editUseStopLoss, setEditUseStopLoss] = useState(false);
   const [editSlBy, setEditSlBy] = useState("");
   const [editSl, setEditSl] = useState("");
   const [editTrailSl, setEditTrailSl] = useState(false);
@@ -190,7 +192,8 @@ export default function StrategyPage() {
     }
   };
 
-  const resolveWebhookUrl = (item: Strategy) => {
+  const resolveWebhookUrl = (item?: Strategy | null) => {
+    if (!item) return webhookBase;
     if (item.webhookPath) {
       return `${webhookBase}${item.webhookPath.replace("/api/v1/webhooks/chartink", "")}`;
     }
@@ -308,12 +311,14 @@ export default function StrategyPage() {
   const showPageError = Boolean(error) && !showModalError;
 
   const isRatioTarget = useTarget && targetBy === "Ratio";
-  const ratioComputed = isRatioTarget ? computeRatioTarget(sl, target) : null;
+  const activeSl = useStopLoss ? sl : "";
+  const ratioComputed = isRatioTarget ? computeRatioTarget(activeSl, target) : null;
   const targetPlaceholder = isRatioTarget ? "e.g. 1:2" : "e.g. 50";
 
   const isEditRatioTarget = editUseTarget && editTargetBy === "Ratio";
+  const activeEditSl = editUseStopLoss ? editSl : "";
   const editRatioComputed = isEditRatioTarget
-    ? computeRatioTarget(editSl, editTarget)
+    ? computeRatioTarget(activeEditSl, editTarget)
     : null;
   const editTargetPlaceholder = isEditRatioTarget ? "e.g. 1:2" : "e.g. 50";
 
@@ -324,7 +329,7 @@ export default function StrategyPage() {
     setLoading(true);
 
     try {
-      if (useTarget && targetBy === "Ratio" && !sl.trim()) {
+      if (useTarget && targetBy === "Ratio" && useStopLoss && !sl.trim()) {
         setError("Stop loss is required when Target by is Ratio.");
         return;
       }
@@ -396,8 +401,8 @@ export default function StrategyPage() {
         ...(trimmedQtyValue ? { qtyValue: trimmedQtyValue } : {}),
         ...(useTarget && targetBy.trim() ? { targetBy: targetBy.trim() } : {}),
         ...(useTarget && target.trim() ? { target: target.trim() } : {}),
-        ...(slBy.trim() ? { slBy: slBy.trim() } : {}),
-        ...(sl.trim() ? { sl: sl.trim() } : {}),
+        ...(useStopLoss && slBy.trim() ? { slBy: slBy.trim() } : {}),
+        ...(useStopLoss && sl.trim() ? { sl: sl.trim() } : {}),
         ...(trailSl ? { trailSl: true } : {}),
         ...(slMove.trim() ? { slMove: slMove.trim() } : {}),
         ...(profitMove.trim() ? { profitMove: profitMove.trim() } : {}),
@@ -448,6 +453,7 @@ export default function StrategyPage() {
       setUseTarget(false);
       setTargetBy("");
       setTarget("");
+      setUseStopLoss(false);
       setSlBy("");
       setSl("");
       setTrailSl(false);
@@ -508,6 +514,7 @@ export default function StrategyPage() {
     setEditUseTarget(Boolean(editTargetByValue || editTargetValue));
     setEditTargetBy(editTargetByValue);
     setEditTarget(editTargetValue);
+    setEditUseStopLoss(Boolean(mm.slBy || mm.sl));
     setEditSlBy(mm.slBy || "");
     setEditSl(mm.sl || "");
     setEditTrailSl(Boolean(mm.trailSl));
@@ -542,6 +549,7 @@ export default function StrategyPage() {
     setEditUseTarget(false);
     setEditTargetBy("");
     setEditTarget("");
+    setEditUseStopLoss(false);
     setEditSlBy("");
     setEditSl("");
     setEditTrailSl(false);
@@ -555,19 +563,23 @@ export default function StrategyPage() {
 
   const handleUpdate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!editing) return;
+    const editingSnapshot = editing;
+    if (!editingSnapshot) {
+      setError("Strategy context missing. Please reopen edit dialog.");
+      return;
+    }
 
     setError(null);
     setMessage(null);
     setEditLoading(true);
 
     try {
-      const strategyId = normalizeId(editing._id);
+      const strategyId = normalizeId(editingSnapshot._id);
       if (!strategyId) {
         setError("Strategy id missing");
         return;
       }
-      if (editUseTarget && editTargetBy === "Ratio" && !editSl.trim()) {
+      if (editUseTarget && editTargetBy === "Ratio" && editUseStopLoss && !editSl.trim()) {
         setError("Stop loss is required when Target by is Ratio.");
         return;
       }
@@ -639,8 +651,8 @@ export default function StrategyPage() {
         ...(trimmedQtyValue ? { qtyValue: trimmedQtyValue } : {}),
         ...(editUseTarget && editTargetBy.trim() ? { targetBy: editTargetBy.trim() } : {}),
         ...(editUseTarget && editTarget.trim() ? { target: editTarget.trim() } : {}),
-        ...(editSlBy.trim() ? { slBy: editSlBy.trim() } : {}),
-        ...(editSl.trim() ? { sl: editSl.trim() } : {}),
+        ...(editUseStopLoss && editSlBy.trim() ? { slBy: editSlBy.trim() } : {}),
+        ...(editUseStopLoss && editSl.trim() ? { sl: editSl.trim() } : {}),
         ...(editTrailSl ? { trailSl: true } : {}),
         ...(editSlMove.trim() ? { slMove: editSlMove.trim() } : {}),
         ...(editProfitMove.trim() ? { profitMove: editProfitMove.trim() } : {}),
@@ -656,12 +668,15 @@ export default function StrategyPage() {
       };
       const payload: Record<string, unknown> = {
         strategyId,
-        webhookKey: editing.webhookKey,
         name: editName,
         enabled: editEnabled,
         telegramEnabled: editTelegramEnabled,
         marketMaya,
       };
+      const webhookKey = String(editingSnapshot.webhookKey || "").trim();
+      if (webhookKey) {
+        payload.webhookKey = webhookKey;
+      }
       if (editEnabled && editMarketMayaToken.trim()) {
         payload.marketMayaToken = editMarketMayaToken;
       }
@@ -1282,8 +1297,8 @@ export default function StrategyPage() {
                     />
                     {isRatioTarget ? (
                       <div className="helper">
-                        {!sl.trim()
-                          ? "Set SL (or provide SL via webhook) to use ratio."
+                        {!activeSl.trim()
+                          ? "Enable stop loss (or provide SL via webhook) to use ratio."
                           : ratioComputed
                             ? `Computed target: ${ratioComputed}`
                             : "Enter ratio like 1:2 or 2"}
@@ -1293,37 +1308,61 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              <div className="grid-2">
-                <div className="input-group">
-                  <label className="label" htmlFor="market-sl-by">
-                    Stop loss by
-                  </label>
-                  <select
-                    className="select"
-                    id="market-sl-by"
-                    value={slBy}
-                    onChange={(event) => setSlBy(event.target.value)}
-                  >
-                    <option value="">Select SL type</option>
-                    <option value="Money">Money</option>
-                    <option value="Point">Point</option>
-                    <option value="Percentage">Percentage</option>
-                    <option value="Price">Price</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label className="label" htmlFor="market-sl">
-                    Stop loss
-                  </label>
+              <div className="input-group">
+                <label className="label" htmlFor="market-use-sl">
+                  Stop loss
+                </label>
+                <div className="list-item" style={{ justifyContent: "space-between" }}>
+                  <span>Enable stop loss</span>
                   <input
-                    className="input"
-                    id="market-sl"
-                    value={sl}
-                    onChange={(event) => setSl(event.target.value)}
-                    placeholder="e.g. 25"
+                    id="market-use-sl"
+                    type="checkbox"
+                    checked={useStopLoss}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setUseStopLoss(checked);
+                      if (!checked) {
+                        setSlBy("");
+                        setSl("");
+                      }
+                    }}
                   />
                 </div>
               </div>
+
+              {useStopLoss ? (
+                <div className="grid-2">
+                  <div className="input-group">
+                    <label className="label" htmlFor="market-sl-by">
+                      Stop loss by
+                    </label>
+                    <select
+                      className="select"
+                      id="market-sl-by"
+                      value={slBy}
+                      onChange={(event) => setSlBy(event.target.value)}
+                    >
+                      <option value="">Select SL type</option>
+                      <option value="Money">Money</option>
+                      <option value="Point">Point</option>
+                      <option value="Percentage">Percentage</option>
+                      <option value="Price">Price</option>
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label className="label" htmlFor="market-sl">
+                      Stop loss
+                    </label>
+                    <input
+                      className="input"
+                      id="market-sl"
+                      value={sl}
+                      onChange={(event) => setSl(event.target.value)}
+                      placeholder="e.g. 25"
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               <div className="input-group">
                 <label className="label" htmlFor="market-trail-sl">
@@ -1788,8 +1827,8 @@ export default function StrategyPage() {
                     />
                     {isEditRatioTarget ? (
                       <div className="helper">
-                        {!editSl.trim()
-                          ? "Set SL (or provide SL via webhook) to use ratio."
+                        {!activeEditSl.trim()
+                          ? "Enable stop loss (or provide SL via webhook) to use ratio."
                           : editRatioComputed
                             ? `Computed target: ${editRatioComputed}`
                             : "Enter ratio like 1:2 or 2"}
@@ -1799,37 +1838,61 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              <div className="grid-2">
-                <div className="input-group">
-                  <label className="label" htmlFor="edit-market-sl-by">
-                    Stop loss by
-                  </label>
-                  <select
-                    className="select"
-                    id="edit-market-sl-by"
-                    value={editSlBy}
-                    onChange={(event) => setEditSlBy(event.target.value)}
-                  >
-                    <option value="">Select SL type</option>
-                    <option value="Money">Money</option>
-                    <option value="Point">Point</option>
-                    <option value="Percentage">Percentage</option>
-                    <option value="Price">Price</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label className="label" htmlFor="edit-market-sl">
-                    Stop loss
-                  </label>
+              <div className="input-group">
+                <label className="label" htmlFor="edit-market-use-sl">
+                  Stop loss
+                </label>
+                <div className="list-item" style={{ justifyContent: "space-between" }}>
+                  <span>Enable stop loss</span>
                   <input
-                    className="input"
-                    id="edit-market-sl"
-                    value={editSl}
-                    onChange={(event) => setEditSl(event.target.value)}
-                    placeholder="e.g. 25"
+                    id="edit-market-use-sl"
+                    type="checkbox"
+                    checked={editUseStopLoss}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setEditUseStopLoss(checked);
+                      if (!checked) {
+                        setEditSlBy("");
+                        setEditSl("");
+                      }
+                    }}
                   />
                 </div>
               </div>
+
+              {editUseStopLoss ? (
+                <div className="grid-2">
+                  <div className="input-group">
+                    <label className="label" htmlFor="edit-market-sl-by">
+                      Stop loss by
+                    </label>
+                    <select
+                      className="select"
+                      id="edit-market-sl-by"
+                      value={editSlBy}
+                      onChange={(event) => setEditSlBy(event.target.value)}
+                    >
+                      <option value="">Select SL type</option>
+                      <option value="Money">Money</option>
+                      <option value="Point">Point</option>
+                      <option value="Percentage">Percentage</option>
+                      <option value="Price">Price</option>
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label className="label" htmlFor="edit-market-sl">
+                      Stop loss
+                    </label>
+                    <input
+                      className="input"
+                      id="edit-market-sl"
+                      value={editSl}
+                      onChange={(event) => setEditSl(event.target.value)}
+                      placeholder="e.g. 25"
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               <div className="input-group">
                 <label className="label" htmlFor="edit-market-trail-sl">

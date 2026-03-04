@@ -80,6 +80,28 @@ function formatTradeStatus(trade?: TradeInfo) {
   return { text: "Failed", tone: "error" as StatusTone };
 }
 
+function sanitizeTradeError(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  const redacted = normalized
+    .replace(/([?&]token=)([^&\s"'<]+)/gi, "$1[REDACTED]")
+    .replace(/(["'\s])token([=:]\s*)([^\s"'&<>]{8,})/gi, "$1token$2[REDACTED]");
+  const lowered = redacted.toLowerCase();
+
+  if (
+    lowered.includes("<!doctype html") ||
+    lowered.includes("<html") ||
+    lowered.includes("just a moment") ||
+    lowered.includes("cloudflare")
+  ) {
+    return "Market Maya blocked the request with a Cloudflare challenge. Retry shortly.";
+  }
+
+  return redacted.length > 220 ? `${redacted.slice(0, 217)}...` : redacted;
+}
+
 function pickTradeParams(trade?: TradeInfo) {
   if (!trade) return {};
   const params =
@@ -99,10 +121,11 @@ function formatMarketMayaStatus(debug?: AlertEvent["debug"]): StatusInfo {
   }
   if (market.skipped) {
     const text = market.execute === false ? "Dry-run" : "Skipped";
+    const reason = sanitizeTradeError(market.error || market.reason);
     return {
       text,
       tone: "warn",
-      title: market.error || market.reason,
+      title: reason || undefined,
     };
   }
   const total = Number(market.total || 0);
@@ -112,10 +135,11 @@ function formatMarketMayaStatus(debug?: AlertEvent["debug"]): StatusInfo {
   if (market.ok) {
     return { text: `OK${countText} ${mode}`, tone: "ok" };
   }
+  const marketError = sanitizeTradeError(market.error);
   return {
     text: `Failed${countText} ${mode}`,
     tone: "error",
-    title: market.error,
+    title: marketError || undefined,
   };
 }
 
@@ -274,6 +298,7 @@ export default function AlertsPage() {
                           {trades.map((trade, tradeIndex) => {
                             const params = pickTradeParams(trade);
                             const tradeStatus = formatTradeStatus(trade);
+                            const tradeError = sanitizeTradeError(trade.error);
                             const symbol =
                               trade.symbol ||
                               trade.symbolCode ||
@@ -313,10 +338,10 @@ export default function AlertsPage() {
                                     {tradeStatus.text}
                                   </span>
                                 </div>
-                                {trade.error ? (
+                                {tradeError ? (
                                   <div className="detail-row">
                                     <span>Error</span>
-                                    <span>{trade.error}</span>
+                                    <span>{tradeError}</span>
                                   </div>
                                 ) : null}
                                 <div className="detail-row">
