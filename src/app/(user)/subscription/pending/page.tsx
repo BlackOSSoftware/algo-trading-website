@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -28,7 +28,7 @@ export default function SubscriptionPendingPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -49,11 +49,11 @@ export default function SubscriptionPendingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const latestRequest = useMemo(() => {
     if (requests.length === 0) return null;
@@ -124,9 +124,9 @@ export default function SubscriptionPendingPage() {
       <div className="card">
         <div className="page-title">What happens next?</div>
         <div className="list" style={{ marginTop: "12px" }}>
-          <div className="list-item">If status is "paid", activation happens via Razorpay webhook.</div>
-          <div className="list-item">If status is "pending", reopen the payment from Subscription page.</div>
-          <div className="list-item">If status is "failed", start a new purchase.</div>
+          <div className="list-item">If status is paid, activation happens via Razorpay webhook.</div>
+          <div className="list-item">If status is pending, reopen the payment from Subscription page.</div>
+          <div className="list-item">If status is failed, start a new purchase.</div>
         </div>
       </div>
     </div>

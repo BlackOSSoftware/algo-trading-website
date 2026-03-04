@@ -141,6 +141,11 @@ export default function AdminTradePage() {
     setShowTokenModal(true);
   };
 
+  const closeTokenModal = () => {
+    setTokenError(null);
+    setShowTokenModal(false);
+  };
+
   const fillExample = () => {
     setExecute(false);
     setNotifyUserId("");
@@ -752,7 +757,7 @@ export default function AdminTradePage() {
       ) : null}
 
       {showTokenModal ? (
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={closeTokenModal}>
           <div className="modal card" onClick={(event) => event.stopPropagation()}>
             <div className="page-title">Market Maya token</div>
             <div className="helper" style={{ marginTop: "6px" }}>
@@ -782,6 +787,9 @@ export default function AdminTradePage() {
             <div className="cta-row" style={{ marginTop: "16px" }}>
               <button className="btn btn-primary" type="button" onClick={handleSaveToken}>
                 Save token
+              </button>
+              <button className="btn btn-ghost" type="button" onClick={closeTokenModal}>
+                Cancel
               </button>
             </div>
           </div>

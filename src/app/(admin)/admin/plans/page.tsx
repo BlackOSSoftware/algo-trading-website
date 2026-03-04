@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { getAdminToken } from "@/lib/auth";
 
@@ -38,7 +38,7 @@ export default function AdminPlansPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const token = getAdminToken();
       const plansData = await apiGet("/api/v1/admin/plans", token);
@@ -55,11 +55,11 @@ export default function AdminPlansPage() {
       const msg = err instanceof Error ? err.message : "Failed to load";
       setError(msg);
     }
-  };
+  }, [statusFilter]);
 
   useEffect(() => {
     loadData();
-  }, [statusFilter]);
+  }, [loadData]);
 
   const handleCreatePlan = async () => {
     setError(null);
