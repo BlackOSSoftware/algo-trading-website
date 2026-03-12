@@ -112,6 +112,7 @@ export default function StrategyPage() {
   const [slMove, setSlMove] = useState("");
   const [profitMove, setProfitMove] = useState("");
   const [dailyTradeLimit, setDailyTradeLimit] = useState("");
+  const [useDailyTradeLimit, setUseDailyTradeLimit] = useState(false);
   const [tradeWindowStart, setTradeWindowStart] = useState("");
   const [tradeWindowEnd, setTradeWindowEnd] = useState("");
   const [telegramEnabled, setTelegramEnabled] = useState(false);
@@ -156,6 +157,7 @@ export default function StrategyPage() {
   const [editSlMove, setEditSlMove] = useState("");
   const [editProfitMove, setEditProfitMove] = useState("");
   const [editDailyTradeLimit, setEditDailyTradeLimit] = useState("");
+  const [editUseDailyTradeLimit, setEditUseDailyTradeLimit] = useState(false);
   const [editTradeWindowStart, setEditTradeWindowStart] = useState("");
   const [editTradeWindowEnd, setEditTradeWindowEnd] = useState("");
   const [editTelegramEnabled, setEditTelegramEnabled] = useState(false);
@@ -339,6 +341,7 @@ export default function StrategyPage() {
       const trimmedCapitalAmount = capitalAmount.trim();
       const trimmedBufferBy = bufferBy.trim();
       const trimmedBufferPoints = bufferPoints.trim();
+      const trimmedDailyTradeLimit = dailyTradeLimit.trim();
 
       if (trimmedQtyDistribution && !trimmedQtyValue) {
         setError("Qty value is required when Qty distribution is selected.");
@@ -360,6 +363,10 @@ export default function StrategyPage() {
         setError("Select trade buffer type (Point/Percentage).");
         return;
       }
+      if (useDailyTradeLimit && !trimmedDailyTradeLimit) {
+        setError("Daily trade limit is required when enabled.");
+        return;
+      }
 
       const qtyNumber = trimmedQtyValue ? Number(trimmedQtyValue) : NaN;
       if (trimmedQtyValue && (!Number.isFinite(qtyNumber) || qtyNumber <= 0)) {
@@ -379,6 +386,15 @@ export default function StrategyPage() {
       const bufferPointsNumber = trimmedBufferPoints ? Number(trimmedBufferPoints) : NaN;
       if (trimmedBufferPoints && (!Number.isFinite(bufferPointsNumber) || bufferPointsNumber < 0)) {
         setError("Buffer points must be zero or a positive number.");
+        return;
+      }
+
+      const dailyTradeLimitNumber = trimmedDailyTradeLimit ? Number(trimmedDailyTradeLimit) : NaN;
+      if (
+        useDailyTradeLimit &&
+        (!Number.isFinite(dailyTradeLimitNumber) || dailyTradeLimitNumber <= 0)
+      ) {
+        setError("Daily trade limit must be a positive number.");
         return;
       }
 
@@ -406,8 +422,8 @@ export default function StrategyPage() {
         ...(trailSl ? { trailSl: true } : {}),
         ...(slMove.trim() ? { slMove: slMove.trim() } : {}),
         ...(profitMove.trim() ? { profitMove: profitMove.trim() } : {}),
-        ...(dailyTradeLimit.trim()
-          ? { dailyTradeLimit: Number(dailyTradeLimit.trim()) }
+        ...(useDailyTradeLimit && trimmedDailyTradeLimit
+          ? { dailyTradeLimit: Math.floor(dailyTradeLimitNumber) }
           : {}),
         ...(tradeWindowStart.trim()
           ? { tradeWindowStart: tradeWindowStart.trim() }
@@ -460,6 +476,7 @@ export default function StrategyPage() {
       setSlMove("");
       setProfitMove("");
       setDailyTradeLimit("");
+      setUseDailyTradeLimit(false);
       setTradeWindowStart("");
       setTradeWindowEnd("");
       setEnabled(false);
@@ -525,6 +542,11 @@ export default function StrategyPage() {
         ? String(mm.dailyTradeLimit)
         : ""
     );
+    setEditUseDailyTradeLimit(
+      mm.dailyTradeLimit !== undefined &&
+        mm.dailyTradeLimit !== null &&
+        Number(mm.dailyTradeLimit) > 0
+    );
     setEditTradeWindowStart(mm.tradeWindowStart || "");
     setEditTradeWindowEnd(mm.tradeWindowEnd || "");
     setEditTelegramEnabled(Boolean(item.telegramEnabled));
@@ -556,6 +578,7 @@ export default function StrategyPage() {
     setEditSlMove("");
     setEditProfitMove("");
     setEditDailyTradeLimit("");
+    setEditUseDailyTradeLimit(false);
     setEditTradeWindowStart("");
     setEditTradeWindowEnd("");
     setEditTelegramEnabled(false);
@@ -589,6 +612,7 @@ export default function StrategyPage() {
       const trimmedCapitalAmount = editCapitalAmount.trim();
       const trimmedBufferBy = editBufferBy.trim();
       const trimmedBufferPoints = editBufferPoints.trim();
+      const trimmedDailyTradeLimit = editDailyTradeLimit.trim();
 
       if (trimmedQtyDistribution && !trimmedQtyValue) {
         setError("Qty value is required when Qty distribution is selected.");
@@ -632,6 +656,23 @@ export default function StrategyPage() {
         return;
       }
 
+      const dailyTradeLimitNumber = trimmedDailyTradeLimit ? Number(trimmedDailyTradeLimit) : NaN;
+      if (
+        editUseDailyTradeLimit &&
+        (!Number.isFinite(dailyTradeLimitNumber) || dailyTradeLimitNumber <= 0)
+      ) {
+        setError("Daily trade limit must be a positive number.");
+        return;
+      }
+
+      const marketMayaClear: string[] = [];
+      if (!trimmedBufferBy && !trimmedBufferPoints) {
+        marketMayaClear.push("bufferBy", "bufferValue", "bufferPoints");
+      }
+      if (!editUseDailyTradeLimit) {
+        marketMayaClear.push("dailyTradeLimit");
+      }
+
       const token = getToken();
       const marketMaya: Record<string, unknown> = {
         symbolMode: editSymbolMode,
@@ -656,8 +697,8 @@ export default function StrategyPage() {
         ...(editTrailSl ? { trailSl: true } : {}),
         ...(editSlMove.trim() ? { slMove: editSlMove.trim() } : {}),
         ...(editProfitMove.trim() ? { profitMove: editProfitMove.trim() } : {}),
-        ...(editDailyTradeLimit.trim()
-          ? { dailyTradeLimit: Number(editDailyTradeLimit.trim()) }
+        ...(editUseDailyTradeLimit && trimmedDailyTradeLimit
+          ? { dailyTradeLimit: Math.floor(dailyTradeLimitNumber) }
           : {}),
         ...(editTradeWindowStart.trim()
           ? { tradeWindowStart: editTradeWindowStart.trim() }
@@ -673,6 +714,9 @@ export default function StrategyPage() {
         telegramEnabled: editTelegramEnabled,
         marketMaya,
       };
+      if (marketMayaClear.length) {
+        payload.marketMayaClear = marketMayaClear;
+      }
       const webhookKey = String(editingSnapshot.webhookKey || "").trim();
       if (webhookKey) {
         payload.webhookKey = webhookKey;
@@ -1197,20 +1241,43 @@ export default function StrategyPage() {
                 <label className="label" htmlFor="market-daily-trade-limit">
                   Daily trade limit
                 </label>
-                <input
-                  className="input"
-                  id="market-daily-trade-limit"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={dailyTradeLimit}
-                  onChange={(event) => setDailyTradeLimit(event.target.value)}
-                  placeholder="e.g. 5"
-                />
-                <div className="helper">
-                  Max trades per day for this strategy. Leave blank for no limit.
+                <div className="list-item" style={{ justifyContent: "space-between" }}>
+                  <span>Enable daily trade limit</span>
+                  <input
+                    id="market-daily-trade-limit"
+                    type="checkbox"
+                    checked={useDailyTradeLimit}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setUseDailyTradeLimit(checked);
+                      if (!checked) {
+                        setDailyTradeLimit("");
+                      }
+                    }}
+                  />
                 </div>
               </div>
+
+              {useDailyTradeLimit ? (
+                <div className="input-group">
+                  <label className="label" htmlFor="market-daily-trade-limit-value">
+                    Daily trade limit value
+                  </label>
+                  <input
+                    className="input"
+                    id="market-daily-trade-limit-value"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={dailyTradeLimit}
+                    onChange={(event) => setDailyTradeLimit(event.target.value)}
+                    placeholder="e.g. 5"
+                  />
+                  <div className="helper">
+                    Max trades per day for this strategy. Leave blank for no limit.
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid-2">
                 <div className="input-group">
@@ -1727,20 +1794,43 @@ export default function StrategyPage() {
                 <label className="label" htmlFor="edit-market-daily-trade-limit">
                   Daily trade limit
                 </label>
-                <input
-                  className="input"
-                  id="edit-market-daily-trade-limit"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={editDailyTradeLimit}
-                  onChange={(event) => setEditDailyTradeLimit(event.target.value)}
-                  placeholder="e.g. 5"
-                />
-                <div className="helper">
-                  Max trades per day for this strategy. Leave blank for no limit.
+                <div className="list-item" style={{ justifyContent: "space-between" }}>
+                  <span>Enable daily trade limit</span>
+                  <input
+                    id="edit-market-daily-trade-limit"
+                    type="checkbox"
+                    checked={editUseDailyTradeLimit}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setEditUseDailyTradeLimit(checked);
+                      if (!checked) {
+                        setEditDailyTradeLimit("");
+                      }
+                    }}
+                  />
                 </div>
               </div>
+
+              {editUseDailyTradeLimit ? (
+                <div className="input-group">
+                  <label className="label" htmlFor="edit-market-daily-trade-limit-value">
+                    Daily trade limit value
+                  </label>
+                  <input
+                    className="input"
+                    id="edit-market-daily-trade-limit-value"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={editDailyTradeLimit}
+                    onChange={(event) => setEditDailyTradeLimit(event.target.value)}
+                    placeholder="e.g. 5"
+                  />
+                  <div className="helper">
+                    Max trades per day for this strategy. Leave blank for no limit.
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid-2">
                 <div className="input-group">
