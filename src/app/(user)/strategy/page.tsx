@@ -92,248 +92,248 @@ const EXIT_CALL_TYPES = new Set([
 const INFO_CONTENT: Record<string, InfoContent> = {
   telegramAccess: {
     title: "Telegram Access",
-    description: "Is section se bot token generate hota hai jise Telegram bot ko bhejkar alerts start kiye jaate hain.",
+    description: "This section generates a bot token that you send to the Telegram bot to start alerts.",
     points: [
-      "Generate token karo, phir bot me `/startAlert <token>` bhejo.",
-      "User chat manually enter nahi karna hota.",
-      "Alerts stop karne ke liye `/stopAlert` use hota hai.",
+      "Generate a token, then send `/startAlert <token>` to the bot.",
+      "You do not need to enter the user chat ID manually.",
+      "Use `/stopAlert` to stop alerts.",
     ],
   },
   savedStrategies: {
     title: "Saved Strategies",
-    description: "Yahan sab saved webhook strategies list hoti hain aur inka current status dikhta hai.",
+    description: "This section lists all saved webhook strategies and shows their current status.",
     points: [
-      "Copy Webhook se Chartink URL copy hota hai.",
-      "Enable/Disable se auto trading on/off hota hai.",
-      "Edit se configuration update hoti hai.",
+      "Use Copy Webhook to copy the Chartink URL.",
+      "Enable or Disable turns auto trading on or off.",
+      "Edit updates the strategy configuration.",
     ],
   },
   strategyName: {
     title: "Strategy Name",
-    description: "Sirf internal naam hai jisse aap dashboard me strategy ko pehchanoge.",
+    description: "This is an internal name used to identify the strategy in the dashboard.",
     points: [
-      "Webhook execution aur alerts me ye naam dikh sakta hai.",
-      "Chartink payload ke kisi field se ye auto nahi aata.",
+      "This name may appear in webhook execution logs and alerts.",
+      "It is not automatically read from any Chartink payload field.",
     ],
   },
   marketMayaEnable: {
     title: "Enable Market Maya",
-    description: "Is toggle se webhook signal aane par Market Maya auto trade request bhejna on/off hota hai.",
+    description: "This toggle controls whether a webhook signal should send an auto-trade request to Market Maya.",
     points: [
-      "Off hone par strategy alerts store ho sakte hain, lekin auto trade nahi chalega.",
-      "On karne par strategy config ke hisaab se trade request banegi.",
+      "When off, the strategy can still store alerts, but auto trading will not run.",
+      "When on, a trade request is generated using the strategy configuration.",
     ],
   },
   marketMayaToken: {
     title: "Market Maya Token",
-    description: "Ye token Market Maya API ko authorize karta hai.",
+    description: "This token authorizes requests to the Market Maya API.",
     points: [
-      "Agar blank chhoda to server default token use hoga.",
-      "Live trade ke liye valid token zaroori hai.",
+      "If left blank, the server default token will be used.",
+      "A valid token is required for live trading.",
     ],
   },
   symbolSource: {
     title: "Symbol Source",
-    description: "Webhook payload me symbol kaha se read karna hai, ye option decide karta hai.",
+    description: "This setting decides where the symbol should be read from in the webhook payload.",
     points: [
-      "`Stocks: first only` me `stocks` list ka sirf pehla symbol use hota hai.",
-      "`Stocks: all` me comma-separated sab symbols use hote hain.",
-      "`Symbol field` mode me custom key se symbols read hote hain.",
+      "`Stocks: first only` uses only the first symbol from the `stocks` list.",
+      "`Stocks: all` uses all comma-separated symbols.",
+      "`Symbol field` reads symbols from a custom payload key.",
     ],
   },
   maxSymbols: {
     title: "Max Symbols",
-    description: "Multi-symbol mode me maximum kitne symbols process karne hain, ye limit hai.",
+    description: "This sets the maximum number of symbols to process in multi-symbol mode.",
     points: [
-      "`Stocks: first only` mode me iska effect nahi hota.",
-      "Blank chhodne par default 5 symbols liye jaate hain.",
-      "Upper cap 25 hai.",
+      "This has no effect in `Stocks: first only` mode.",
+      "If left blank, the default limit is 5 symbols.",
+      "The maximum allowed value is 25.",
     ],
   },
   symbolKey: {
     title: "Symbol Key",
-    description: "Custom payload field ka naam jahan se symbol ya comma-separated symbols read kiye jayenge.",
+    description: "This is the custom payload field name used to read a symbol or comma-separated symbols.",
     points: [
       "Example: `symbol`, `ticker`, `stock_name`.",
-      "Ye sirf `Symbol field` mode me use hota hai.",
+      "This is used only in `Symbol field` mode.",
     ],
   },
   tradeWindow: {
     title: "Trade Time Window",
-    description: "Strategy sirf is time range ke andar auto trade execute karegi.",
+    description: "The strategy will execute auto trades only within this time range.",
     points: [
-      "Default 09:15 se 15:30 hai.",
-      "Server time ke hisaab se window check hoti hai.",
-      "Window ke bahar signal aane par trade skip ho jayega.",
+      "The default window is 09:15 to 15:30.",
+      "The time window is checked using server time.",
+      "Signals received outside this window are skipped.",
     ],
   },
   tradeSideFallback: {
     title: "Trade Side Fallback",
-    description: "Agar payload me `call_type` nahi aaya to yahan selected action use hota hai.",
+    description: "If the payload does not include `call_type`, the selected action here will be used.",
     points: [
-      "BUY/SELL normal entry trades ke liye hain.",
-      "BUY EXIT/SELL EXIT exit action bhejte hain.",
-      "Exit mode me order type, qty, target, SL ignore kiye jaate hain.",
+      "BUY and SELL are used for normal entry trades.",
+      "BUY EXIT and SELL EXIT send exit actions.",
+      "In exit mode, order type, quantity, target, and stop loss are ignored.",
     ],
   },
   orderType: {
     title: "Order Type",
-    description: "Auto trade MARKET bhejna hai ya LIMIT, ye yahan decide hota hai.",
+    description: "This decides whether the auto trade should be sent as a MARKET or LIMIT order.",
     points: [
-      "MARKET me immediate market execution request banti hai.",
-      "LIMIT me price aur optional buffer use hota hai.",
-      "Exit mode me ye field apply nahi hoti.",
+      "MARKET creates an immediate market execution request.",
+      "LIMIT uses a price and an optional buffer.",
+      "This field does not apply in exit mode.",
     ],
   },
   limitPrice: {
     title: "Limit Price",
-    description: "LIMIT order ke liye direct price yahan set kar sakte ho.",
+    description: "Use this field to set a direct price for a LIMIT order.",
     points: [
-      "Blank rahe to trigger price aur buffer se effective price nikal sakta hai.",
-      "Sirf LIMIT order me use hoti hai.",
+      "If left blank, the effective price can be derived from trigger price and buffer.",
+      "This is used only for LIMIT orders.",
     ],
   },
   tradeBuffer: {
     title: "Trade Buffer",
-    description: "LIMIT order me trigger price ke upar/neeche buffer add karke final price banaya ja sakta hai.",
+    description: "For LIMIT orders, a buffer can be added above or below the trigger price to derive the final price.",
     points: [
-      "BUY me trigger + buffer hota hai.",
-      "SELL me trigger - buffer hota hai.",
-      "Sirf LIMIT orders me active hota hai.",
+      "For BUY, the final price is trigger plus buffer.",
+      "For SELL, the final price is trigger minus buffer.",
+      "This is active only for LIMIT orders.",
     ],
   },
   qtyDistribution: {
     title: "Qty Distribution",
-    description: "Quantity fixed rakhni hai ya capital percent ke basis par calculate karni hai, ye decide karta hai.",
+    description: "This decides whether quantity is fixed or calculated from a capital percentage.",
     points: [
-      "`Fix` me qty value direct bheji jaati hai.",
-      "`Capital(%)` me capital amount aur stock price se qty nikalti hai.",
-      "Exit mode me qty config ignore hoti hai.",
+      "`Fix` sends the quantity value directly.",
+      "`Capital(%)` calculates quantity using capital amount and stock price.",
+      "Quantity settings are ignored in exit mode.",
     ],
   },
   qtyValue: {
     title: "Qty Value",
-    description: "Quantity ka actual number ya percentage yahan diya jata hai.",
+    description: "Enter the actual quantity number or percentage here.",
     points: [
-      "`Fix` me ye direct qty hai.",
-      "`Capital(%)` me ye capital ka percent hai.",
+      "In `Fix` mode, this is the direct quantity.",
+      "In `Capital(%)` mode, this is the capital percentage.",
     ],
   },
   capitalAmount: {
     title: "Capital Amount",
-    description: "Capital-based quantity mode me calculation ke liye total capital yahan diya jata hai.",
+    description: "Enter the total capital used for calculation in capital-based quantity mode.",
     points: [
-      "Sirf `Capital(%)` mode me use hota hai.",
+      "This is used only in `Capital(%)` mode.",
       "Formula: (Capital Amount * Qty% / 100) / price.",
     ],
   },
   dailyTradeLimit: {
     title: "Daily Trade Limit",
-    description: "Ek din me is strategy se maximum kitne trades allowed honge, ye control karta hai.",
+    description: "This controls the maximum number of trades allowed for this strategy in one day.",
     points: [
-      "Limit hit hone par remaining signals skip ho jayenge.",
-      "Agar off hai to koi daily cap nahi lagegi.",
+      "Once the limit is reached, remaining signals are skipped.",
+      "If this is off, there is no daily cap.",
     ],
   },
   dailyTradeLimitValue: {
     title: "Daily Trade Limit Value",
-    description: "Per day trade count ki exact limit yahan set hoti hai.",
+    description: "This sets the exact trade count limit per day.",
     points: [
-      "Example: 5 matlab strategy ek din me 5 se zyada live trades nahi karegi.",
+      "Example: 5 means the strategy will not place more than 5 live trades in one day.",
     ],
   },
   targetToggle: {
     title: "Target",
-    description: "Trade ke sath target send karna hai ya nahi, is toggle se control hota hai.",
+    description: "This toggle controls whether a target should be sent with the trade.",
     points: [
-      "On karne par target type aur target value fields aati hain.",
-      "Exit mode me target config apply nahi hoti.",
+      "When enabled, target type and target value fields become available.",
+      "Target settings do not apply in exit mode.",
     ],
   },
   targetBy: {
     title: "Target By",
-    description: "Target kis unit me define karna hai, ye option batata hai.",
+    description: "This decides which unit should be used to define the target.",
     points: [
-      "Money, Point, Percentage, Price supported hain.",
-      "Ratio mode me target SL ke basis par compute hota hai.",
+      "Supported units include Money, Point, Percentage, and Price.",
+      "In Ratio mode, the target is computed from the stop loss value.",
     ],
   },
   targetValue: {
     title: "Target Value",
-    description: "Selected target type ke hisaab se actual target number yahan diya jata hai.",
+    description: "Enter the actual target value based on the selected target type.",
     points: [
-      "Ratio mode me `1:2` ya `2` jaisi value de sakte ho.",
-      "Ratio use karne par valid stop loss bhi hona chahiye.",
+      "In Ratio mode, you can use values like `1:2` or `2`.",
+      "A valid stop loss is also required when using Ratio mode.",
     ],
   },
   stopLossToggle: {
     title: "Stop Loss",
-    description: "Trade ke sath stop loss bhejna hai ya nahi, is toggle se control hota hai.",
+    description: "This toggle controls whether a stop loss should be sent with the trade.",
     points: [
-      "On karne par SL type aur SL value fields aati hain.",
-      "Exit mode me SL config apply nahi hoti.",
+      "When enabled, stop loss type and stop loss value fields become available.",
+      "Stop loss settings do not apply in exit mode.",
     ],
   },
   stopLossBy: {
     title: "Stop Loss By",
-    description: "Stop loss kis unit me define karna hai, ye option batata hai.",
+    description: "This decides which unit should be used to define the stop loss.",
     points: [
-      "Money, Point, Percentage, Price supported hain.",
+      "Supported units include Money, Point, Percentage, and Price.",
     ],
   },
   stopLossValue: {
     title: "Stop Loss Value",
-    description: "Selected SL type ke hisaab se actual stop loss number yahan diya jata hai.",
+    description: "Enter the actual stop loss value based on the selected stop loss type.",
     points: [
-      "Ratio target use karte waqt ye field important ho sakti hai.",
+      "This value can be important when using a Ratio target.",
     ],
   },
   trailSl: {
     title: "Trail SL",
-    description: "Trailing stop loss enable karne se SL dynamic move hota hai.",
+    description: "Enabling trailing stop loss allows the stop loss to move dynamically.",
     points: [
-      "On karne par SL move aur Profit move fields use hoti hain.",
-      "Exit mode me trail SL apply nahi hota.",
+      "When enabled, the SL Move and Profit Move fields are used.",
+      "Trailing stop loss does not apply in exit mode.",
     ],
   },
   slMove: {
     title: "SL Move",
-    description: "Trailing SL ke active hone par stop loss kitna shift karna hai, ye value batati hai.",
+    description: "This value defines how much the stop loss should shift when trailing stop loss is active.",
   },
   profitMove: {
     title: "Profit Move",
-    description: "Trailing SL trigger hone ke liye profit movement kitna hona chahiye, ye yahan set hota hai.",
+    description: "This sets how much profit movement is required before trailing stop loss is triggered.",
   },
   emailAlerts: {
     title: "Email Alerts",
-    description: "Webhook signal aane par registered email par alert bhejna hai ya nahi, ye toggle decide karta hai.",
+    description: "This toggle decides whether an alert should be sent to the registered email when a webhook signal arrives.",
     points: [
-      "Email account registration wale email par jaata hai.",
-      "Strategy-level on/off control hai.",
+      "Alerts are sent to the email address used for account registration.",
+      "This is controlled separately for each strategy.",
     ],
   },
   telegramAlerts: {
     title: "Telegram Alerts",
-    description: "Telegram bot subscription active ho to signal Telegram par bhi bheja ja sakta hai.",
+    description: "If the Telegram bot subscription is active, the signal can also be sent to Telegram.",
     points: [
-      "Bot token link hone ke baad hi alerts milenge.",
-      "Strategy-level on/off control hai.",
+      "Alerts are available only after the bot token is linked.",
+      "This is controlled separately for each strategy.",
     ],
   },
   webhookUrl: {
     title: "Webhook URL",
-    description: "Ye wahi URL hai jo Chartink ya kisi webhook sender me paste karna hota hai.",
+    description: "This is the URL you paste into Chartink or any other webhook sender.",
     points: [
-      "Each strategy ka unique webhook key ho sakta hai.",
-      "Edit karne par existing webhook key same reh sakti hai.",
+      "Each strategy can have its own unique webhook key.",
+      "The existing webhook key can stay the same when you edit the strategy.",
     ],
   },
   testWebhook: {
     title: "Test Webhook",
-    description: "Is modal me sample payload bhejkar strategy webhook ko test kar sakte ho.",
+    description: "Use this modal to test the strategy webhook by sending a sample payload.",
     points: [
-      "Chartink-like JSON paste karo.",
-      "Response status aur body yahin dikhegi.",
+      "Paste a Chartink-like JSON payload.",
+      "The response status and body are shown here.",
     ],
   },
 };
@@ -450,6 +450,8 @@ export default function StrategyPage() {
   const [editTradeWindowEnd, setEditTradeWindowEnd] = useState(DEFAULT_TRADE_WINDOW_END);
   const [editEmailEnabled, setEditEmailEnabled] = useState(true);
   const [editTelegramEnabled, setEditTelegramEnabled] = useState(false);
+  const [showAddInfoButtons, setShowAddInfoButtons] = useState(true);
+  const [showEditInfoButtons, setShowEditInfoButtons] = useState(true);
   const [activeInfoKey, setActiveInfoKey] = useState<string | null>(null);
 
   const webhookBase = useMemo(() => {
@@ -494,39 +496,96 @@ export default function StrategyPage() {
     }
   };
 
-  const renderInfoButton = (infoKey: string, variant: InfoButtonVariant = "inline") => (
-    <button
-      className={`info-button${variant === "chip" ? " info-button-chip" : ""}`}
-      type="button"
-      aria-label={`Explain ${INFO_CONTENT[infoKey]?.title || "setting"}`}
-      onClick={() => setActiveInfoKey(infoKey)}
-    >
-      <span className="info-button-icon" aria-hidden="true">
-        <svg viewBox="0 0 20 20" fill="none">
-          <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M10 8.1V13.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          <circle cx="10" cy="5.8" r="0.9" fill="currentColor" />
-        </svg>
-      </span>
-      {variant === "chip" ? <span className="info-button-text">Info</span> : null}
-    </button>
-  );
+  const renderInfoButton = (
+    infoKey: string,
+    variant: InfoButtonVariant = "inline",
+    visible = true
+  ) => {
+    if (!visible) return null;
+    return (
+      <button
+        className={`info-button${variant === "chip" ? " info-button-chip" : ""}`}
+        type="button"
+        aria-label={`Explain ${INFO_CONTENT[infoKey]?.title || "setting"}`}
+        onClick={() => setActiveInfoKey(infoKey)}
+      >
+        <span className="info-button-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="none">
+            <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />
+            <path
+              d="M10 8.1V13.1"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+            <circle cx="10" cy="5.8" r="0.9" fill="currentColor" />
+          </svg>
+        </span>
+        {variant === "chip" ? <span className="info-button-text">Info</span> : null}
+      </button>
+    );
+  };
 
-  const renderLabelWithInfo = (htmlFor: string, label: string, infoKey: string) => (
+  const renderLabelWithInfo = (
+    htmlFor: string,
+    label: string,
+    infoKey: string,
+    showInfo = true
+  ) => (
     <div className="label-row">
       <label className="label" htmlFor={htmlFor}>
         {label}
       </label>
-      {renderInfoButton(infoKey)}
+      {renderInfoButton(infoKey, "inline", showInfo)}
     </div>
   );
 
-  const renderTitleWithInfo = (title: string, infoKey: string, style?: React.CSSProperties) => (
+  const renderTitleWithInfo = (
+    title: string,
+    infoKey: string,
+    style?: React.CSSProperties,
+    showInfo = true
+  ) => (
     <div className="section-title-row" style={style}>
       <div className="page-title">{title}</div>
-      {renderInfoButton(infoKey, "chip")}
+      {renderInfoButton(infoKey, "chip", showInfo)}
     </div>
   );
+
+  const renderInfoToggle = (
+    checked: boolean,
+    onChange: (checked: boolean) => void
+  ) => (
+    <label className="info-toggle">
+      <span className="info-toggle-text">Info buttons</span>
+      <span className={`info-switch${checked ? " on" : ""}`}>
+        <span className="info-switch-thumb" />
+      </span>
+      <input
+        type="checkbox"
+        role="switch"
+        aria-label="Show info buttons"
+        checked={checked}
+        onChange={(event) => {
+          const next = event.target.checked;
+          if (!next) setActiveInfoKey(null);
+          onChange(next);
+        }}
+      />
+    </label>
+  );
+
+  const renderAddLabelWithInfo = (htmlFor: string, label: string, infoKey: string) =>
+    renderLabelWithInfo(htmlFor, label, infoKey, showAddInfoButtons);
+
+  const renderEditLabelWithInfo = (htmlFor: string, label: string, infoKey: string) =>
+    renderLabelWithInfo(htmlFor, label, infoKey, showEditInfoButtons);
+
+  const renderAddTitleWithInfo = (title: string, infoKey: string, style?: React.CSSProperties) =>
+    renderTitleWithInfo(title, infoKey, style, showAddInfoButtons);
+
+  const renderEditTitleWithInfo = (title: string, infoKey: string, style?: React.CSSProperties) =>
+    renderTitleWithInfo(title, infoKey, style, showEditInfoButtons);
 
   const resolveWebhookUrl = (item?: Strategy | null) => {
     if (!item) return webhookBase;
@@ -537,6 +596,18 @@ export default function StrategyPage() {
       return `${webhookBase}?key=${item.webhookKey}`;
     }
     return webhookBase;
+  };
+
+  const openAdd = () => {
+    setShowAddInfoButtons(true);
+    setActiveInfoKey(null);
+    setShowModal(true);
+  };
+
+  const closeAdd = () => {
+    setActiveInfoKey(null);
+    setShowAddInfoButtons(true);
+    setShowModal(false);
   };
 
   const loadStrategies = useCallback(async () => {
@@ -852,7 +923,7 @@ export default function StrategyPage() {
       setEmailEnabled(true);
       setTelegramEnabled(false);
       setMessage("Strategy saved. Webhook URL is ready to copy.");
-      setShowModal(false);
+      closeAdd();
       await loadStrategies();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed";
@@ -865,6 +936,8 @@ export default function StrategyPage() {
   const openEdit = (item: Strategy) => {
     setError(null);
     setMessage(null);
+    setShowEditInfoButtons(true);
+    setActiveInfoKey(null);
     setEditing({ ...item, _id: normalizeId(item._id) });
     setEditName(item.name || "");
     setEditEnabled(Boolean(item.enabled));
@@ -924,6 +997,8 @@ export default function StrategyPage() {
   };
 
   const closeEdit = () => {
+    setActiveInfoKey(null);
+    setShowEditInfoButtons(true);
     setEditing(null);
     setEditName("");
     setEditEnabled(false);
@@ -1312,7 +1387,7 @@ export default function StrategyPage() {
         <button
           className="btn btn-primary"
           type="button"
-          onClick={() => setShowModal(true)}
+          onClick={openAdd}
         >
           Add strategy
         </button>
@@ -1478,12 +1553,15 @@ export default function StrategyPage() {
       </div>
 
       {showModal ? (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeAdd}>
           <div className="modal card" onClick={(event) => event.stopPropagation()}>
-            {renderTitleWithInfo("Add strategy", "strategyName")}
+            <div className="modal-header-row">
+              <div className="page-title">Add strategy</div>
+              {renderInfoToggle(showAddInfoButtons, setShowAddInfoButtons)}
+            </div>
             <form className="form" onSubmit={handleSubmit} style={{ marginTop: "16px" }}>
               <div className="input-group">
-                {renderLabelWithInfo("strategy-name", "Strategy name", "strategyName")}
+                {renderAddLabelWithInfo("strategy-name", "Strategy name", "strategyName")}
                 <input
                   className="input"
                   id="strategy-name"
@@ -1495,7 +1573,7 @@ export default function StrategyPage() {
               </div>
 
               <div className="input-group">
-                {renderLabelWithInfo("market-enable", "Enable Market Maya", "marketMayaEnable")}
+                {renderAddLabelWithInfo("market-enable", "Enable Market Maya", "marketMayaEnable")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to Market Maya</span>
                   <input
@@ -1509,7 +1587,7 @@ export default function StrategyPage() {
 
               {enabled ? (
                 <div className="input-group">
-                  {renderLabelWithInfo("market-token", "Market Maya Token", "marketMayaToken")}
+                  {renderAddLabelWithInfo("market-token", "Market Maya Token", "marketMayaToken")}
                   <input
                     className="input"
                     id="market-token"
@@ -1524,14 +1602,14 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              {renderTitleWithInfo("Symbol handling", "symbolSource", { marginTop: "10px" })}
+              {renderAddTitleWithInfo("Symbol handling", "symbolSource", { marginTop: "10px" })}
               <div className="helper">
                 Control how symbols are picked from webhook payloads.
               </div>
 
               <div className="grid-2">
                 <div className="input-group">
-                  {renderLabelWithInfo("symbol-mode", "Symbol source", "symbolSource")}
+                  {renderAddLabelWithInfo("symbol-mode", "Symbol source", "symbolSource")}
                   <select
                     className="select"
                     id="symbol-mode"
@@ -1544,7 +1622,7 @@ export default function StrategyPage() {
                   </select>
                 </div>
                 <div className="input-group">
-                  {renderLabelWithInfo("max-symbols", "Max symbols", "maxSymbols")}
+                  {renderAddLabelWithInfo("max-symbols", "Max symbols", "maxSymbols")}
                   <input
                     className="input"
                     id="max-symbols"
@@ -1562,7 +1640,7 @@ export default function StrategyPage() {
 
               {symbolMode === "payloadSymbol" ? (
                 <div className="input-group">
-                  {renderLabelWithInfo("symbol-key", "Symbol key", "symbolKey")}
+                  {renderAddLabelWithInfo("symbol-key", "Symbol key", "symbolKey")}
                   <input
                     className="input"
                     id="symbol-key"
@@ -1574,14 +1652,14 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              {renderTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
+              {renderAddTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
               <div className="helper">
                 Payload `call_type` is used first. Fallback is used only when payload side is missing.
               </div>
 
               <div className="grid-2">
                 <div className="input-group">
-                  {renderLabelWithInfo("market-trade-start", "Trade start time", "tradeWindow")}
+                  {renderAddLabelWithInfo("market-trade-start", "Trade start time", "tradeWindow")}
                   <input
                     className="input"
                     id="market-trade-start"
@@ -1591,7 +1669,7 @@ export default function StrategyPage() {
                   />
                 </div>
                 <div className="input-group">
-                  {renderLabelWithInfo("market-trade-end", "Trade end time", "tradeWindow")}
+                  {renderAddLabelWithInfo("market-trade-end", "Trade end time", "tradeWindow")}
                   <input
                     className="input"
                     id="market-trade-end"
@@ -1607,7 +1685,7 @@ export default function StrategyPage() {
 
               <div className="grid-2">
                 <div className="input-group">
-                  {renderLabelWithInfo("market-calltype", "Trade side fallback", "tradeSideFallback")}
+                  {renderAddLabelWithInfo("market-calltype", "Trade side fallback", "tradeSideFallback")}
                   <select
                     className="select"
                     id="market-calltype"
@@ -1624,7 +1702,7 @@ export default function StrategyPage() {
                 </div>
                 {!exitFallbackSelected ? (
                   <div className="input-group">
-                    {renderLabelWithInfo("market-ordertype", "Order type", "orderType")}
+                    {renderAddLabelWithInfo("market-ordertype", "Order type", "orderType")}
                     <select
                       className="select"
                       id="market-ordertype"
@@ -1654,7 +1732,7 @@ export default function StrategyPage() {
                 <>
                   {orderType === "LIMIT" ? (
                     <div className="input-group">
-                      {renderLabelWithInfo("market-limit-price", "Limit price", "limitPrice")}
+                      {renderAddLabelWithInfo("market-limit-price", "Limit price", "limitPrice")}
                       <input
                         className="input"
                         id="market-limit-price"
@@ -1670,7 +1748,7 @@ export default function StrategyPage() {
 
                   <div className="grid-2">
                     <div className="input-group">
-                      {renderLabelWithInfo("market-buffer-by", "Trade buffer by", "tradeBuffer")}
+                      {renderAddLabelWithInfo("market-buffer-by", "Trade buffer by", "tradeBuffer")}
                       <select
                         className="select"
                         id="market-buffer-by"
@@ -1688,7 +1766,7 @@ export default function StrategyPage() {
                       </select>
                     </div>
                     <div className="input-group">
-                      {renderLabelWithInfo("market-buffer-points", "Trade buffer value", "tradeBuffer")}
+                      {renderAddLabelWithInfo("market-buffer-points", "Trade buffer value", "tradeBuffer")}
                       <input
                         className="input"
                         id="market-buffer-points"
@@ -1708,7 +1786,7 @@ export default function StrategyPage() {
 
                   <div className="grid-2">
                     <div className="input-group">
-                      {renderLabelWithInfo("market-qty-distribution", "Qty distribution", "qtyDistribution")}
+                      {renderAddLabelWithInfo("market-qty-distribution", "Qty distribution", "qtyDistribution")}
                       <select
                         className="select"
                         id="market-qty-distribution"
@@ -1721,7 +1799,7 @@ export default function StrategyPage() {
                       </select>
                     </div>
                     <div className="input-group">
-                      {renderLabelWithInfo("market-qty-value", "Qty value", "qtyValue")}
+                      {renderAddLabelWithInfo("market-qty-value", "Qty value", "qtyValue")}
                       <input
                         className="input"
                         id="market-qty-value"
@@ -1740,7 +1818,7 @@ export default function StrategyPage() {
 
                   {qtyDistribution === "Capital(%)" ? (
                     <div className="input-group">
-                      {renderLabelWithInfo("market-capital-amount", "Capital amount", "capitalAmount")}
+                      {renderAddLabelWithInfo("market-capital-amount", "Capital amount", "capitalAmount")}
                       <input
                         className="input"
                         id="market-capital-amount"
@@ -1757,7 +1835,7 @@ export default function StrategyPage() {
               )}
 
               <div className="input-group">
-                {renderLabelWithInfo("market-daily-trade-limit", "Daily trade limit", "dailyTradeLimit")}
+                {renderAddLabelWithInfo("market-daily-trade-limit", "Daily trade limit", "dailyTradeLimit")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Enable daily trade limit</span>
                   <input
@@ -1777,7 +1855,7 @@ export default function StrategyPage() {
 
               {useDailyTradeLimit ? (
                 <div className="input-group">
-                  {renderLabelWithInfo(
+                  {renderAddLabelWithInfo(
                     "market-daily-trade-limit-value",
                     "Daily trade limit value",
                     "dailyTradeLimitValue"
@@ -1801,7 +1879,7 @@ export default function StrategyPage() {
               {!exitFallbackSelected ? (
                 <>
                   <div className="input-group">
-                    {renderLabelWithInfo("market-use-target", "Target", "targetToggle")}
+                    {renderAddLabelWithInfo("market-use-target", "Target", "targetToggle")}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
                       <span>Enable target</span>
                       <input
@@ -1823,7 +1901,7 @@ export default function StrategyPage() {
                   {useTarget ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderLabelWithInfo("market-target-by", "Target by", "targetBy")}
+                        {renderAddLabelWithInfo("market-target-by", "Target by", "targetBy")}
                         <select
                           className="select"
                           id="market-target-by"
@@ -1839,7 +1917,7 @@ export default function StrategyPage() {
                         </select>
                       </div>
                       <div className="input-group">
-                        {renderLabelWithInfo("market-target", "Target", "targetValue")}
+                        {renderAddLabelWithInfo("market-target", "Target", "targetValue")}
                         <input
                           className="input"
                           id="market-target"
@@ -1861,7 +1939,7 @@ export default function StrategyPage() {
                   ) : null}
 
                   <div className="input-group">
-                    {renderLabelWithInfo("market-use-sl", "Stop loss", "stopLossToggle")}
+                    {renderAddLabelWithInfo("market-use-sl", "Stop loss", "stopLossToggle")}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
                       <span>Enable stop loss</span>
                       <input
@@ -1883,7 +1961,7 @@ export default function StrategyPage() {
                   {useStopLoss ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderLabelWithInfo("market-sl-by", "Stop loss by", "stopLossBy")}
+                        {renderAddLabelWithInfo("market-sl-by", "Stop loss by", "stopLossBy")}
                         <select
                           className="select"
                           id="market-sl-by"
@@ -1898,7 +1976,7 @@ export default function StrategyPage() {
                         </select>
                       </div>
                       <div className="input-group">
-                        {renderLabelWithInfo("market-sl", "Stop loss", "stopLossValue")}
+                        {renderAddLabelWithInfo("market-sl", "Stop loss", "stopLossValue")}
                         <input
                           className="input"
                           id="market-sl"
@@ -1911,7 +1989,7 @@ export default function StrategyPage() {
                   ) : null}
 
                   <div className="input-group">
-                    {renderLabelWithInfo("market-trail-sl", "Trail SL", "trailSl")}
+                    {renderAddLabelWithInfo("market-trail-sl", "Trail SL", "trailSl")}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
                       <span>Enable trailing stop loss</span>
                       <input
@@ -1933,7 +2011,7 @@ export default function StrategyPage() {
                   {trailSl ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderLabelWithInfo("market-sl-move", "SL move", "slMove")}
+                        {renderAddLabelWithInfo("market-sl-move", "SL move", "slMove")}
                         <input
                           className="input"
                           id="market-sl-move"
@@ -1943,7 +2021,7 @@ export default function StrategyPage() {
                         />
                       </div>
                       <div className="input-group">
-                        {renderLabelWithInfo("market-profit-move", "Profit move", "profitMove")}
+                        {renderAddLabelWithInfo("market-profit-move", "Profit move", "profitMove")}
                         <input
                           className="input"
                           id="market-profit-move"
@@ -1958,7 +2036,7 @@ export default function StrategyPage() {
               ) : null}
 
               <div className="input-group">
-                {renderLabelWithInfo("email-enable", "Email alerts", "emailAlerts")}
+                {renderAddLabelWithInfo("email-enable", "Email alerts", "emailAlerts")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to {emailAlertTarget}</span>
                   <input
@@ -1976,7 +2054,7 @@ export default function StrategyPage() {
               </div>
 
               <div className="input-group">
-                {renderLabelWithInfo("telegram-enable", "Telegram alerts", "telegramAlerts")}
+                {renderAddLabelWithInfo("telegram-enable", "Telegram alerts", "telegramAlerts")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to Telegram</span>
                   <input
@@ -1998,7 +2076,7 @@ export default function StrategyPage() {
                 <button
                   className="btn btn-ghost"
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={closeAdd}
                 >
                   Cancel
                 </button>
@@ -2011,10 +2089,13 @@ export default function StrategyPage() {
       {editing ? (
         <div className="modal-overlay" onClick={closeEdit}>
           <div className="modal card" onClick={(event) => event.stopPropagation()}>
-            <div className="page-title">Edit strategy</div>
+            <div className="modal-header-row">
+              <div className="page-title">Edit strategy</div>
+              {renderInfoToggle(showEditInfoButtons, setShowEditInfoButtons)}
+            </div>
             <form className="form" onSubmit={handleUpdate} style={{ marginTop: "16px" }}>
               <div className="input-group">
-                {renderLabelWithInfo("edit-strategy-name", "Strategy name", "strategyName")}
+                {renderEditLabelWithInfo("edit-strategy-name", "Strategy name", "strategyName")}
                 <input
                   className="input"
                   id="edit-strategy-name"
@@ -2028,7 +2109,7 @@ export default function StrategyPage() {
               <div className="input-group">
                 <div className="label-row">
                   <label className="label">Webhook URL</label>
-                  {renderInfoButton("webhookUrl")}
+                  {renderInfoButton("webhookUrl", "inline", showEditInfoButtons)}
                 </div>
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <code className="mono">{resolveWebhookUrl(editing)}</code>
@@ -2044,7 +2125,7 @@ export default function StrategyPage() {
               </div>
 
               <div className="input-group">
-                {renderLabelWithInfo("edit-market-enable", "Enable Market Maya", "marketMayaEnable")}
+                {renderEditLabelWithInfo("edit-market-enable", "Enable Market Maya", "marketMayaEnable")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to Market Maya</span>
                   <input
@@ -2058,7 +2139,7 @@ export default function StrategyPage() {
 
               {editEnabled ? (
                 <div className="input-group">
-                  {renderLabelWithInfo("edit-market-token", "Market Maya Token", "marketMayaToken")}
+                  {renderEditLabelWithInfo("edit-market-token", "Market Maya Token", "marketMayaToken")}
                   <input
                     className="input"
                     id="edit-market-token"
@@ -2071,14 +2152,14 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              {renderTitleWithInfo("Symbol handling", "symbolSource", { marginTop: "10px" })}
+              {renderEditTitleWithInfo("Symbol handling", "symbolSource", { marginTop: "10px" })}
               <div className="helper">
                 Control how symbols are picked from webhook payloads.
               </div>
 
               <div className="grid-2">
                 <div className="input-group">
-                  {renderLabelWithInfo("edit-symbol-mode", "Symbol source", "symbolSource")}
+                  {renderEditLabelWithInfo("edit-symbol-mode", "Symbol source", "symbolSource")}
                   <select
                     className="select"
                     id="edit-symbol-mode"
@@ -2091,7 +2172,7 @@ export default function StrategyPage() {
                   </select>
                 </div>
                 <div className="input-group">
-                  {renderLabelWithInfo("edit-max-symbols", "Max symbols", "maxSymbols")}
+                  {renderEditLabelWithInfo("edit-max-symbols", "Max symbols", "maxSymbols")}
                   <input
                     className="input"
                     id="edit-max-symbols"
@@ -2109,7 +2190,7 @@ export default function StrategyPage() {
 
               {editSymbolMode === "payloadSymbol" ? (
                 <div className="input-group">
-                  {renderLabelWithInfo("edit-symbol-key", "Symbol key", "symbolKey")}
+                  {renderEditLabelWithInfo("edit-symbol-key", "Symbol key", "symbolKey")}
                   <input
                     className="input"
                     id="edit-symbol-key"
@@ -2121,14 +2202,14 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              {renderTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
+              {renderEditTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
               <div className="helper">
                 Payload `call_type` is used first. Fallback is used only when payload side is missing.
               </div>
 
               <div className="grid-2">
                 <div className="input-group">
-                  {renderLabelWithInfo("edit-market-trade-start", "Trade start time", "tradeWindow")}
+                  {renderEditLabelWithInfo("edit-market-trade-start", "Trade start time", "tradeWindow")}
                   <input
                     className="input"
                     id="edit-market-trade-start"
@@ -2138,7 +2219,7 @@ export default function StrategyPage() {
                   />
                 </div>
                 <div className="input-group">
-                  {renderLabelWithInfo("edit-market-trade-end", "Trade end time", "tradeWindow")}
+                  {renderEditLabelWithInfo("edit-market-trade-end", "Trade end time", "tradeWindow")}
                   <input
                     className="input"
                     id="edit-market-trade-end"
@@ -2154,7 +2235,7 @@ export default function StrategyPage() {
 
               <div className="grid-2">
                 <div className="input-group">
-                  {renderLabelWithInfo("edit-market-calltype", "Trade side fallback", "tradeSideFallback")}
+                  {renderEditLabelWithInfo("edit-market-calltype", "Trade side fallback", "tradeSideFallback")}
                   <select
                     className="select"
                     id="edit-market-calltype"
@@ -2171,7 +2252,7 @@ export default function StrategyPage() {
                 </div>
                 {!editExitFallbackSelected ? (
                   <div className="input-group">
-                    {renderLabelWithInfo("edit-market-ordertype", "Order type", "orderType")}
+                    {renderEditLabelWithInfo("edit-market-ordertype", "Order type", "orderType")}
                     <select
                       className="select"
                       id="edit-market-ordertype"
@@ -2201,7 +2282,7 @@ export default function StrategyPage() {
                 <>
                   {editOrderType === "LIMIT" ? (
                     <div className="input-group">
-                      {renderLabelWithInfo("edit-market-limit-price", "Limit price", "limitPrice")}
+                      {renderEditLabelWithInfo("edit-market-limit-price", "Limit price", "limitPrice")}
                       <input
                         className="input"
                         id="edit-market-limit-price"
@@ -2217,7 +2298,7 @@ export default function StrategyPage() {
 
                   <div className="grid-2">
                     <div className="input-group">
-                      {renderLabelWithInfo("edit-market-buffer-by", "Trade buffer by", "tradeBuffer")}
+                      {renderEditLabelWithInfo("edit-market-buffer-by", "Trade buffer by", "tradeBuffer")}
                       <select
                         className="select"
                         id="edit-market-buffer-by"
@@ -2235,7 +2316,7 @@ export default function StrategyPage() {
                       </select>
                     </div>
                     <div className="input-group">
-                      {renderLabelWithInfo("edit-market-buffer-points", "Trade buffer value", "tradeBuffer")}
+                      {renderEditLabelWithInfo("edit-market-buffer-points", "Trade buffer value", "tradeBuffer")}
                       <input
                         className="input"
                         id="edit-market-buffer-points"
@@ -2255,7 +2336,7 @@ export default function StrategyPage() {
 
                   <div className="grid-2">
                     <div className="input-group">
-                      {renderLabelWithInfo(
+                      {renderEditLabelWithInfo(
                         "edit-market-qty-distribution",
                         "Qty distribution",
                         "qtyDistribution"
@@ -2272,7 +2353,7 @@ export default function StrategyPage() {
                       </select>
                     </div>
                     <div className="input-group">
-                      {renderLabelWithInfo("edit-market-qty-value", "Qty value", "qtyValue")}
+                      {renderEditLabelWithInfo("edit-market-qty-value", "Qty value", "qtyValue")}
                       <input
                         className="input"
                         id="edit-market-qty-value"
@@ -2291,7 +2372,7 @@ export default function StrategyPage() {
 
                   {editQtyDistribution === "Capital(%)" ? (
                     <div className="input-group">
-                      {renderLabelWithInfo(
+                      {renderEditLabelWithInfo(
                         "edit-market-capital-amount",
                         "Capital amount",
                         "capitalAmount"
@@ -2312,7 +2393,7 @@ export default function StrategyPage() {
               )}
 
               <div className="input-group">
-                {renderLabelWithInfo(
+                {renderEditLabelWithInfo(
                   "edit-market-daily-trade-limit",
                   "Daily trade limit",
                   "dailyTradeLimit"
@@ -2336,7 +2417,7 @@ export default function StrategyPage() {
 
               {editUseDailyTradeLimit ? (
                 <div className="input-group">
-                  {renderLabelWithInfo(
+                  {renderEditLabelWithInfo(
                     "edit-market-daily-trade-limit-value",
                     "Daily trade limit value",
                     "dailyTradeLimitValue"
@@ -2360,7 +2441,7 @@ export default function StrategyPage() {
               {!editExitFallbackSelected ? (
                 <>
                   <div className="input-group">
-                    {renderLabelWithInfo("edit-market-use-target", "Target", "targetToggle")}
+                    {renderEditLabelWithInfo("edit-market-use-target", "Target", "targetToggle")}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
                       <span>Enable target</span>
                       <input
@@ -2382,7 +2463,7 @@ export default function StrategyPage() {
                   {editUseTarget ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderLabelWithInfo("edit-market-target-by", "Target by", "targetBy")}
+                        {renderEditLabelWithInfo("edit-market-target-by", "Target by", "targetBy")}
                         <select
                           className="select"
                           id="edit-market-target-by"
@@ -2398,7 +2479,7 @@ export default function StrategyPage() {
                         </select>
                       </div>
                       <div className="input-group">
-                        {renderLabelWithInfo("edit-market-target", "Target", "targetValue")}
+                        {renderEditLabelWithInfo("edit-market-target", "Target", "targetValue")}
                         <input
                           className="input"
                           id="edit-market-target"
@@ -2420,7 +2501,7 @@ export default function StrategyPage() {
                   ) : null}
 
                   <div className="input-group">
-                    {renderLabelWithInfo("edit-market-use-sl", "Stop loss", "stopLossToggle")}
+                    {renderEditLabelWithInfo("edit-market-use-sl", "Stop loss", "stopLossToggle")}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
                       <span>Enable stop loss</span>
                       <input
@@ -2442,7 +2523,7 @@ export default function StrategyPage() {
                   {editUseStopLoss ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderLabelWithInfo("edit-market-sl-by", "Stop loss by", "stopLossBy")}
+                        {renderEditLabelWithInfo("edit-market-sl-by", "Stop loss by", "stopLossBy")}
                         <select
                           className="select"
                           id="edit-market-sl-by"
@@ -2457,7 +2538,7 @@ export default function StrategyPage() {
                         </select>
                       </div>
                       <div className="input-group">
-                        {renderLabelWithInfo("edit-market-sl", "Stop loss", "stopLossValue")}
+                        {renderEditLabelWithInfo("edit-market-sl", "Stop loss", "stopLossValue")}
                         <input
                           className="input"
                           id="edit-market-sl"
@@ -2470,7 +2551,7 @@ export default function StrategyPage() {
                   ) : null}
 
                   <div className="input-group">
-                    {renderLabelWithInfo("edit-market-trail-sl", "Trail SL", "trailSl")}
+                    {renderEditLabelWithInfo("edit-market-trail-sl", "Trail SL", "trailSl")}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
                       <span>Enable trailing stop loss</span>
                       <input
@@ -2492,7 +2573,7 @@ export default function StrategyPage() {
                   {editTrailSl ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderLabelWithInfo("edit-market-sl-move", "SL move", "slMove")}
+                        {renderEditLabelWithInfo("edit-market-sl-move", "SL move", "slMove")}
                         <input
                           className="input"
                           id="edit-market-sl-move"
@@ -2502,7 +2583,7 @@ export default function StrategyPage() {
                         />
                       </div>
                       <div className="input-group">
-                        {renderLabelWithInfo("edit-market-profit-move", "Profit move", "profitMove")}
+                        {renderEditLabelWithInfo("edit-market-profit-move", "Profit move", "profitMove")}
                         <input
                           className="input"
                           id="edit-market-profit-move"
@@ -2517,7 +2598,7 @@ export default function StrategyPage() {
               ) : null}
 
               <div className="input-group">
-                {renderLabelWithInfo("edit-email-enable", "Email alerts", "emailAlerts")}
+                {renderEditLabelWithInfo("edit-email-enable", "Email alerts", "emailAlerts")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to {emailAlertTarget}</span>
                   <input
@@ -2535,7 +2616,7 @@ export default function StrategyPage() {
               </div>
 
               <div className="input-group">
-                {renderLabelWithInfo("edit-telegram-enable", "Telegram alerts", "telegramAlerts")}
+                {renderEditLabelWithInfo("edit-telegram-enable", "Telegram alerts", "telegramAlerts")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to Telegram</span>
                   <input

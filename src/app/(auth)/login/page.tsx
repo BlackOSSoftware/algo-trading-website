@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { apiPost } from "@/lib/api";
 import { setToken } from "@/lib/auth";
+import { markLoginWelcomePending } from "@/lib/loginWelcome";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function LoginPage() {
       if (data?.token) {
         setToken(data.token as string);
       }
+      markLoginWelcomePending();
       router.push("/dashboard");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
@@ -55,6 +57,7 @@ export default function LoginPage() {
       if (data?.token) {
         setToken(data.token as string);
       }
+      markLoginWelcomePending();
       router.push("/dashboard");
     } catch (err) {
       const message = err instanceof Error ? err.message : "OTP verification failed";

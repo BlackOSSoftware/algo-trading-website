@@ -352,6 +352,14 @@ textarea {
   flex-wrap: wrap;
 }
 
+.modal-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .label {
   font-size: 0.85rem;
   color: var(--muted);
@@ -403,6 +411,61 @@ textarea {
 .info-button-text {
   font-size: 0.78rem;
   letter-spacing: 0.01em;
+}
+
+.info-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.info-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.info-toggle-text {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.info-switch {
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: #d5dde4;
+  border: 1px solid rgba(36, 91, 104, 0.14);
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.info-switch-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: white;
+  box-shadow: 0 2px 5px rgba(15, 20, 30, 0.16);
+  transition: transform 0.2s ease;
+}
+
+.info-switch.on {
+  background: rgba(31, 122, 140, 0.28);
+  border-color: rgba(31, 122, 140, 0.35);
+}
+
+.info-switch.on .info-switch-thumb {
+  transform: translateX(20px);
+}
+
+.info-toggle:focus-within .info-switch {
+  box-shadow: 0 0 0 3px rgba(31, 122, 140, 0.16);
 }
 
 .input,
@@ -1447,4 +1510,247 @@ textarea {
   overflow-y: auto;
   scrollbar-gutter: stable;
   padding-right: 32px;
+}
+
+.welcome-login-overlay {
+  background:
+    radial-gradient(circle at top left, rgba(240, 184, 74, 0.18), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(31, 122, 140, 0.18), transparent 36%),
+    rgba(15, 20, 30, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.welcome-login-card {
+  position: relative;
+  width: min(860px, 94vw);
+  max-height: min(92vh, 720px);
+  display: grid;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+  gap: 28px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 28px;
+}
+
+.welcome-login-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(240, 184, 74, 0.08), transparent 32%),
+    linear-gradient(315deg, rgba(31, 122, 140, 0.08), transparent 38%);
+  pointer-events: none;
+}
+
+.welcome-login-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 2;
+}
+
+.welcome-login-visual,
+.welcome-login-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.welcome-login-visual {
+  min-height: 280px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.95), rgba(248, 243, 234, 0.8)),
+    linear-gradient(180deg, rgba(244, 237, 220, 0.92), rgba(224, 236, 240, 0.92));
+  border: 1px solid rgba(36, 91, 104, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  overflow: hidden;
+}
+
+.welcome-login-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 12px 12px 12px 0;
+}
+
+.welcome-login-kicker {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8f6a17;
+}
+
+.welcome-login-text {
+  font-size: 0.98rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  max-width: 44ch;
+}
+
+.welcome-login-quote {
+  margin: 0;
+  padding: 16px 18px;
+  border-left: 4px solid rgba(240, 184, 74, 0.95);
+  border-radius: 18px;
+  background: rgba(240, 184, 74, 0.1);
+  color: #5e4a17;
+  font-size: 0.96rem;
+  line-height: 1.7;
+  font-weight: 600;
+}
+
+.welcome-login-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.welcome-walker {
+  scale: 0.75;
+  position: relative;
+  width: 200px;
+  height: 200px;
+  translate: 10px -20px;
+  margin: 26px auto 0;
+}
+
+.welcome-walker svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.welcome-walker-head {
+  translate: 27px -30px;
+  z-index: 3;
+  animation: welcome-walker-bob 1s infinite ease-in;
+}
+
+.welcome-walker-body {
+  position: absolute;
+  inset: 0;
+  translate: 0 30px;
+  z-index: 3;
+  animation: welcome-walker-bob 1s infinite ease-in-out;
+}
+
+.welcome-walker-leg-right {
+  translate: 75px 135px;
+  z-index: 0;
+  animation: welcome-walker-right-step 1s infinite ease-in;
+  animation-delay: 0.45s;
+}
+
+.welcome-walker-leg-left {
+  translate: 30px 155px;
+  z-index: 3;
+  animation: welcome-walker-left-step 1s infinite ease-in;
+}
+
+.welcome-walker-ground {
+  translate: -140px 0;
+  rotate: 10deg;
+  z-index: -1;
+  filter: blur(0.5px) drop-shadow(1px 3px 5px #000000);
+  opacity: 0.25;
+  animation: welcome-walker-scroll 5s infinite linear;
+}
+
+@keyframes welcome-walker-bob {
+  0% {
+    transform: translateY(0) rotate(3deg);
+  }
+  5% {
+    transform: translateY(0) rotate(3deg);
+  }
+  25% {
+    transform: translateY(5px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  70% {
+    transform: translateY(5px) rotate(0deg);
+  }
+  100% {
+    transform: translateY(0) rotate(3deg);
+  }
+}
+
+@keyframes welcome-walker-left-step {
+  0% {
+    transform: translateY(0) rotate(-5deg);
+  }
+  33% {
+    transform: translateY(-15px) translate(32px) rotate(35deg);
+  }
+  66% {
+    transform: translateY(0) translate(25px) rotate(-25deg);
+  }
+  100% {
+    transform: translateY(0) rotate(-5deg);
+  }
+}
+
+@keyframes welcome-walker-right-step {
+  0% {
+    transform: translateY(0) translate(0) rotate(-5deg);
+  }
+  33% {
+    transform: translateY(-10px) translate(30px) rotate(35deg);
+  }
+  66% {
+    transform: translateY(0) translate(20px) rotate(-25deg);
+  }
+  100% {
+    transform: translateY(0) translate(0) rotate(-5deg);
+  }
+}
+
+@keyframes welcome-walker-scroll {
+  0% {
+    transform: translateY(25px) translate(50px);
+    opacity: 0;
+  }
+  33% {
+    opacity: 0.25;
+  }
+  66% {
+    opacity: 0.25;
+  }
+  100% {
+    transform: translateY(-50px) translate(-100px);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .welcome-login-card {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 20px;
+    overflow-y: auto;
+  }
+
+  .welcome-login-visual {
+    min-height: 220px;
+  }
+
+  .welcome-login-copy {
+    padding: 0;
+  }
+
+  .welcome-login-close {
+    top: 12px;
+    right: 12px;
+  }
+
+  .welcome-walker {
+    scale: 0.62;
+    translate: 0 -24px;
+    margin-top: 12px;
+  }
 }

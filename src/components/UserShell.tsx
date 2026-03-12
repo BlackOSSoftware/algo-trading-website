@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import LoginWelcomeModal from "@/components/LoginWelcomeModal";
 import { clearToken } from "@/lib/auth";
+import { consumeLoginWelcomePending } from "@/lib/loginWelcome";
 import { fetchSession, type SessionUser } from "@/lib/session";
 
 const navItems = [
@@ -77,6 +79,7 @@ export default function UserShell({
   const [user, setUser] = useState<SessionUser | null>(null);
   const [ready, setReady] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [showLoginWelcome, setShowLoginWelcome] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -109,6 +112,13 @@ export default function UserShell({
   useEffect(() => {
     setNavOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!ready || pathname !== "/dashboard") return;
+    if (consumeLoginWelcomePending()) {
+      setShowLoginWelcome(true);
+    }
+  }, [ready, pathname]);
 
   const handleLogout = () => {
     clearToken();
@@ -204,6 +214,11 @@ export default function UserShell({
         </header>
         <main className="content">{children}</main>
       </div>
+      <LoginWelcomeModal
+        name={user?.name}
+        open={showLoginWelcome}
+        onClose={() => setShowLoginWelcome(false)}
+      />
     </div>
   );
 }
