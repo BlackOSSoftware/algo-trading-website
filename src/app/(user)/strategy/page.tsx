@@ -36,9 +36,14 @@ type Strategy = {
     tradeWindowEnd?: string;
   };
   enabled: boolean;
+  emailEnabled?: boolean;
   telegramEnabled?: boolean;
   telegramChatId?: string;
   createdAt: string;
+};
+
+type UserProfile = {
+  email?: string;
 };
 
 type TelegramToken = {
@@ -48,6 +53,14 @@ type TelegramToken = {
   usedChatId?: string | null;
   createdAt?: string;
 };
+
+type InfoContent = {
+  title: string;
+  description: string;
+  points?: string[];
+};
+
+type InfoButtonVariant = "inline" | "chip";
 
 const TELEGRAM_BOT_URL = "https://t.me/Alert_vibhav_bot";
 const DEFAULT_WEBHOOK_TEST_PAYLOAD = JSON.stringify(
@@ -60,6 +73,278 @@ const DEFAULT_WEBHOOK_TEST_PAYLOAD = JSON.stringify(
   null,
   2
 );
+const DEFAULT_TRADE_WINDOW_START = "09:15";
+const DEFAULT_TRADE_WINDOW_END = "15:30";
+const STRATEGY_CALL_TYPE_OPTIONS = [
+  "BUY",
+  "SELL",
+  "BUY EXIT",
+  "SELL EXIT",
+  "BUY ADD",
+  "SELL ADD",
+];
+const EXIT_CALL_TYPES = new Set([
+  "BUY EXIT",
+  "SELL EXIT",
+  "PARTIAL BUY EXIT",
+  "PARTIAL SELL EXIT",
+]);
+const INFO_CONTENT: Record<string, InfoContent> = {
+  telegramAccess: {
+    title: "Telegram Access",
+    description: "Is section se bot token generate hota hai jise Telegram bot ko bhejkar alerts start kiye jaate hain.",
+    points: [
+      "Generate token karo, phir bot me `/startAlert <token>` bhejo.",
+      "User chat manually enter nahi karna hota.",
+      "Alerts stop karne ke liye `/stopAlert` use hota hai.",
+    ],
+  },
+  savedStrategies: {
+    title: "Saved Strategies",
+    description: "Yahan sab saved webhook strategies list hoti hain aur inka current status dikhta hai.",
+    points: [
+      "Copy Webhook se Chartink URL copy hota hai.",
+      "Enable/Disable se auto trading on/off hota hai.",
+      "Edit se configuration update hoti hai.",
+    ],
+  },
+  strategyName: {
+    title: "Strategy Name",
+    description: "Sirf internal naam hai jisse aap dashboard me strategy ko pehchanoge.",
+    points: [
+      "Webhook execution aur alerts me ye naam dikh sakta hai.",
+      "Chartink payload ke kisi field se ye auto nahi aata.",
+    ],
+  },
+  marketMayaEnable: {
+    title: "Enable Market Maya",
+    description: "Is toggle se webhook signal aane par Market Maya auto trade request bhejna on/off hota hai.",
+    points: [
+      "Off hone par strategy alerts store ho sakte hain, lekin auto trade nahi chalega.",
+      "On karne par strategy config ke hisaab se trade request banegi.",
+    ],
+  },
+  marketMayaToken: {
+    title: "Market Maya Token",
+    description: "Ye token Market Maya API ko authorize karta hai.",
+    points: [
+      "Agar blank chhoda to server default token use hoga.",
+      "Live trade ke liye valid token zaroori hai.",
+    ],
+  },
+  symbolSource: {
+    title: "Symbol Source",
+    description: "Webhook payload me symbol kaha se read karna hai, ye option decide karta hai.",
+    points: [
+      "`Stocks: first only` me `stocks` list ka sirf pehla symbol use hota hai.",
+      "`Stocks: all` me comma-separated sab symbols use hote hain.",
+      "`Symbol field` mode me custom key se symbols read hote hain.",
+    ],
+  },
+  maxSymbols: {
+    title: "Max Symbols",
+    description: "Multi-symbol mode me maximum kitne symbols process karne hain, ye limit hai.",
+    points: [
+      "`Stocks: first only` mode me iska effect nahi hota.",
+      "Blank chhodne par default 5 symbols liye jaate hain.",
+      "Upper cap 25 hai.",
+    ],
+  },
+  symbolKey: {
+    title: "Symbol Key",
+    description: "Custom payload field ka naam jahan se symbol ya comma-separated symbols read kiye jayenge.",
+    points: [
+      "Example: `symbol`, `ticker`, `stock_name`.",
+      "Ye sirf `Symbol field` mode me use hota hai.",
+    ],
+  },
+  tradeWindow: {
+    title: "Trade Time Window",
+    description: "Strategy sirf is time range ke andar auto trade execute karegi.",
+    points: [
+      "Default 09:15 se 15:30 hai.",
+      "Server time ke hisaab se window check hoti hai.",
+      "Window ke bahar signal aane par trade skip ho jayega.",
+    ],
+  },
+  tradeSideFallback: {
+    title: "Trade Side Fallback",
+    description: "Agar payload me `call_type` nahi aaya to yahan selected action use hota hai.",
+    points: [
+      "BUY/SELL normal entry trades ke liye hain.",
+      "BUY EXIT/SELL EXIT exit action bhejte hain.",
+      "Exit mode me order type, qty, target, SL ignore kiye jaate hain.",
+    ],
+  },
+  orderType: {
+    title: "Order Type",
+    description: "Auto trade MARKET bhejna hai ya LIMIT, ye yahan decide hota hai.",
+    points: [
+      "MARKET me immediate market execution request banti hai.",
+      "LIMIT me price aur optional buffer use hota hai.",
+      "Exit mode me ye field apply nahi hoti.",
+    ],
+  },
+  limitPrice: {
+    title: "Limit Price",
+    description: "LIMIT order ke liye direct price yahan set kar sakte ho.",
+    points: [
+      "Blank rahe to trigger price aur buffer se effective price nikal sakta hai.",
+      "Sirf LIMIT order me use hoti hai.",
+    ],
+  },
+  tradeBuffer: {
+    title: "Trade Buffer",
+    description: "LIMIT order me trigger price ke upar/neeche buffer add karke final price banaya ja sakta hai.",
+    points: [
+      "BUY me trigger + buffer hota hai.",
+      "SELL me trigger - buffer hota hai.",
+      "Sirf LIMIT orders me active hota hai.",
+    ],
+  },
+  qtyDistribution: {
+    title: "Qty Distribution",
+    description: "Quantity fixed rakhni hai ya capital percent ke basis par calculate karni hai, ye decide karta hai.",
+    points: [
+      "`Fix` me qty value direct bheji jaati hai.",
+      "`Capital(%)` me capital amount aur stock price se qty nikalti hai.",
+      "Exit mode me qty config ignore hoti hai.",
+    ],
+  },
+  qtyValue: {
+    title: "Qty Value",
+    description: "Quantity ka actual number ya percentage yahan diya jata hai.",
+    points: [
+      "`Fix` me ye direct qty hai.",
+      "`Capital(%)` me ye capital ka percent hai.",
+    ],
+  },
+  capitalAmount: {
+    title: "Capital Amount",
+    description: "Capital-based quantity mode me calculation ke liye total capital yahan diya jata hai.",
+    points: [
+      "Sirf `Capital(%)` mode me use hota hai.",
+      "Formula: (Capital Amount * Qty% / 100) / price.",
+    ],
+  },
+  dailyTradeLimit: {
+    title: "Daily Trade Limit",
+    description: "Ek din me is strategy se maximum kitne trades allowed honge, ye control karta hai.",
+    points: [
+      "Limit hit hone par remaining signals skip ho jayenge.",
+      "Agar off hai to koi daily cap nahi lagegi.",
+    ],
+  },
+  dailyTradeLimitValue: {
+    title: "Daily Trade Limit Value",
+    description: "Per day trade count ki exact limit yahan set hoti hai.",
+    points: [
+      "Example: 5 matlab strategy ek din me 5 se zyada live trades nahi karegi.",
+    ],
+  },
+  targetToggle: {
+    title: "Target",
+    description: "Trade ke sath target send karna hai ya nahi, is toggle se control hota hai.",
+    points: [
+      "On karne par target type aur target value fields aati hain.",
+      "Exit mode me target config apply nahi hoti.",
+    ],
+  },
+  targetBy: {
+    title: "Target By",
+    description: "Target kis unit me define karna hai, ye option batata hai.",
+    points: [
+      "Money, Point, Percentage, Price supported hain.",
+      "Ratio mode me target SL ke basis par compute hota hai.",
+    ],
+  },
+  targetValue: {
+    title: "Target Value",
+    description: "Selected target type ke hisaab se actual target number yahan diya jata hai.",
+    points: [
+      "Ratio mode me `1:2` ya `2` jaisi value de sakte ho.",
+      "Ratio use karne par valid stop loss bhi hona chahiye.",
+    ],
+  },
+  stopLossToggle: {
+    title: "Stop Loss",
+    description: "Trade ke sath stop loss bhejna hai ya nahi, is toggle se control hota hai.",
+    points: [
+      "On karne par SL type aur SL value fields aati hain.",
+      "Exit mode me SL config apply nahi hoti.",
+    ],
+  },
+  stopLossBy: {
+    title: "Stop Loss By",
+    description: "Stop loss kis unit me define karna hai, ye option batata hai.",
+    points: [
+      "Money, Point, Percentage, Price supported hain.",
+    ],
+  },
+  stopLossValue: {
+    title: "Stop Loss Value",
+    description: "Selected SL type ke hisaab se actual stop loss number yahan diya jata hai.",
+    points: [
+      "Ratio target use karte waqt ye field important ho sakti hai.",
+    ],
+  },
+  trailSl: {
+    title: "Trail SL",
+    description: "Trailing stop loss enable karne se SL dynamic move hota hai.",
+    points: [
+      "On karne par SL move aur Profit move fields use hoti hain.",
+      "Exit mode me trail SL apply nahi hota.",
+    ],
+  },
+  slMove: {
+    title: "SL Move",
+    description: "Trailing SL ke active hone par stop loss kitna shift karna hai, ye value batati hai.",
+  },
+  profitMove: {
+    title: "Profit Move",
+    description: "Trailing SL trigger hone ke liye profit movement kitna hona chahiye, ye yahan set hota hai.",
+  },
+  emailAlerts: {
+    title: "Email Alerts",
+    description: "Webhook signal aane par registered email par alert bhejna hai ya nahi, ye toggle decide karta hai.",
+    points: [
+      "Email account registration wale email par jaata hai.",
+      "Strategy-level on/off control hai.",
+    ],
+  },
+  telegramAlerts: {
+    title: "Telegram Alerts",
+    description: "Telegram bot subscription active ho to signal Telegram par bhi bheja ja sakta hai.",
+    points: [
+      "Bot token link hone ke baad hi alerts milenge.",
+      "Strategy-level on/off control hai.",
+    ],
+  },
+  webhookUrl: {
+    title: "Webhook URL",
+    description: "Ye wahi URL hai jo Chartink ya kisi webhook sender me paste karna hota hai.",
+    points: [
+      "Each strategy ka unique webhook key ho sakta hai.",
+      "Edit karne par existing webhook key same reh sakti hai.",
+    ],
+  },
+  testWebhook: {
+    title: "Test Webhook",
+    description: "Is modal me sample payload bhejkar strategy webhook ko test kar sakte ho.",
+    points: [
+      "Chartink-like JSON paste karo.",
+      "Response status aur body yahin dikhegi.",
+    ],
+  },
+};
+
+function normalizeTradeAction(value: string) {
+  return value.trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+function isExitTradeAction(value: string) {
+  return EXIT_CALL_TYPES.has(normalizeTradeAction(value));
+}
 
 function parseRatioMultiplier(value: string) {
   const raw = value.trim();
@@ -113,13 +398,16 @@ export default function StrategyPage() {
   const [profitMove, setProfitMove] = useState("");
   const [dailyTradeLimit, setDailyTradeLimit] = useState("");
   const [useDailyTradeLimit, setUseDailyTradeLimit] = useState(false);
-  const [tradeWindowStart, setTradeWindowStart] = useState("");
-  const [tradeWindowEnd, setTradeWindowEnd] = useState("");
+  const [tradeWindowStart, setTradeWindowStart] = useState(DEFAULT_TRADE_WINDOW_START);
+  const [tradeWindowEnd, setTradeWindowEnd] = useState(DEFAULT_TRADE_WINDOW_END);
+  const [emailEnabled, setEmailEnabled] = useState(true);
   const [telegramEnabled, setTelegramEnabled] = useState(false);
+  const [profileEmail, setProfileEmail] = useState("");
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
+  const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recentWebhookUrl, setRecentWebhookUrl] = useState<string | null>(null);
@@ -158,9 +446,11 @@ export default function StrategyPage() {
   const [editProfitMove, setEditProfitMove] = useState("");
   const [editDailyTradeLimit, setEditDailyTradeLimit] = useState("");
   const [editUseDailyTradeLimit, setEditUseDailyTradeLimit] = useState(false);
-  const [editTradeWindowStart, setEditTradeWindowStart] = useState("");
-  const [editTradeWindowEnd, setEditTradeWindowEnd] = useState("");
+  const [editTradeWindowStart, setEditTradeWindowStart] = useState(DEFAULT_TRADE_WINDOW_START);
+  const [editTradeWindowEnd, setEditTradeWindowEnd] = useState(DEFAULT_TRADE_WINDOW_END);
+  const [editEmailEnabled, setEditEmailEnabled] = useState(true);
   const [editTelegramEnabled, setEditTelegramEnabled] = useState(false);
+  const [activeInfoKey, setActiveInfoKey] = useState<string | null>(null);
 
   const webhookBase = useMemo(() => {
     const base =
@@ -180,6 +470,16 @@ export default function StrategyPage() {
     return String(value);
   }, []);
 
+  const isEmailAlertEnabled = useCallback(
+    (item?: Pick<Strategy, "emailEnabled"> | null) => item?.emailEnabled !== false,
+    []
+  );
+
+  const emailAlertTarget = profileEmail || "your registered email";
+  const exitFallbackSelected = isExitTradeAction(callTypeFallback);
+  const editExitFallbackSelected = isExitTradeAction(editCallTypeFallback);
+  const activeInfo = activeInfoKey ? INFO_CONTENT[activeInfoKey] || null : null;
+
   const flashMessage = (text: string) => {
     setMessage(text);
     setTimeout(() => setMessage(null), 2000);
@@ -193,6 +493,40 @@ export default function StrategyPage() {
       flashMessage("Copy failed. Please copy manually.");
     }
   };
+
+  const renderInfoButton = (infoKey: string, variant: InfoButtonVariant = "inline") => (
+    <button
+      className={`info-button${variant === "chip" ? " info-button-chip" : ""}`}
+      type="button"
+      aria-label={`Explain ${INFO_CONTENT[infoKey]?.title || "setting"}`}
+      onClick={() => setActiveInfoKey(infoKey)}
+    >
+      <span className="info-button-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20" fill="none">
+          <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10 8.1V13.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="10" cy="5.8" r="0.9" fill="currentColor" />
+        </svg>
+      </span>
+      {variant === "chip" ? <span className="info-button-text">Info</span> : null}
+    </button>
+  );
+
+  const renderLabelWithInfo = (htmlFor: string, label: string, infoKey: string) => (
+    <div className="label-row">
+      <label className="label" htmlFor={htmlFor}>
+        {label}
+      </label>
+      {renderInfoButton(infoKey)}
+    </div>
+  );
+
+  const renderTitleWithInfo = (title: string, infoKey: string, style?: React.CSSProperties) => (
+    <div className="section-title-row" style={style}>
+      <div className="page-title">{title}</div>
+      {renderInfoButton(infoKey, "chip")}
+    </div>
+  );
 
   const resolveWebhookUrl = (item?: Strategy | null) => {
     if (!item) return webhookBase;
@@ -235,10 +569,23 @@ export default function StrategyPage() {
     }
   }, []);
 
+  const loadProfile = useCallback(async () => {
+    try {
+      const token = getToken();
+      const data = await apiGet("/api/v1/auth/me", token);
+      const email = ((data as { user?: UserProfile }).user?.email || "").trim();
+      setProfileEmail(email);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to load profile";
+      setError(msg);
+    }
+  }, []);
+
   useEffect(() => {
     loadStrategies();
     loadTokens();
-  }, [loadStrategies, loadTokens]);
+    loadProfile();
+  }, [loadProfile, loadStrategies, loadTokens]);
 
   const openWebhookTester = (url: string) => {
     setTestWebhookUrl(url);
@@ -331,7 +678,7 @@ export default function StrategyPage() {
     setLoading(true);
 
     try {
-      if (useTarget && targetBy === "Ratio" && useStopLoss && !sl.trim()) {
+      if (!exitFallbackSelected && useTarget && targetBy === "Ratio" && useStopLoss && !sl.trim()) {
         setError("Stop loss is required when Target by is Ratio.");
         return;
       }
@@ -343,25 +690,27 @@ export default function StrategyPage() {
       const trimmedBufferPoints = bufferPoints.trim();
       const trimmedDailyTradeLimit = dailyTradeLimit.trim();
 
-      if (trimmedQtyDistribution && !trimmedQtyValue) {
-        setError("Qty value is required when Qty distribution is selected.");
-        return;
-      }
-      if (trimmedQtyValue && !trimmedQtyDistribution) {
-        setError("Select Qty distribution when Qty value is provided.");
-        return;
-      }
-      if (trimmedQtyDistribution === "Capital(%)" && !trimmedCapitalAmount) {
-        setError("Capital amount is required for Capital(%) qty.");
-        return;
-      }
-      if (trimmedBufferBy && !trimmedBufferPoints) {
-        setError("Trade buffer value is required when buffer type is selected.");
-        return;
-      }
-      if (trimmedBufferPoints && !trimmedBufferBy) {
-        setError("Select trade buffer type (Point/Percentage).");
-        return;
+      if (!exitFallbackSelected) {
+        if (trimmedQtyDistribution && !trimmedQtyValue) {
+          setError("Qty value is required when Qty distribution is selected.");
+          return;
+        }
+        if (trimmedQtyValue && !trimmedQtyDistribution) {
+          setError("Select Qty distribution when Qty value is provided.");
+          return;
+        }
+        if (trimmedQtyDistribution === "Capital(%)" && !trimmedCapitalAmount) {
+          setError("Capital amount is required for Capital(%) qty.");
+          return;
+        }
+        if (trimmedBufferBy && !trimmedBufferPoints) {
+          setError("Trade buffer value is required when buffer type is selected.");
+          return;
+        }
+        if (trimmedBufferPoints && !trimmedBufferBy) {
+          setError("Select trade buffer type (Point/Percentage).");
+          return;
+        }
       }
       if (useDailyTradeLimit && !trimmedDailyTradeLimit) {
         setError("Daily trade limit is required when enabled.");
@@ -369,13 +718,18 @@ export default function StrategyPage() {
       }
 
       const qtyNumber = trimmedQtyValue ? Number(trimmedQtyValue) : NaN;
-      if (trimmedQtyValue && (!Number.isFinite(qtyNumber) || qtyNumber <= 0)) {
+      if (
+        !exitFallbackSelected &&
+        trimmedQtyValue &&
+        (!Number.isFinite(qtyNumber) || qtyNumber <= 0)
+      ) {
         setError("Qty value must be a positive number.");
         return;
       }
 
       const capitalAmountNumber = trimmedCapitalAmount ? Number(trimmedCapitalAmount) : NaN;
       if (
+        !exitFallbackSelected &&
         trimmedCapitalAmount &&
         (!Number.isFinite(capitalAmountNumber) || capitalAmountNumber <= 0)
       ) {
@@ -384,7 +738,11 @@ export default function StrategyPage() {
       }
 
       const bufferPointsNumber = trimmedBufferPoints ? Number(trimmedBufferPoints) : NaN;
-      if (trimmedBufferPoints && (!Number.isFinite(bufferPointsNumber) || bufferPointsNumber < 0)) {
+      if (
+        !exitFallbackSelected &&
+        trimmedBufferPoints &&
+        (!Number.isFinite(bufferPointsNumber) || bufferPointsNumber < 0)
+      ) {
         setError("Buffer points must be zero or a positive number.");
         return;
       }
@@ -408,20 +766,30 @@ export default function StrategyPage() {
           ? { maxSymbols: maxSymbols.trim() }
           : {}),
         ...(callTypeFallback ? { callTypeFallback } : {}),
-        orderType,
-        ...(limitPrice.trim() ? { limitPrice: limitPrice.trim() } : {}),
-        ...(trimmedBufferBy ? { bufferBy: trimmedBufferBy } : {}),
-        ...(trimmedBufferPoints ? { bufferValue: bufferPointsNumber } : {}),
-        ...(trimmedCapitalAmount ? { capitalAmount: capitalAmountNumber } : {}),
-        ...(trimmedQtyDistribution ? { qtyDistribution: trimmedQtyDistribution } : {}),
-        ...(trimmedQtyValue ? { qtyValue: trimmedQtyValue } : {}),
-        ...(useTarget && targetBy.trim() ? { targetBy: targetBy.trim() } : {}),
-        ...(useTarget && target.trim() ? { target: target.trim() } : {}),
-        ...(useStopLoss && slBy.trim() ? { slBy: slBy.trim() } : {}),
-        ...(useStopLoss && sl.trim() ? { sl: sl.trim() } : {}),
-        ...(trailSl ? { trailSl: true } : {}),
-        ...(slMove.trim() ? { slMove: slMove.trim() } : {}),
-        ...(profitMove.trim() ? { profitMove: profitMove.trim() } : {}),
+        ...(!exitFallbackSelected ? { orderType } : {}),
+        ...(!exitFallbackSelected && limitPrice.trim() ? { limitPrice: limitPrice.trim() } : {}),
+        ...(!exitFallbackSelected && trimmedBufferBy ? { bufferBy: trimmedBufferBy } : {}),
+        ...(!exitFallbackSelected && trimmedBufferPoints
+          ? { bufferValue: bufferPointsNumber }
+          : {}),
+        ...(!exitFallbackSelected && trimmedCapitalAmount
+          ? { capitalAmount: capitalAmountNumber }
+          : {}),
+        ...(!exitFallbackSelected && trimmedQtyDistribution
+          ? { qtyDistribution: trimmedQtyDistribution }
+          : {}),
+        ...(!exitFallbackSelected && trimmedQtyValue ? { qtyValue: trimmedQtyValue } : {}),
+        ...(!exitFallbackSelected && useTarget && targetBy.trim()
+          ? { targetBy: targetBy.trim() }
+          : {}),
+        ...(!exitFallbackSelected && useTarget && target.trim() ? { target: target.trim() } : {}),
+        ...(!exitFallbackSelected && useStopLoss && slBy.trim() ? { slBy: slBy.trim() } : {}),
+        ...(!exitFallbackSelected && useStopLoss && sl.trim() ? { sl: sl.trim() } : {}),
+        ...(!exitFallbackSelected && trailSl ? { trailSl: true } : {}),
+        ...(!exitFallbackSelected && slMove.trim() ? { slMove: slMove.trim() } : {}),
+        ...(!exitFallbackSelected && profitMove.trim()
+          ? { profitMove: profitMove.trim() }
+          : {}),
         ...(useDailyTradeLimit && trimmedDailyTradeLimit
           ? { dailyTradeLimit: Math.floor(dailyTradeLimitNumber) }
           : {}),
@@ -434,6 +802,7 @@ export default function StrategyPage() {
         name,
         webhookUrl: webhookBase,
         enabled,
+        emailEnabled,
         telegramEnabled,
         marketMaya,
       };
@@ -477,9 +846,10 @@ export default function StrategyPage() {
       setProfitMove("");
       setDailyTradeLimit("");
       setUseDailyTradeLimit(false);
-      setTradeWindowStart("");
-      setTradeWindowEnd("");
+      setTradeWindowStart(DEFAULT_TRADE_WINDOW_START);
+      setTradeWindowEnd(DEFAULT_TRADE_WINDOW_END);
       setEnabled(false);
+      setEmailEnabled(true);
       setTelegramEnabled(false);
       setMessage("Strategy saved. Webhook URL is ready to copy.");
       setShowModal(false);
@@ -547,8 +917,9 @@ export default function StrategyPage() {
         mm.dailyTradeLimit !== null &&
         Number(mm.dailyTradeLimit) > 0
     );
-    setEditTradeWindowStart(mm.tradeWindowStart || "");
-    setEditTradeWindowEnd(mm.tradeWindowEnd || "");
+    setEditTradeWindowStart(mm.tradeWindowStart || DEFAULT_TRADE_WINDOW_START);
+    setEditTradeWindowEnd(mm.tradeWindowEnd || DEFAULT_TRADE_WINDOW_END);
+    setEditEmailEnabled(isEmailAlertEnabled(item));
     setEditTelegramEnabled(Boolean(item.telegramEnabled));
   };
 
@@ -579,8 +950,9 @@ export default function StrategyPage() {
     setEditProfitMove("");
     setEditDailyTradeLimit("");
     setEditUseDailyTradeLimit(false);
-    setEditTradeWindowStart("");
-    setEditTradeWindowEnd("");
+    setEditTradeWindowStart(DEFAULT_TRADE_WINDOW_START);
+    setEditTradeWindowEnd(DEFAULT_TRADE_WINDOW_END);
+    setEditEmailEnabled(true);
     setEditTelegramEnabled(false);
   };
 
@@ -602,7 +974,13 @@ export default function StrategyPage() {
         setError("Strategy id missing");
         return;
       }
-      if (editUseTarget && editTargetBy === "Ratio" && editUseStopLoss && !editSl.trim()) {
+      if (
+        !editExitFallbackSelected &&
+        editUseTarget &&
+        editTargetBy === "Ratio" &&
+        editUseStopLoss &&
+        !editSl.trim()
+      ) {
         setError("Stop loss is required when Target by is Ratio.");
         return;
       }
@@ -614,35 +992,42 @@ export default function StrategyPage() {
       const trimmedBufferPoints = editBufferPoints.trim();
       const trimmedDailyTradeLimit = editDailyTradeLimit.trim();
 
-      if (trimmedQtyDistribution && !trimmedQtyValue) {
-        setError("Qty value is required when Qty distribution is selected.");
-        return;
-      }
-      if (trimmedQtyValue && !trimmedQtyDistribution) {
-        setError("Select Qty distribution when Qty value is provided.");
-        return;
-      }
-      if (trimmedQtyDistribution === "Capital(%)" && !trimmedCapitalAmount) {
-        setError("Capital amount is required for Capital(%) qty.");
-        return;
-      }
-      if (trimmedBufferBy && !trimmedBufferPoints) {
-        setError("Trade buffer value is required when buffer type is selected.");
-        return;
-      }
-      if (trimmedBufferPoints && !trimmedBufferBy) {
-        setError("Select trade buffer type (Point/Percentage).");
-        return;
+      if (!editExitFallbackSelected) {
+        if (trimmedQtyDistribution && !trimmedQtyValue) {
+          setError("Qty value is required when Qty distribution is selected.");
+          return;
+        }
+        if (trimmedQtyValue && !trimmedQtyDistribution) {
+          setError("Select Qty distribution when Qty value is provided.");
+          return;
+        }
+        if (trimmedQtyDistribution === "Capital(%)" && !trimmedCapitalAmount) {
+          setError("Capital amount is required for Capital(%) qty.");
+          return;
+        }
+        if (trimmedBufferBy && !trimmedBufferPoints) {
+          setError("Trade buffer value is required when buffer type is selected.");
+          return;
+        }
+        if (trimmedBufferPoints && !trimmedBufferBy) {
+          setError("Select trade buffer type (Point/Percentage).");
+          return;
+        }
       }
 
       const qtyNumber = trimmedQtyValue ? Number(trimmedQtyValue) : NaN;
-      if (trimmedQtyValue && (!Number.isFinite(qtyNumber) || qtyNumber <= 0)) {
+      if (
+        !editExitFallbackSelected &&
+        trimmedQtyValue &&
+        (!Number.isFinite(qtyNumber) || qtyNumber <= 0)
+      ) {
         setError("Qty value must be a positive number.");
         return;
       }
 
       const capitalAmountNumber = trimmedCapitalAmount ? Number(trimmedCapitalAmount) : NaN;
       if (
+        !editExitFallbackSelected &&
         trimmedCapitalAmount &&
         (!Number.isFinite(capitalAmountNumber) || capitalAmountNumber <= 0)
       ) {
@@ -651,7 +1036,11 @@ export default function StrategyPage() {
       }
 
       const bufferPointsNumber = trimmedBufferPoints ? Number(trimmedBufferPoints) : NaN;
-      if (trimmedBufferPoints && (!Number.isFinite(bufferPointsNumber) || bufferPointsNumber < 0)) {
+      if (
+        !editExitFallbackSelected &&
+        trimmedBufferPoints &&
+        (!Number.isFinite(bufferPointsNumber) || bufferPointsNumber < 0)
+      ) {
         setError("Buffer points must be zero or a positive number.");
         return;
       }
@@ -665,12 +1054,37 @@ export default function StrategyPage() {
         return;
       }
 
-      const marketMayaClear: string[] = [];
-      if (!trimmedBufferBy && !trimmedBufferPoints) {
-        marketMayaClear.push("bufferBy", "bufferValue", "bufferPoints");
+      const marketMayaClear = new Set<string>();
+      if (editExitFallbackSelected || editOrderType !== "LIMIT") {
+        marketMayaClear.add("limitPrice");
+      }
+      if (editExitFallbackSelected || !trimmedBufferBy || !trimmedBufferPoints) {
+        marketMayaClear.add("bufferBy");
+        marketMayaClear.add("bufferValue");
+        marketMayaClear.add("bufferPoints");
+      }
+      if (editExitFallbackSelected || !trimmedQtyDistribution) {
+        marketMayaClear.add("qtyDistribution");
+        marketMayaClear.add("qtyValue");
+      }
+      if (editExitFallbackSelected || trimmedQtyDistribution !== "Capital(%)" || !trimmedCapitalAmount) {
+        marketMayaClear.add("capitalAmount");
+      }
+      if (editExitFallbackSelected || !editUseTarget) {
+        marketMayaClear.add("targetBy");
+        marketMayaClear.add("target");
+      }
+      if (editExitFallbackSelected || !editUseStopLoss) {
+        marketMayaClear.add("slBy");
+        marketMayaClear.add("sl");
+      }
+      if (editExitFallbackSelected || !editTrailSl) {
+        marketMayaClear.add("trailSl");
+        marketMayaClear.add("slMove");
+        marketMayaClear.add("profitMove");
       }
       if (!editUseDailyTradeLimit) {
-        marketMayaClear.push("dailyTradeLimit");
+        marketMayaClear.add("dailyTradeLimit");
       }
 
       const token = getToken();
@@ -683,20 +1097,40 @@ export default function StrategyPage() {
           ? { maxSymbols: editMaxSymbols.trim() }
           : {}),
         ...(editCallTypeFallback ? { callTypeFallback: editCallTypeFallback } : {}),
-        orderType: editOrderType,
-        ...(editLimitPrice.trim() ? { limitPrice: editLimitPrice.trim() } : {}),
-        ...(trimmedBufferBy ? { bufferBy: trimmedBufferBy } : {}),
-        ...(trimmedBufferPoints ? { bufferValue: bufferPointsNumber } : {}),
-        ...(trimmedCapitalAmount ? { capitalAmount: capitalAmountNumber } : {}),
-        ...(trimmedQtyDistribution ? { qtyDistribution: trimmedQtyDistribution } : {}),
-        ...(trimmedQtyValue ? { qtyValue: trimmedQtyValue } : {}),
-        ...(editUseTarget && editTargetBy.trim() ? { targetBy: editTargetBy.trim() } : {}),
-        ...(editUseTarget && editTarget.trim() ? { target: editTarget.trim() } : {}),
-        ...(editUseStopLoss && editSlBy.trim() ? { slBy: editSlBy.trim() } : {}),
-        ...(editUseStopLoss && editSl.trim() ? { sl: editSl.trim() } : {}),
-        ...(editTrailSl ? { trailSl: true } : {}),
-        ...(editSlMove.trim() ? { slMove: editSlMove.trim() } : {}),
-        ...(editProfitMove.trim() ? { profitMove: editProfitMove.trim() } : {}),
+        ...(!editExitFallbackSelected ? { orderType: editOrderType } : {}),
+        ...(!editExitFallbackSelected && editLimitPrice.trim()
+          ? { limitPrice: editLimitPrice.trim() }
+          : {}),
+        ...(!editExitFallbackSelected && trimmedBufferBy ? { bufferBy: trimmedBufferBy } : {}),
+        ...(!editExitFallbackSelected && trimmedBufferPoints
+          ? { bufferValue: bufferPointsNumber }
+          : {}),
+        ...(!editExitFallbackSelected && trimmedCapitalAmount
+          ? { capitalAmount: capitalAmountNumber }
+          : {}),
+        ...(!editExitFallbackSelected && trimmedQtyDistribution
+          ? { qtyDistribution: trimmedQtyDistribution }
+          : {}),
+        ...(!editExitFallbackSelected && trimmedQtyValue ? { qtyValue: trimmedQtyValue } : {}),
+        ...(!editExitFallbackSelected && editUseTarget && editTargetBy.trim()
+          ? { targetBy: editTargetBy.trim() }
+          : {}),
+        ...(!editExitFallbackSelected && editUseTarget && editTarget.trim()
+          ? { target: editTarget.trim() }
+          : {}),
+        ...(!editExitFallbackSelected && editUseStopLoss && editSlBy.trim()
+          ? { slBy: editSlBy.trim() }
+          : {}),
+        ...(!editExitFallbackSelected && editUseStopLoss && editSl.trim()
+          ? { sl: editSl.trim() }
+          : {}),
+        ...(!editExitFallbackSelected && editTrailSl ? { trailSl: true } : {}),
+        ...(!editExitFallbackSelected && editSlMove.trim()
+          ? { slMove: editSlMove.trim() }
+          : {}),
+        ...(!editExitFallbackSelected && editProfitMove.trim()
+          ? { profitMove: editProfitMove.trim() }
+          : {}),
         ...(editUseDailyTradeLimit && trimmedDailyTradeLimit
           ? { dailyTradeLimit: Math.floor(dailyTradeLimitNumber) }
           : {}),
@@ -711,11 +1145,12 @@ export default function StrategyPage() {
         strategyId,
         name: editName,
         enabled: editEnabled,
+        emailEnabled: editEmailEnabled,
         telegramEnabled: editTelegramEnabled,
         marketMaya,
       };
-      if (marketMayaClear.length) {
-        payload.marketMayaClear = marketMayaClear;
+      if (marketMayaClear.size) {
+        payload.marketMayaClear = Array.from(marketMayaClear);
       }
       const webhookKey = String(editingSnapshot.webhookKey || "").trim();
       if (webhookKey) {
@@ -789,6 +1224,57 @@ export default function StrategyPage() {
       setError(msg);
     } finally {
       setDeleteLoadingId(null);
+    }
+  };
+
+  const handleToggleEnabled = async (item: Strategy) => {
+    setError(null);
+    setMessage(null);
+
+    const strategyId = normalizeId(item._id);
+    if (!strategyId) {
+      setError("Strategy id missing");
+      return;
+    }
+
+    setToggleLoadingId(strategyId);
+    try {
+      const token = getToken();
+      const payload: Record<string, unknown> = {
+        strategyId,
+        name: item.name || "Strategy",
+        enabled: !item.enabled,
+        emailEnabled: isEmailAlertEnabled(item),
+        telegramEnabled: Boolean(item.telegramEnabled),
+        marketMayaUrl: item.marketMayaUrl || "",
+      };
+      if (item.marketMaya && typeof item.marketMaya === "object") {
+        payload.marketMaya = item.marketMaya;
+      }
+      if (item.webhookKey) {
+        payload.webhookKey = item.webhookKey;
+      }
+
+      const data = await apiPost("/api/v1/strategies/update", payload, token);
+      const updated = (data as { strategy?: Strategy }).strategy;
+      const normalizedUpdated = updated
+        ? { ...updated, _id: normalizeId(updated._id) }
+        : null;
+      if (normalizedUpdated?._id) {
+        setStrategies((prev) =>
+          prev.map((s) =>
+            s._id === normalizedUpdated._id ? { ...s, ...normalizedUpdated } : s
+          )
+        );
+      } else {
+        await loadStrategies();
+      }
+      setMessage(`Strategy ${item.enabled ? "disabled" : "enabled"}.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Update failed";
+      setError(msg);
+    } finally {
+      setToggleLoadingId(null);
     }
   };
 
@@ -874,7 +1360,7 @@ export default function StrategyPage() {
       ) : null}
 
       <div className="card">
-        <div className="page-title">Telegram access</div>
+        {renderTitleWithInfo("Telegram access", "telegramAccess")}
         <div className="helper">
           Generate a one-time token and send it to the bot to start alerts.
         </div>
@@ -917,7 +1403,7 @@ export default function StrategyPage() {
       </div>
 
       <div className="card">
-        <div className="page-title">Saved strategies</div>
+        {renderTitleWithInfo("Saved strategies", "savedStrategies")}
         {strategies.length === 0 ? (
           <div className="helper">No strategies saved yet.</div>
         ) : (
@@ -927,12 +1413,12 @@ export default function StrategyPage() {
                 <div className="strategy-meta">
                   <div className="strategy-title-row">
                     <strong>{item.name}</strong>
-                    <span className="badge">
-                      {item.enabled ? "Enabled" : "Disabled"}
-                    </span>
                   </div>
                   <div className="helper">
                     {item.enabled ? "Market Maya enabled" : "Market Maya off"}
+                  </div>
+                  <div className="helper">
+                    {isEmailAlertEnabled(item) ? "Email alerts on" : "Email alerts off"}
                   </div>
                   <div className="helper">
                     {item.telegramEnabled ? "Telegram alerts on" : "Telegram alerts off"}
@@ -963,6 +1449,20 @@ export default function StrategyPage() {
                     Edit
                   </button>
                   <button
+                    className="btn btn-secondary"
+                    type="button"
+                    disabled={toggleLoadingId === item._id}
+                    onClick={() => handleToggleEnabled(item)}
+                  >
+                    {toggleLoadingId === item._id
+                      ? item.enabled
+                        ? "Disabling..."
+                        : "Enabling..."
+                      : item.enabled
+                        ? "Disable"
+                        : "Enable"}
+                  </button>
+                  <button
                     className="btn btn-ghost"
                     type="button"
                     disabled={deleteLoadingId === item._id}
@@ -980,12 +1480,10 @@ export default function StrategyPage() {
       {showModal ? (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal card" onClick={(event) => event.stopPropagation()}>
-            <div className="page-title">Add strategy</div>
+            {renderTitleWithInfo("Add strategy", "strategyName")}
             <form className="form" onSubmit={handleSubmit} style={{ marginTop: "16px" }}>
               <div className="input-group">
-                <label className="label" htmlFor="strategy-name">
-                  Strategy name
-                </label>
+                {renderLabelWithInfo("strategy-name", "Strategy name", "strategyName")}
                 <input
                   className="input"
                   id="strategy-name"
@@ -997,9 +1495,7 @@ export default function StrategyPage() {
               </div>
 
               <div className="input-group">
-                <label className="label" htmlFor="market-enable">
-                  Enable Market Maya
-                </label>
+                {renderLabelWithInfo("market-enable", "Enable Market Maya", "marketMayaEnable")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to Market Maya</span>
                   <input
@@ -1013,9 +1509,7 @@ export default function StrategyPage() {
 
               {enabled ? (
                 <div className="input-group">
-                  <label className="label" htmlFor="market-token">
-                    Market Maya Token
-                  </label>
+                  {renderLabelWithInfo("market-token", "Market Maya Token", "marketMayaToken")}
                   <input
                     className="input"
                     id="market-token"
@@ -1030,18 +1524,14 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              <div className="page-title" style={{ marginTop: "10px" }}>
-                Symbol handling
-              </div>
+              {renderTitleWithInfo("Symbol handling", "symbolSource", { marginTop: "10px" })}
               <div className="helper">
                 Control how symbols are picked from webhook payloads.
               </div>
 
               <div className="grid-2">
                 <div className="input-group">
-                  <label className="label" htmlFor="symbol-mode">
-                    Symbol source
-                  </label>
+                  {renderLabelWithInfo("symbol-mode", "Symbol source", "symbolSource")}
                   <select
                     className="select"
                     id="symbol-mode"
@@ -1054,9 +1544,7 @@ export default function StrategyPage() {
                   </select>
                 </div>
                 <div className="input-group">
-                  <label className="label" htmlFor="max-symbols">
-                    Max symbols
-                  </label>
+                  {renderLabelWithInfo("max-symbols", "Max symbols", "maxSymbols")}
                   <input
                     className="input"
                     id="max-symbols"
@@ -1074,9 +1562,7 @@ export default function StrategyPage() {
 
               {symbolMode === "payloadSymbol" ? (
                 <div className="input-group">
-                  <label className="label" htmlFor="symbol-key">
-                    Symbol key
-                  </label>
+                  {renderLabelWithInfo("symbol-key", "Symbol key", "symbolKey")}
                   <input
                     className="input"
                     id="symbol-key"
@@ -1088,18 +1574,40 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              <div className="page-title" style={{ marginTop: "10px" }}>
-                Trade defaults
-              </div>
+              {renderTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
               <div className="helper">
                 Payload `call_type` is used first. Fallback is used only when payload side is missing.
               </div>
 
               <div className="grid-2">
                 <div className="input-group">
-                  <label className="label" htmlFor="market-calltype">
-                    Trade side fallback
-                  </label>
+                  {renderLabelWithInfo("market-trade-start", "Trade start time", "tradeWindow")}
+                  <input
+                    className="input"
+                    id="market-trade-start"
+                    type="time"
+                    value={tradeWindowStart}
+                    onChange={(event) => setTradeWindowStart(event.target.value)}
+                  />
+                </div>
+                <div className="input-group">
+                  {renderLabelWithInfo("market-trade-end", "Trade end time", "tradeWindow")}
+                  <input
+                    className="input"
+                    id="market-trade-end"
+                    type="time"
+                    value={tradeWindowEnd}
+                    onChange={(event) => setTradeWindowEnd(event.target.value)}
+                  />
+                </div>
+              </div>
+                <div className="helper">
+                  Default window is 09:15 to 15:30 (server time).
+                </div>
+
+              <div className="grid-2">
+                <div className="input-group">
+                  {renderLabelWithInfo("market-calltype", "Trade side fallback", "tradeSideFallback")}
                   <select
                     className="select"
                     id="market-calltype"
@@ -1107,140 +1615,149 @@ export default function StrategyPage() {
                     onChange={(event) => setCallTypeFallback(event.target.value)}
                   >
                     <option value="">Use payload `call_type`</option>
-                    <option value="BUY">BUY</option>
-                    <option value="SELL">SELL</option>
+                    {STRATEGY_CALL_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
                   </select>
                 </div>
-
-                <div className="input-group">
-                  <label className="label" htmlFor="market-ordertype">
-                    Order type
-                  </label>
-                  <select
-                    className="select"
-                    id="market-ordertype"
-                    value={orderType}
-                    onChange={(event) => setOrderType(event.target.value)}
-                  >
-                    <option value="MARKET">MARKET</option>
-                    <option value="LIMIT">LIMIT</option>
-                  </select>
-                </div>
+                {!exitFallbackSelected ? (
+                  <div className="input-group">
+                    {renderLabelWithInfo("market-ordertype", "Order type", "orderType")}
+                    <select
+                      className="select"
+                      id="market-ordertype"
+                      value={orderType}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setOrderType(next);
+                        if (next !== "LIMIT") {
+                          setLimitPrice("");
+                          setBufferBy("");
+                          setBufferPoints("");
+                        }
+                      }}
+                    >
+                      <option value="MARKET">MARKET</option>
+                      <option value="LIMIT">LIMIT</option>
+                    </select>
+                  </div>
+                ) : null}
               </div>
+
+              {exitFallbackSelected ? (
+                <div className="helper">
+                  Exit mode only sends the exit signal. Order type, qty, target, stop loss, and trail SL are ignored.
+                </div>
+              ) : (
+                <>
+                  {orderType === "LIMIT" ? (
+                    <div className="input-group">
+                      {renderLabelWithInfo("market-limit-price", "Limit price", "limitPrice")}
+                      <input
+                        className="input"
+                        id="market-limit-price"
+                        value={limitPrice}
+                        onChange={(event) => setLimitPrice(event.target.value)}
+                        placeholder="e.g. 123.45"
+                      />
+                      <div className="helper">
+                        If blank, trigger price (plus buffer) is used.
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid-2">
+                    <div className="input-group">
+                      {renderLabelWithInfo("market-buffer-by", "Trade buffer by", "tradeBuffer")}
+                      <select
+                        className="select"
+                        id="market-buffer-by"
+                        value={bufferBy}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setBufferBy(next);
+                          if (!next) setBufferPoints("");
+                        }}
+                        disabled={orderType !== "LIMIT"}
+                      >
+                        <option value="">No buffer</option>
+                        <option value="Point">Point</option>
+                        <option value="Percentage">Percentage</option>
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      {renderLabelWithInfo("market-buffer-points", "Trade buffer value", "tradeBuffer")}
+                      <input
+                        className="input"
+                        id="market-buffer-points"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={bufferPoints}
+                        onChange={(event) => setBufferPoints(event.target.value)}
+                        placeholder={bufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
+                        disabled={orderType !== "LIMIT" || !bufferBy}
+                      />
+                    </div>
+                  </div>
+                  <div className="helper">
+                    Buffer is only used for LIMIT orders. BUY = trigger + buffer, SELL = trigger - buffer.
+                  </div>
+
+                  <div className="grid-2">
+                    <div className="input-group">
+                      {renderLabelWithInfo("market-qty-distribution", "Qty distribution", "qtyDistribution")}
+                      <select
+                        className="select"
+                        id="market-qty-distribution"
+                        value={qtyDistribution}
+                        onChange={(event) => setQtyDistribution(event.target.value)}
+                      >
+                        <option value="">Select qty mode</option>
+                        <option value="Fix">Fix</option>
+                        <option value="Capital(%)">Capital(%)</option>
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      {renderLabelWithInfo("market-qty-value", "Qty value", "qtyValue")}
+                      <input
+                        className="input"
+                        id="market-qty-value"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={qtyValue}
+                        onChange={(event) => setQtyValue(event.target.value)}
+                        placeholder={qtyDistribution === "Capital(%)" ? "e.g. 2" : "e.g. 5"}
+                      />
+                    </div>
+                  </div>
+                  <div className="helper">
+                    Capital(%) qty: (Capital Amount * Qty% / 100) / stock price.
+                  </div>
+
+                  {qtyDistribution === "Capital(%)" ? (
+                    <div className="input-group">
+                      {renderLabelWithInfo("market-capital-amount", "Capital amount", "capitalAmount")}
+                      <input
+                        className="input"
+                        id="market-capital-amount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={capitalAmount}
+                        onChange={(event) => setCapitalAmount(event.target.value)}
+                        placeholder="e.g. 500000"
+                      />
+                    </div>
+                  ) : null}
+                </>
+              )}
 
               <div className="input-group">
-                <label className="label" htmlFor="market-limit-price">
-                  Limit price
-                </label>
-                <input
-                  className="input"
-                  id="market-limit-price"
-                  value={limitPrice}
-                  onChange={(event) => setLimitPrice(event.target.value)}
-                  placeholder="e.g. 123.45"
-                  disabled={orderType !== "LIMIT"}
-                />
-                <div className="helper">Only used for LIMIT orders.</div>
-              </div>
-
-              <div className="grid-2">
-                <div className="input-group">
-                  <label className="label" htmlFor="market-buffer-by">
-                    Trade buffer by
-                  </label>
-                  <select
-                    className="select"
-                    id="market-buffer-by"
-                    value={bufferBy}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setBufferBy(next);
-                      if (!next) setBufferPoints("");
-                    }}
-                  >
-                    <option value="">No buffer</option>
-                    <option value="Point">Point</option>
-                    <option value="Percentage">Percentage</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label className="label" htmlFor="market-buffer-points">
-                    Trade buffer value
-                  </label>
-                  <input
-                    className="input"
-                    id="market-buffer-points"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={bufferPoints}
-                    onChange={(event) => setBufferPoints(event.target.value)}
-                    placeholder={bufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
-                    disabled={!bufferBy}
-                  />
-                </div>
-              </div>
-              <div className="helper">
-                Buffer logic: BUY = trigger + buffer, SELL = trigger - buffer (Point/Percentage).
-              </div>
-
-              <div className="input-group">
-                <label className="label" htmlFor="market-capital-amount">
-                  Capital amount
-                </label>
-                <input
-                  className="input"
-                  id="market-capital-amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={capitalAmount}
-                  onChange={(event) => setCapitalAmount(event.target.value)}
-                  placeholder="e.g. 500000"
-                  disabled={qtyDistribution !== "Capital(%)"}
-                />
-              </div>
-
-              <div className="grid-2">
-                <div className="input-group">
-                  <label className="label" htmlFor="market-qty-distribution">
-                    Qty distribution
-                  </label>
-                  <select
-                    className="select"
-                    id="market-qty-distribution"
-                    value={qtyDistribution}
-                    onChange={(event) => setQtyDistribution(event.target.value)}
-                  >
-                    <option value="">Select qty mode</option>
-                    <option value="Fix">Fix</option>
-                    <option value="Capital(%)">Capital(%)</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label className="label" htmlFor="market-qty-value">
-                    Qty value
-                  </label>
-                  <input
-                    className="input"
-                    id="market-qty-value"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={qtyValue}
-                    onChange={(event) => setQtyValue(event.target.value)}
-                    placeholder={qtyDistribution === "Capital(%)" ? "e.g. 2" : "e.g. 5"}
-                  />
-                </div>
-              </div>
-              <div className="helper">
-                Capital(%) qty: (Capital Amount * Qty% / 100) / stock price.
-              </div>
-
-              <div className="input-group">
-                <label className="label" htmlFor="market-daily-trade-limit">
-                  Daily trade limit
-                </label>
+                {renderLabelWithInfo("market-daily-trade-limit", "Daily trade limit", "dailyTradeLimit")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Enable daily trade limit</span>
                   <input
@@ -1260,9 +1777,11 @@ export default function StrategyPage() {
 
               {useDailyTradeLimit ? (
                 <div className="input-group">
-                  <label className="label" htmlFor="market-daily-trade-limit-value">
-                    Daily trade limit value
-                  </label>
+                  {renderLabelWithInfo(
+                    "market-daily-trade-limit-value",
+                    "Daily trade limit value",
+                    "dailyTradeLimitValue"
+                  )}
                   <input
                     className="input"
                     id="market-daily-trade-limit-value"
@@ -1279,213 +1798,185 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              <div className="grid-2">
-                <div className="input-group">
-                  <label className="label" htmlFor="market-trade-start">
-                    Trade start time
-                  </label>
-                  <input
-                    className="input"
-                    id="market-trade-start"
-                    type="time"
-                    value={tradeWindowStart}
-                    onChange={(event) => setTradeWindowStart(event.target.value)}
-                  />
-                </div>
-                <div className="input-group">
-                  <label className="label" htmlFor="market-trade-end">
-                    Trade end time
-                  </label>
-                  <input
-                    className="input"
-                    id="market-trade-end"
-                    type="time"
-                    value={tradeWindowEnd}
-                    onChange={(event) => setTradeWindowEnd(event.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="helper">
-                Trades execute only within this time window (server time).
-              </div>
-
-              <div className="input-group">
-                <label className="label" htmlFor="market-use-target">
-                  Target
-                </label>
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Enable target</span>
-                  <input
-                    id="market-use-target"
-                    type="checkbox"
-                    checked={useTarget}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setUseTarget(checked);
-                      if (!checked) {
-                        setTargetBy("");
-                        setTarget("");
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              {useTarget ? (
-                <div className="grid-2">
+              {!exitFallbackSelected ? (
+                <>
                   <div className="input-group">
-                    <label className="label" htmlFor="market-target-by">
-                      Target by
-                    </label>
-                    <select
-                      className="select"
-                      id="market-target-by"
-                      value={targetBy}
-                      onChange={(event) => setTargetBy(event.target.value)}
-                    >
-                      <option value="">Select target type</option>
-                      <option value="Money">Money</option>
-                      <option value="Point">Point</option>
-                      <option value="Percentage">Percentage</option>
-                      <option value="Price">Price</option>
-                      <option value="Ratio">Ratio</option>
-                    </select>
+                    {renderLabelWithInfo("market-use-target", "Target", "targetToggle")}
+                    <div className="list-item" style={{ justifyContent: "space-between" }}>
+                      <span>Enable target</span>
+                      <input
+                        id="market-use-target"
+                        type="checkbox"
+                        checked={useTarget}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setUseTarget(checked);
+                          if (!checked) {
+                            setTargetBy("");
+                            setTarget("");
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="input-group">
-                    <label className="label" htmlFor="market-target">
-                      Target
-                    </label>
-                    <input
-                      className="input"
-                      id="market-target"
-                      value={target}
-                      onChange={(event) => setTarget(event.target.value)}
-                      placeholder={targetPlaceholder}
-                    />
-                    {isRatioTarget ? (
-                      <div className="helper">
-                        {!activeSl.trim()
-                          ? "Enable stop loss (or provide SL via webhook) to use ratio."
-                          : ratioComputed
-                            ? `Computed target: ${ratioComputed}`
-                            : "Enter ratio like 1:2 or 2"}
+
+                  {useTarget ? (
+                    <div className="grid-2">
+                      <div className="input-group">
+                        {renderLabelWithInfo("market-target-by", "Target by", "targetBy")}
+                        <select
+                          className="select"
+                          id="market-target-by"
+                          value={targetBy}
+                          onChange={(event) => setTargetBy(event.target.value)}
+                        >
+                          <option value="">Select target type</option>
+                          <option value="Money">Money</option>
+                          <option value="Point">Point</option>
+                          <option value="Percentage">Percentage</option>
+                          <option value="Price">Price</option>
+                          <option value="Ratio">Ratio</option>
+                        </select>
                       </div>
-                    ) : null}
+                      <div className="input-group">
+                        {renderLabelWithInfo("market-target", "Target", "targetValue")}
+                        <input
+                          className="input"
+                          id="market-target"
+                          value={target}
+                          onChange={(event) => setTarget(event.target.value)}
+                          placeholder={targetPlaceholder}
+                        />
+                        {isRatioTarget ? (
+                          <div className="helper">
+                            {!activeSl.trim()
+                              ? "Enable stop loss (or provide SL via webhook) to use ratio."
+                              : ratioComputed
+                                ? `Computed target: ${ratioComputed}`
+                                : "Enter ratio like 1:2 or 2"}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="input-group">
+                    {renderLabelWithInfo("market-use-sl", "Stop loss", "stopLossToggle")}
+                    <div className="list-item" style={{ justifyContent: "space-between" }}>
+                      <span>Enable stop loss</span>
+                      <input
+                        id="market-use-sl"
+                        type="checkbox"
+                        checked={useStopLoss}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setUseStopLoss(checked);
+                          if (!checked) {
+                            setSlBy("");
+                            setSl("");
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
+
+                  {useStopLoss ? (
+                    <div className="grid-2">
+                      <div className="input-group">
+                        {renderLabelWithInfo("market-sl-by", "Stop loss by", "stopLossBy")}
+                        <select
+                          className="select"
+                          id="market-sl-by"
+                          value={slBy}
+                          onChange={(event) => setSlBy(event.target.value)}
+                        >
+                          <option value="">Select SL type</option>
+                          <option value="Money">Money</option>
+                          <option value="Point">Point</option>
+                          <option value="Percentage">Percentage</option>
+                          <option value="Price">Price</option>
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        {renderLabelWithInfo("market-sl", "Stop loss", "stopLossValue")}
+                        <input
+                          className="input"
+                          id="market-sl"
+                          value={sl}
+                          onChange={(event) => setSl(event.target.value)}
+                          placeholder="e.g. 25"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="input-group">
+                    {renderLabelWithInfo("market-trail-sl", "Trail SL", "trailSl")}
+                    <div className="list-item" style={{ justifyContent: "space-between" }}>
+                      <span>Enable trailing stop loss</span>
+                      <input
+                        id="market-trail-sl"
+                        type="checkbox"
+                        checked={trailSl}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setTrailSl(checked);
+                          if (!checked) {
+                            setSlMove("");
+                            setProfitMove("");
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {trailSl ? (
+                    <div className="grid-2">
+                      <div className="input-group">
+                        {renderLabelWithInfo("market-sl-move", "SL move", "slMove")}
+                        <input
+                          className="input"
+                          id="market-sl-move"
+                          value={slMove}
+                          onChange={(event) => setSlMove(event.target.value)}
+                          placeholder="e.g. 10"
+                        />
+                      </div>
+                      <div className="input-group">
+                        {renderLabelWithInfo("market-profit-move", "Profit move", "profitMove")}
+                        <input
+                          className="input"
+                          id="market-profit-move"
+                          value={profitMove}
+                          onChange={(event) => setProfitMove(event.target.value)}
+                          placeholder="e.g. 20"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
 
               <div className="input-group">
-                <label className="label" htmlFor="market-use-sl">
-                  Stop loss
-                </label>
+                {renderLabelWithInfo("email-enable", "Email alerts", "emailAlerts")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Enable stop loss</span>
+                  <span>Send alerts to {emailAlertTarget}</span>
                   <input
-                    id="market-use-sl"
+                    id="email-enable"
                     type="checkbox"
-                    checked={useStopLoss}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setUseStopLoss(checked);
-                      if (!checked) {
-                        setSlBy("");
-                        setSl("");
-                      }
-                    }}
+                    checked={emailEnabled}
+                    onChange={(event) => setEmailEnabled(event.target.checked)}
                   />
+                </div>
+                <div className="helper">
+                  {profileEmail
+                    ? `Registered email: ${profileEmail}`
+                    : "Alerts use your account email when available."}
                 </div>
               </div>
 
-              {useStopLoss ? (
-                <div className="grid-2">
-                  <div className="input-group">
-                    <label className="label" htmlFor="market-sl-by">
-                      Stop loss by
-                    </label>
-                    <select
-                      className="select"
-                      id="market-sl-by"
-                      value={slBy}
-                      onChange={(event) => setSlBy(event.target.value)}
-                    >
-                      <option value="">Select SL type</option>
-                      <option value="Money">Money</option>
-                      <option value="Point">Point</option>
-                      <option value="Percentage">Percentage</option>
-                      <option value="Price">Price</option>
-                    </select>
-                  </div>
-                  <div className="input-group">
-                    <label className="label" htmlFor="market-sl">
-                      Stop loss
-                    </label>
-                    <input
-                      className="input"
-                      id="market-sl"
-                      value={sl}
-                      onChange={(event) => setSl(event.target.value)}
-                      placeholder="e.g. 25"
-                    />
-                  </div>
-                </div>
-              ) : null}
-
               <div className="input-group">
-                <label className="label" htmlFor="market-trail-sl">
-                  Trail SL
-                </label>
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Enable trailing stop loss</span>
-                  <input
-                    id="market-trail-sl"
-                    type="checkbox"
-                    checked={trailSl}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setTrailSl(checked);
-                      if (!checked) {
-                        setSlMove("");
-                        setProfitMove("");
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              {trailSl ? (
-                <div className="grid-2">
-                  <div className="input-group">
-                    <label className="label" htmlFor="market-sl-move">
-                      SL move
-                    </label>
-                    <input
-                      className="input"
-                      id="market-sl-move"
-                      value={slMove}
-                      onChange={(event) => setSlMove(event.target.value)}
-                      placeholder="e.g. 10"
-                    />
-                  </div>
-                  <div className="input-group">
-                    <label className="label" htmlFor="market-profit-move">
-                      Profit move
-                    </label>
-                    <input
-                      className="input"
-                      id="market-profit-move"
-                      value={profitMove}
-                      onChange={(event) => setProfitMove(event.target.value)}
-                      placeholder="e.g. 20"
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="input-group">
-                <label className="label" htmlFor="telegram-enable">
-                  Telegram alerts
-                </label>
+                {renderLabelWithInfo("telegram-enable", "Telegram alerts", "telegramAlerts")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to Telegram</span>
                   <input
@@ -1523,9 +2014,7 @@ export default function StrategyPage() {
             <div className="page-title">Edit strategy</div>
             <form className="form" onSubmit={handleUpdate} style={{ marginTop: "16px" }}>
               <div className="input-group">
-                <label className="label" htmlFor="edit-strategy-name">
-                  Strategy name
-                </label>
+                {renderLabelWithInfo("edit-strategy-name", "Strategy name", "strategyName")}
                 <input
                   className="input"
                   id="edit-strategy-name"
@@ -1537,7 +2026,10 @@ export default function StrategyPage() {
               </div>
 
               <div className="input-group">
-                <label className="label">Webhook URL</label>
+                <div className="label-row">
+                  <label className="label">Webhook URL</label>
+                  {renderInfoButton("webhookUrl")}
+                </div>
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <code className="mono">{resolveWebhookUrl(editing)}</code>
                   <button
@@ -1552,9 +2044,7 @@ export default function StrategyPage() {
               </div>
 
               <div className="input-group">
-                <label className="label" htmlFor="edit-market-enable">
-                  Enable Market Maya
-                </label>
+                {renderLabelWithInfo("edit-market-enable", "Enable Market Maya", "marketMayaEnable")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to Market Maya</span>
                   <input
@@ -1568,9 +2058,7 @@ export default function StrategyPage() {
 
               {editEnabled ? (
                 <div className="input-group">
-                  <label className="label" htmlFor="edit-market-token">
-                    Market Maya Token
-                  </label>
+                  {renderLabelWithInfo("edit-market-token", "Market Maya Token", "marketMayaToken")}
                   <input
                     className="input"
                     id="edit-market-token"
@@ -1583,18 +2071,14 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              <div className="page-title" style={{ marginTop: "10px" }}>
-                Symbol handling
-              </div>
+              {renderTitleWithInfo("Symbol handling", "symbolSource", { marginTop: "10px" })}
               <div className="helper">
                 Control how symbols are picked from webhook payloads.
               </div>
 
               <div className="grid-2">
                 <div className="input-group">
-                  <label className="label" htmlFor="edit-symbol-mode">
-                    Symbol source
-                  </label>
+                  {renderLabelWithInfo("edit-symbol-mode", "Symbol source", "symbolSource")}
                   <select
                     className="select"
                     id="edit-symbol-mode"
@@ -1607,9 +2091,7 @@ export default function StrategyPage() {
                   </select>
                 </div>
                 <div className="input-group">
-                  <label className="label" htmlFor="edit-max-symbols">
-                    Max symbols
-                  </label>
+                  {renderLabelWithInfo("edit-max-symbols", "Max symbols", "maxSymbols")}
                   <input
                     className="input"
                     id="edit-max-symbols"
@@ -1627,9 +2109,7 @@ export default function StrategyPage() {
 
               {editSymbolMode === "payloadSymbol" ? (
                 <div className="input-group">
-                  <label className="label" htmlFor="edit-symbol-key">
-                    Symbol key
-                  </label>
+                  {renderLabelWithInfo("edit-symbol-key", "Symbol key", "symbolKey")}
                   <input
                     className="input"
                     id="edit-symbol-key"
@@ -1641,18 +2121,40 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              <div className="page-title" style={{ marginTop: "10px" }}>
-                Trade defaults
-              </div>
+              {renderTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
               <div className="helper">
                 Payload `call_type` is used first. Fallback is used only when payload side is missing.
               </div>
 
               <div className="grid-2">
                 <div className="input-group">
-                  <label className="label" htmlFor="edit-market-calltype">
-                    Trade side fallback
-                  </label>
+                  {renderLabelWithInfo("edit-market-trade-start", "Trade start time", "tradeWindow")}
+                  <input
+                    className="input"
+                    id="edit-market-trade-start"
+                    type="time"
+                    value={editTradeWindowStart}
+                    onChange={(event) => setEditTradeWindowStart(event.target.value)}
+                  />
+                </div>
+                <div className="input-group">
+                  {renderLabelWithInfo("edit-market-trade-end", "Trade end time", "tradeWindow")}
+                  <input
+                    className="input"
+                    id="edit-market-trade-end"
+                    type="time"
+                    value={editTradeWindowEnd}
+                    onChange={(event) => setEditTradeWindowEnd(event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="helper">
+                Default window is 09:15 to 15:30 (server time).
+              </div>
+
+              <div className="grid-2">
+                <div className="input-group">
+                  {renderLabelWithInfo("edit-market-calltype", "Trade side fallback", "tradeSideFallback")}
                   <select
                     className="select"
                     id="edit-market-calltype"
@@ -1660,140 +2162,161 @@ export default function StrategyPage() {
                     onChange={(event) => setEditCallTypeFallback(event.target.value)}
                   >
                     <option value="">Use payload `call_type`</option>
-                    <option value="BUY">BUY</option>
-                    <option value="SELL">SELL</option>
+                    {STRATEGY_CALL_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
                   </select>
                 </div>
-
-                <div className="input-group">
-                  <label className="label" htmlFor="edit-market-ordertype">
-                    Order type
-                  </label>
-                  <select
-                    className="select"
-                    id="edit-market-ordertype"
-                    value={editOrderType}
-                    onChange={(event) => setEditOrderType(event.target.value)}
-                  >
-                    <option value="MARKET">MARKET</option>
-                    <option value="LIMIT">LIMIT</option>
-                  </select>
-                </div>
+                {!editExitFallbackSelected ? (
+                  <div className="input-group">
+                    {renderLabelWithInfo("edit-market-ordertype", "Order type", "orderType")}
+                    <select
+                      className="select"
+                      id="edit-market-ordertype"
+                      value={editOrderType}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setEditOrderType(next);
+                        if (next !== "LIMIT") {
+                          setEditLimitPrice("");
+                          setEditBufferBy("");
+                          setEditBufferPoints("");
+                        }
+                      }}
+                    >
+                      <option value="MARKET">MARKET</option>
+                      <option value="LIMIT">LIMIT</option>
+                    </select>
+                  </div>
+                ) : null}
               </div>
+
+              {editExitFallbackSelected ? (
+                <div className="helper">
+                  Exit mode only sends the exit signal. Order type, qty, target, stop loss, and trail SL are ignored.
+                </div>
+              ) : (
+                <>
+                  {editOrderType === "LIMIT" ? (
+                    <div className="input-group">
+                      {renderLabelWithInfo("edit-market-limit-price", "Limit price", "limitPrice")}
+                      <input
+                        className="input"
+                        id="edit-market-limit-price"
+                        value={editLimitPrice}
+                        onChange={(event) => setEditLimitPrice(event.target.value)}
+                        placeholder="e.g. 123.45"
+                      />
+                      <div className="helper">
+                        If blank, trigger price (plus buffer) is used.
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid-2">
+                    <div className="input-group">
+                      {renderLabelWithInfo("edit-market-buffer-by", "Trade buffer by", "tradeBuffer")}
+                      <select
+                        className="select"
+                        id="edit-market-buffer-by"
+                        value={editBufferBy}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setEditBufferBy(next);
+                          if (!next) setEditBufferPoints("");
+                        }}
+                        disabled={editOrderType !== "LIMIT"}
+                      >
+                        <option value="">No buffer</option>
+                        <option value="Point">Point</option>
+                        <option value="Percentage">Percentage</option>
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      {renderLabelWithInfo("edit-market-buffer-points", "Trade buffer value", "tradeBuffer")}
+                      <input
+                        className="input"
+                        id="edit-market-buffer-points"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editBufferPoints}
+                        onChange={(event) => setEditBufferPoints(event.target.value)}
+                        placeholder={editBufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
+                        disabled={editOrderType !== "LIMIT" || !editBufferBy}
+                      />
+                    </div>
+                  </div>
+                  <div className="helper">
+                    Buffer is only used for LIMIT orders. BUY = trigger + buffer, SELL = trigger - buffer.
+                  </div>
+
+                  <div className="grid-2">
+                    <div className="input-group">
+                      {renderLabelWithInfo(
+                        "edit-market-qty-distribution",
+                        "Qty distribution",
+                        "qtyDistribution"
+                      )}
+                      <select
+                        className="select"
+                        id="edit-market-qty-distribution"
+                        value={editQtyDistribution}
+                        onChange={(event) => setEditQtyDistribution(event.target.value)}
+                      >
+                        <option value="">Select qty mode</option>
+                        <option value="Fix">Fix</option>
+                        <option value="Capital(%)">Capital(%)</option>
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      {renderLabelWithInfo("edit-market-qty-value", "Qty value", "qtyValue")}
+                      <input
+                        className="input"
+                        id="edit-market-qty-value"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editQtyValue}
+                        onChange={(event) => setEditQtyValue(event.target.value)}
+                        placeholder={editQtyDistribution === "Capital(%)" ? "e.g. 2" : "e.g. 5"}
+                      />
+                    </div>
+                  </div>
+                  <div className="helper">
+                    Capital(%) qty: (Capital Amount * Qty% / 100) / stock price.
+                  </div>
+
+                  {editQtyDistribution === "Capital(%)" ? (
+                    <div className="input-group">
+                      {renderLabelWithInfo(
+                        "edit-market-capital-amount",
+                        "Capital amount",
+                        "capitalAmount"
+                      )}
+                      <input
+                        className="input"
+                        id="edit-market-capital-amount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editCapitalAmount}
+                        onChange={(event) => setEditCapitalAmount(event.target.value)}
+                        placeholder="e.g. 500000"
+                      />
+                    </div>
+                  ) : null}
+                </>
+              )}
 
               <div className="input-group">
-                <label className="label" htmlFor="edit-market-limit-price">
-                  Limit price
-                </label>
-                <input
-                  className="input"
-                  id="edit-market-limit-price"
-                  value={editLimitPrice}
-                  onChange={(event) => setEditLimitPrice(event.target.value)}
-                  placeholder="e.g. 123.45"
-                  disabled={editOrderType !== "LIMIT"}
-                />
-                <div className="helper">Only used for LIMIT orders.</div>
-              </div>
-
-              <div className="grid-2">
-                <div className="input-group">
-                  <label className="label" htmlFor="edit-market-buffer-by">
-                    Trade buffer by
-                  </label>
-                  <select
-                    className="select"
-                    id="edit-market-buffer-by"
-                    value={editBufferBy}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setEditBufferBy(next);
-                      if (!next) setEditBufferPoints("");
-                    }}
-                  >
-                    <option value="">No buffer</option>
-                    <option value="Point">Point</option>
-                    <option value="Percentage">Percentage</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label className="label" htmlFor="edit-market-buffer-points">
-                    Trade buffer value
-                  </label>
-                  <input
-                    className="input"
-                    id="edit-market-buffer-points"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={editBufferPoints}
-                    onChange={(event) => setEditBufferPoints(event.target.value)}
-                    placeholder={editBufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
-                    disabled={!editBufferBy}
-                  />
-                </div>
-              </div>
-              <div className="helper">
-                Buffer logic: BUY = trigger + buffer, SELL = trigger - buffer (Point/Percentage).
-              </div>
-
-              <div className="input-group">
-                <label className="label" htmlFor="edit-market-capital-amount">
-                  Capital amount
-                </label>
-                <input
-                  className="input"
-                  id="edit-market-capital-amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={editCapitalAmount}
-                  onChange={(event) => setEditCapitalAmount(event.target.value)}
-                  placeholder="e.g. 500000"
-                  disabled={editQtyDistribution !== "Capital(%)"}
-                />
-              </div>
-
-              <div className="grid-2">
-                <div className="input-group">
-                  <label className="label" htmlFor="edit-market-qty-distribution">
-                    Qty distribution
-                  </label>
-                  <select
-                    className="select"
-                    id="edit-market-qty-distribution"
-                    value={editQtyDistribution}
-                    onChange={(event) => setEditQtyDistribution(event.target.value)}
-                  >
-                    <option value="">Select qty mode</option>
-                    <option value="Fix">Fix</option>
-                    <option value="Capital(%)">Capital(%)</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label className="label" htmlFor="edit-market-qty-value">
-                    Qty value
-                  </label>
-                  <input
-                    className="input"
-                    id="edit-market-qty-value"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={editQtyValue}
-                    onChange={(event) => setEditQtyValue(event.target.value)}
-                    placeholder={editQtyDistribution === "Capital(%)" ? "e.g. 2" : "e.g. 5"}
-                  />
-                </div>
-              </div>
-              <div className="helper">
-                Capital(%) qty: (Capital Amount * Qty% / 100) / stock price.
-              </div>
-
-              <div className="input-group">
-                <label className="label" htmlFor="edit-market-daily-trade-limit">
-                  Daily trade limit
-                </label>
+                {renderLabelWithInfo(
+                  "edit-market-daily-trade-limit",
+                  "Daily trade limit",
+                  "dailyTradeLimit"
+                )}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Enable daily trade limit</span>
                   <input
@@ -1813,9 +2336,11 @@ export default function StrategyPage() {
 
               {editUseDailyTradeLimit ? (
                 <div className="input-group">
-                  <label className="label" htmlFor="edit-market-daily-trade-limit-value">
-                    Daily trade limit value
-                  </label>
+                  {renderLabelWithInfo(
+                    "edit-market-daily-trade-limit-value",
+                    "Daily trade limit value",
+                    "dailyTradeLimitValue"
+                  )}
                   <input
                     className="input"
                     id="edit-market-daily-trade-limit-value"
@@ -1832,213 +2357,185 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
-              <div className="grid-2">
-                <div className="input-group">
-                  <label className="label" htmlFor="edit-market-trade-start">
-                    Trade start time
-                  </label>
-                  <input
-                    className="input"
-                    id="edit-market-trade-start"
-                    type="time"
-                    value={editTradeWindowStart}
-                    onChange={(event) => setEditTradeWindowStart(event.target.value)}
-                  />
-                </div>
-                <div className="input-group">
-                  <label className="label" htmlFor="edit-market-trade-end">
-                    Trade end time
-                  </label>
-                  <input
-                    className="input"
-                    id="edit-market-trade-end"
-                    type="time"
-                    value={editTradeWindowEnd}
-                    onChange={(event) => setEditTradeWindowEnd(event.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="helper">
-                Trades execute only within this time window (server time).
-              </div>
-
-              <div className="input-group">
-                <label className="label" htmlFor="edit-market-use-target">
-                  Target
-                </label>
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Enable target</span>
-                  <input
-                    id="edit-market-use-target"
-                    type="checkbox"
-                    checked={editUseTarget}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setEditUseTarget(checked);
-                      if (!checked) {
-                        setEditTargetBy("");
-                        setEditTarget("");
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              {editUseTarget ? (
-                <div className="grid-2">
+              {!editExitFallbackSelected ? (
+                <>
                   <div className="input-group">
-                    <label className="label" htmlFor="edit-market-target-by">
-                      Target by
-                    </label>
-                    <select
-                      className="select"
-                      id="edit-market-target-by"
-                      value={editTargetBy}
-                      onChange={(event) => setEditTargetBy(event.target.value)}
-                    >
-                      <option value="">Select target type</option>
-                      <option value="Money">Money</option>
-                      <option value="Point">Point</option>
-                      <option value="Percentage">Percentage</option>
-                      <option value="Price">Price</option>
-                      <option value="Ratio">Ratio</option>
-                    </select>
+                    {renderLabelWithInfo("edit-market-use-target", "Target", "targetToggle")}
+                    <div className="list-item" style={{ justifyContent: "space-between" }}>
+                      <span>Enable target</span>
+                      <input
+                        id="edit-market-use-target"
+                        type="checkbox"
+                        checked={editUseTarget}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setEditUseTarget(checked);
+                          if (!checked) {
+                            setEditTargetBy("");
+                            setEditTarget("");
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="input-group">
-                    <label className="label" htmlFor="edit-market-target">
-                      Target
-                    </label>
-                    <input
-                      className="input"
-                      id="edit-market-target"
-                      value={editTarget}
-                      onChange={(event) => setEditTarget(event.target.value)}
-                      placeholder={editTargetPlaceholder}
-                    />
-                    {isEditRatioTarget ? (
-                      <div className="helper">
-                        {!activeEditSl.trim()
-                          ? "Enable stop loss (or provide SL via webhook) to use ratio."
-                          : editRatioComputed
-                            ? `Computed target: ${editRatioComputed}`
-                            : "Enter ratio like 1:2 or 2"}
+
+                  {editUseTarget ? (
+                    <div className="grid-2">
+                      <div className="input-group">
+                        {renderLabelWithInfo("edit-market-target-by", "Target by", "targetBy")}
+                        <select
+                          className="select"
+                          id="edit-market-target-by"
+                          value={editTargetBy}
+                          onChange={(event) => setEditTargetBy(event.target.value)}
+                        >
+                          <option value="">Select target type</option>
+                          <option value="Money">Money</option>
+                          <option value="Point">Point</option>
+                          <option value="Percentage">Percentage</option>
+                          <option value="Price">Price</option>
+                          <option value="Ratio">Ratio</option>
+                        </select>
                       </div>
-                    ) : null}
+                      <div className="input-group">
+                        {renderLabelWithInfo("edit-market-target", "Target", "targetValue")}
+                        <input
+                          className="input"
+                          id="edit-market-target"
+                          value={editTarget}
+                          onChange={(event) => setEditTarget(event.target.value)}
+                          placeholder={editTargetPlaceholder}
+                        />
+                        {isEditRatioTarget ? (
+                          <div className="helper">
+                            {!activeEditSl.trim()
+                              ? "Enable stop loss (or provide SL via webhook) to use ratio."
+                              : editRatioComputed
+                                ? `Computed target: ${editRatioComputed}`
+                                : "Enter ratio like 1:2 or 2"}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="input-group">
+                    {renderLabelWithInfo("edit-market-use-sl", "Stop loss", "stopLossToggle")}
+                    <div className="list-item" style={{ justifyContent: "space-between" }}>
+                      <span>Enable stop loss</span>
+                      <input
+                        id="edit-market-use-sl"
+                        type="checkbox"
+                        checked={editUseStopLoss}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setEditUseStopLoss(checked);
+                          if (!checked) {
+                            setEditSlBy("");
+                            setEditSl("");
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
+
+                  {editUseStopLoss ? (
+                    <div className="grid-2">
+                      <div className="input-group">
+                        {renderLabelWithInfo("edit-market-sl-by", "Stop loss by", "stopLossBy")}
+                        <select
+                          className="select"
+                          id="edit-market-sl-by"
+                          value={editSlBy}
+                          onChange={(event) => setEditSlBy(event.target.value)}
+                        >
+                          <option value="">Select SL type</option>
+                          <option value="Money">Money</option>
+                          <option value="Point">Point</option>
+                          <option value="Percentage">Percentage</option>
+                          <option value="Price">Price</option>
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        {renderLabelWithInfo("edit-market-sl", "Stop loss", "stopLossValue")}
+                        <input
+                          className="input"
+                          id="edit-market-sl"
+                          value={editSl}
+                          onChange={(event) => setEditSl(event.target.value)}
+                          placeholder="e.g. 25"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="input-group">
+                    {renderLabelWithInfo("edit-market-trail-sl", "Trail SL", "trailSl")}
+                    <div className="list-item" style={{ justifyContent: "space-between" }}>
+                      <span>Enable trailing stop loss</span>
+                      <input
+                        id="edit-market-trail-sl"
+                        type="checkbox"
+                        checked={editTrailSl}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setEditTrailSl(checked);
+                          if (!checked) {
+                            setEditSlMove("");
+                            setEditProfitMove("");
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {editTrailSl ? (
+                    <div className="grid-2">
+                      <div className="input-group">
+                        {renderLabelWithInfo("edit-market-sl-move", "SL move", "slMove")}
+                        <input
+                          className="input"
+                          id="edit-market-sl-move"
+                          value={editSlMove}
+                          onChange={(event) => setEditSlMove(event.target.value)}
+                          placeholder="e.g. 10"
+                        />
+                      </div>
+                      <div className="input-group">
+                        {renderLabelWithInfo("edit-market-profit-move", "Profit move", "profitMove")}
+                        <input
+                          className="input"
+                          id="edit-market-profit-move"
+                          value={editProfitMove}
+                          onChange={(event) => setEditProfitMove(event.target.value)}
+                          placeholder="e.g. 20"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
 
               <div className="input-group">
-                <label className="label" htmlFor="edit-market-use-sl">
-                  Stop loss
-                </label>
+                {renderLabelWithInfo("edit-email-enable", "Email alerts", "emailAlerts")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Enable stop loss</span>
+                  <span>Send alerts to {emailAlertTarget}</span>
                   <input
-                    id="edit-market-use-sl"
+                    id="edit-email-enable"
                     type="checkbox"
-                    checked={editUseStopLoss}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setEditUseStopLoss(checked);
-                      if (!checked) {
-                        setEditSlBy("");
-                        setEditSl("");
-                      }
-                    }}
+                    checked={editEmailEnabled}
+                    onChange={(event) => setEditEmailEnabled(event.target.checked)}
                   />
+                </div>
+                <div className="helper">
+                  {profileEmail
+                    ? `Registered email: ${profileEmail}`
+                    : "Alerts use your account email when available."}
                 </div>
               </div>
 
-              {editUseStopLoss ? (
-                <div className="grid-2">
-                  <div className="input-group">
-                    <label className="label" htmlFor="edit-market-sl-by">
-                      Stop loss by
-                    </label>
-                    <select
-                      className="select"
-                      id="edit-market-sl-by"
-                      value={editSlBy}
-                      onChange={(event) => setEditSlBy(event.target.value)}
-                    >
-                      <option value="">Select SL type</option>
-                      <option value="Money">Money</option>
-                      <option value="Point">Point</option>
-                      <option value="Percentage">Percentage</option>
-                      <option value="Price">Price</option>
-                    </select>
-                  </div>
-                  <div className="input-group">
-                    <label className="label" htmlFor="edit-market-sl">
-                      Stop loss
-                    </label>
-                    <input
-                      className="input"
-                      id="edit-market-sl"
-                      value={editSl}
-                      onChange={(event) => setEditSl(event.target.value)}
-                      placeholder="e.g. 25"
-                    />
-                  </div>
-                </div>
-              ) : null}
-
               <div className="input-group">
-                <label className="label" htmlFor="edit-market-trail-sl">
-                  Trail SL
-                </label>
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Enable trailing stop loss</span>
-                  <input
-                    id="edit-market-trail-sl"
-                    type="checkbox"
-                    checked={editTrailSl}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setEditTrailSl(checked);
-                      if (!checked) {
-                        setEditSlMove("");
-                        setEditProfitMove("");
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              {editTrailSl ? (
-                <div className="grid-2">
-                  <div className="input-group">
-                    <label className="label" htmlFor="edit-market-sl-move">
-                      SL move
-                    </label>
-                    <input
-                      className="input"
-                      id="edit-market-sl-move"
-                      value={editSlMove}
-                      onChange={(event) => setEditSlMove(event.target.value)}
-                      placeholder="e.g. 10"
-                    />
-                  </div>
-                  <div className="input-group">
-                    <label className="label" htmlFor="edit-market-profit-move">
-                      Profit move
-                    </label>
-                    <input
-                      className="input"
-                      id="edit-market-profit-move"
-                      value={editProfitMove}
-                      onChange={(event) => setEditProfitMove(event.target.value)}
-                      placeholder="e.g. 20"
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="input-group">
-                <label className="label" htmlFor="edit-telegram-enable">
-                  Telegram alerts
-                </label>
+                {renderLabelWithInfo("edit-telegram-enable", "Telegram alerts", "telegramAlerts")}
                 <div className="list-item" style={{ justifyContent: "space-between" }}>
                   <span>Send alerts to Telegram</span>
                   <input
@@ -2063,10 +2560,35 @@ export default function StrategyPage() {
         </div>
       ) : null}
 
+      {activeInfo ? (
+        <div className="modal-overlay modal-overlay-top" onClick={() => setActiveInfoKey(null)}>
+          <div className="modal card" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-title-row">
+              <div className="page-title">{activeInfo.title}</div>
+              <button className="btn btn-ghost" type="button" onClick={() => setActiveInfoKey(null)}>
+                Close
+              </button>
+            </div>
+            <div className="helper" style={{ marginTop: "12px", fontSize: "0.9rem", lineHeight: 1.6 }}>
+              {activeInfo.description}
+            </div>
+            {activeInfo.points && activeInfo.points.length > 0 ? (
+              <div className="list" style={{ marginTop: "16px" }}>
+                {activeInfo.points.map((point) => (
+                  <div className="list-item" key={point} style={{ alignItems: "flex-start" }}>
+                    <span>{point}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {showWebhookTestModal ? (
         <div className="modal-overlay" onClick={closeWebhookTester}>
           <div className="modal card" onClick={(event) => event.stopPropagation()}>
-            <div className="page-title">Test webhook</div>
+            {renderTitleWithInfo("Test webhook", "testWebhook")}
             <div className="helper" style={{ marginTop: "8px" }}>
               Paste Chartink-like payload and click test to verify strategy webhook.
             </div>

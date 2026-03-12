@@ -335,9 +335,74 @@ textarea {
   gap: 6px;
 }
 
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.section-title-row,
+.modal-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .label {
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.info-button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(31, 122, 140, 0.06);
+  color: #245b68;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.info-button:hover {
+  background: rgba(31, 122, 140, 0.14);
+  border-color: rgba(31, 122, 140, 0.3);
+  transform: translateY(-1px);
+}
+
+.info-button-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.info-button-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.info-button-chip {
+  height: 32px;
+  padding: 0 12px;
+  background: linear-gradient(180deg, rgba(31, 122, 140, 0.1), rgba(31, 122, 140, 0.04));
+}
+
+.info-button-text {
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
 }
 
 .input,
@@ -1370,6 +1435,10 @@ textarea {
   place-items: center;
   z-index: 1000;
   padding: 24px;
+}
+
+.modal-overlay-top {
+  z-index: 1100;
 }
 
 .modal {
