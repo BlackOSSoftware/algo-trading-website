@@ -12,10 +12,18 @@ type Strategy = {
   webhookPath?: string;
   marketMayaUrl?: string;
   marketMaya?: {
+    exchange?: string;
+    segment?: string;
     symbolMode?: string;
     symbolKey?: string;
     maxSymbols?: number | string;
     callTypeFallback?: string;
+    contract?: string;
+    expiry?: string;
+    expiryDate?: string;
+    optionType?: string;
+    atm?: string;
+    strikePrice?: string;
     orderType?: string;
     limitPrice?: string;
     bufferBy?: string;
@@ -89,6 +97,24 @@ const EXIT_CALL_TYPES = new Set([
   "PARTIAL BUY EXIT",
   "PARTIAL SELL EXIT",
 ]);
+const MARKET_SEGMENT_OPTIONS = ["EQ", "FUT", "OPT"];
+const MARKET_EXCHANGE_OPTIONS: Record<string, string[]> = {
+  EQ: ["NSE", "BSE"],
+  FUT: ["NFO", "BFO", "CDS", "MCX"],
+  OPT: ["NFO", "BFO", "CDS", "MCX"],
+};
+const DERIVATIVE_SEGMENTS = new Set(["FUT", "OPT"]);
+const DEFAULT_SEGMENT = "EQ";
+const DEFAULT_EQ_EXCHANGE = "NSE";
+const DEFAULT_DERIVATIVE_EXCHANGE = "NFO";
+const DEFAULT_CONTRACT = "NEAR";
+const DEFAULT_EXPIRY = "MONTHLY";
+const DEFAULT_OPTION_TYPE = "CE";
+const DEFAULT_ATM = "0";
+const CONTRACT_OPTIONS = ["NEAR", "NEXT", "FAR"];
+const FUT_EXPIRY_OPTIONS = ["MONTHLY"];
+const OPT_EXPIRY_OPTIONS = ["WEEKLY", "MONTHLY"];
+const OPTION_TYPE_OPTIONS = ["CE", "PE"];
 const INFO_CONTENT: Record<string, InfoContent> = {
   telegramAccess: {
     title: "Telegram Access",
@@ -158,12 +184,99 @@ const INFO_CONTENT: Record<string, InfoContent> = {
       "This is used only in `Symbol field` mode.",
     ],
   },
+  instrumentSetup: {
+    title: "Instrument Setup",
+    description: "Choose whether the strategy should trade cash, futures, or options instruments.",
+    points: [
+      "Only the fields relevant to the selected segment are shown.",
+      "EQ hides derivative-specific fields like expiry and option type.",
+      "FUT and OPT can use either exact expiry date or contract plus expiry cycle.",
+    ],
+  },
+  exchange: {
+    title: "Exchange",
+    description: "This sets the exchange that will be sent to Market Maya.",
+    points: [
+      "EQ uses cash exchanges such as NSE and BSE.",
+      "Derivative segments use exchanges such as NFO, BFO, CDS, and MCX.",
+    ],
+  },
+  segment: {
+    title: "Segment",
+    description: "This decides whether the trade is sent as EQ, FUT, or OPT.",
+    points: [
+      "EQ is for cash stocks and ETFs.",
+      "FUT is for futures contracts.",
+      "OPT is for options contracts.",
+    ],
+  },
+  expirySelection: {
+    title: "Expiry Selection",
+    description: "This controls how derivative expiry is sent to Market Maya.",
+    points: [
+      "FUT contract mode uses NEAR/NEXT/FAR with MONTHLY expiry.",
+      "OPT contract mode supports WEEKLY and MONTHLY.",
+      "Exact date mode sends a fixed expiry date.",
+    ],
+  },
+  contract: {
+    title: "Contract",
+    description: "This selects the relative contract when exact expiry date is not used.",
+    points: [
+      "Supported values are NEAR, NEXT, and FAR.",
+    ],
+  },
+  expiryCycle: {
+    title: "Expiry Cycle",
+    description: "This chooses the derivative expiry bucket for contract mode.",
+    points: [
+      "FUT supports MONTHLY only.",
+      "OPT supports WEEKLY and MONTHLY.",
+    ],
+  },
+  expiryDate: {
+    title: "Expiry Date",
+    description: "This sends a fixed expiry date instead of contract plus expiry cycle.",
+    points: [
+      "Use this when you want a specific contract date.",
+      "The app converts the selected date to Market Maya format automatically.",
+    ],
+  },
+  optionType: {
+    title: "Option Type",
+    description: "This selects whether the option is CE or PE.",
+    points: [
+      "This field appears only for OPT segment.",
+    ],
+  },
+  strikeSelection: {
+    title: "Strike Selection",
+    description: "Choose whether the option should use ATM offset or exact strike price.",
+    points: [
+      "ATM mode supports values like 0, 100, or -100.",
+      "Exact strike mode sends a fixed strike price.",
+    ],
+  },
+  atm: {
+    title: "ATM Offset",
+    description: "This sets the ATM offset used for option strike selection.",
+    points: [
+      "Examples: 0, 100, -100.",
+    ],
+  },
+  strikePrice: {
+    title: "Strike Price",
+    description: "This sets an exact strike price for option contracts.",
+    points: [
+      "Use this when you do not want ATM-based strike selection.",
+    ],
+  },
   tradeWindow: {
     title: "Trade Time Window",
     description: "The strategy will execute auto trades only within this time range.",
     points: [
       "The default window is 09:15 to 15:30.",
-      "The time window is checked using server time.",
+      "The time window is checked in the trading timezone (IST by default).",
       "Signals received outside this window are skipped.",
     ],
   },
@@ -372,10 +485,58 @@ function computeRatioTarget(slValue: string, ratioValue: string) {
   return String(Number(target.toFixed(6)));
 }
 
+function isDerivativeSegment(segment: string) {
+  return DERIVATIVE_SEGMENTS.has(segment);
+}
+
+function getExchangeOptions(segment: string) {
+  return MARKET_EXCHANGE_OPTIONS[segment] || MARKET_EXCHANGE_OPTIONS[DEFAULT_SEGMENT];
+}
+
+function getExpiryOptions(segment: string) {
+  return segment === "FUT" ? FUT_EXPIRY_OPTIONS : OPT_EXPIRY_OPTIONS;
+}
+
+function pickExchangeForSegment(exchange: string, segment: string) {
+  const options = getExchangeOptions(segment);
+  if (options.includes(exchange)) return exchange;
+  return segment === "EQ" ? DEFAULT_EQ_EXCHANGE : DEFAULT_DERIVATIVE_EXCHANGE;
+}
+
+function toExpiryDateInputValue(value: string) {
+  const raw = value.trim();
+  if (!raw) return "";
+  const exactMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (exactMatch) return raw;
+  const marketMayaMatch = /^(\d{2})-(\d{2})-(\d{4})$/.exec(raw);
+  if (!marketMayaMatch) return "";
+  return `${marketMayaMatch[3]}-${marketMayaMatch[2]}-${marketMayaMatch[1]}`;
+}
+
+function toMarketMayaExpiryDate(value: string) {
+  const raw = value.trim();
+  if (!raw) return "";
+  const marketMayaMatch = /^(\d{2})-(\d{2})-(\d{4})$/.exec(raw);
+  if (marketMayaMatch) return raw;
+  const inputMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!inputMatch) return "";
+  return `${inputMatch[3]}-${inputMatch[2]}-${inputMatch[1]}`;
+}
+
 export default function StrategyPage() {
   const [name, setName] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [marketMayaToken, setMarketMayaToken] = useState("");
+  const [exchange, setExchange] = useState(DEFAULT_EQ_EXCHANGE);
+  const [segment, setSegment] = useState(DEFAULT_SEGMENT);
+  const [expiryMode, setExpiryMode] = useState<"contract" | "date">("contract");
+  const [contract, setContract] = useState(DEFAULT_CONTRACT);
+  const [expiry, setExpiry] = useState(DEFAULT_EXPIRY);
+  const [expiryDate, setExpiryDate] = useState("");
+  const [optionType, setOptionType] = useState(DEFAULT_OPTION_TYPE);
+  const [strikeMode, setStrikeMode] = useState<"atm" | "strike">("atm");
+  const [atm, setAtm] = useState(DEFAULT_ATM);
+  const [strikePrice, setStrikePrice] = useState("");
   const [symbolMode, setSymbolMode] = useState("stocksFirst");
   const [symbolKey, setSymbolKey] = useState("symbol");
   const [maxSymbols, setMaxSymbols] = useState("");
@@ -424,6 +585,16 @@ export default function StrategyPage() {
   const [editName, setEditName] = useState("");
   const [editEnabled, setEditEnabled] = useState(false);
   const [editMarketMayaToken, setEditMarketMayaToken] = useState("");
+  const [editExchange, setEditExchange] = useState(DEFAULT_EQ_EXCHANGE);
+  const [editSegment, setEditSegment] = useState(DEFAULT_SEGMENT);
+  const [editExpiryMode, setEditExpiryMode] = useState<"contract" | "date">("contract");
+  const [editContract, setEditContract] = useState(DEFAULT_CONTRACT);
+  const [editExpiry, setEditExpiry] = useState(DEFAULT_EXPIRY);
+  const [editExpiryDate, setEditExpiryDate] = useState("");
+  const [editOptionType, setEditOptionType] = useState(DEFAULT_OPTION_TYPE);
+  const [editStrikeMode, setEditStrikeMode] = useState<"atm" | "strike">("atm");
+  const [editAtm, setEditAtm] = useState(DEFAULT_ATM);
+  const [editStrikePrice, setEditStrikePrice] = useState("");
   const [editSymbolMode, setEditSymbolMode] = useState("stocksFirst");
   const [editSymbolKey, setEditSymbolKey] = useState("symbol");
   const [editMaxSymbols, setEditMaxSymbols] = useState("");
@@ -480,6 +651,14 @@ export default function StrategyPage() {
   const emailAlertTarget = profileEmail || "your registered email";
   const exitFallbackSelected = isExitTradeAction(callTypeFallback);
   const editExitFallbackSelected = isExitTradeAction(editCallTypeFallback);
+  const derivativeSegmentSelected = isDerivativeSegment(segment);
+  const optionSegmentSelected = segment === "OPT";
+  const exchangeOptions = getExchangeOptions(segment);
+  const expiryOptions = getExpiryOptions(segment);
+  const editDerivativeSegmentSelected = isDerivativeSegment(editSegment);
+  const editOptionSegmentSelected = editSegment === "OPT";
+  const editExchangeOptions = getExchangeOptions(editSegment);
+  const editExpiryOptions = getExpiryOptions(editSegment);
   const activeInfo = activeInfoKey ? INFO_CONTENT[activeInfoKey] || null : null;
 
   const flashMessage = (text: string) => {
@@ -493,6 +672,52 @@ export default function StrategyPage() {
       flashMessage("Copied.");
     } catch {
       flashMessage("Copy failed. Please copy manually.");
+    }
+  };
+
+  const handleSegmentChange = (nextSegment: string) => {
+    setSegment(nextSegment);
+    setExchange(pickExchangeForSegment(exchange, nextSegment));
+    if (!isDerivativeSegment(nextSegment)) {
+      setExpiryMode("contract");
+      setContract(DEFAULT_CONTRACT);
+      setExpiry(DEFAULT_EXPIRY);
+      setExpiryDate("");
+      setOptionType(DEFAULT_OPTION_TYPE);
+      setStrikeMode("atm");
+      setAtm(DEFAULT_ATM);
+      setStrikePrice("");
+      return;
+    }
+    if (nextSegment === "FUT") {
+      setExpiry(DEFAULT_EXPIRY);
+      setOptionType(DEFAULT_OPTION_TYPE);
+      setStrikeMode("atm");
+      setAtm(DEFAULT_ATM);
+      setStrikePrice("");
+    }
+  };
+
+  const handleEditSegmentChange = (nextSegment: string) => {
+    setEditSegment(nextSegment);
+    setEditExchange(pickExchangeForSegment(editExchange, nextSegment));
+    if (!isDerivativeSegment(nextSegment)) {
+      setEditExpiryMode("contract");
+      setEditContract(DEFAULT_CONTRACT);
+      setEditExpiry(DEFAULT_EXPIRY);
+      setEditExpiryDate("");
+      setEditOptionType(DEFAULT_OPTION_TYPE);
+      setEditStrikeMode("atm");
+      setEditAtm(DEFAULT_ATM);
+      setEditStrikePrice("");
+      return;
+    }
+    if (nextSegment === "FUT") {
+      setEditExpiry(DEFAULT_EXPIRY);
+      setEditOptionType(DEFAULT_OPTION_TYPE);
+      setEditStrikeMode("atm");
+      setEditAtm(DEFAULT_ATM);
+      setEditStrikePrice("");
     }
   };
 
@@ -760,6 +985,33 @@ export default function StrategyPage() {
       const trimmedBufferBy = bufferBy.trim();
       const trimmedBufferPoints = bufferPoints.trim();
       const trimmedDailyTradeLimit = dailyTradeLimit.trim();
+      const normalizedExpiryDate = toMarketMayaExpiryDate(expiryDate);
+      const trimmedAtm = atm.trim();
+      const trimmedStrikePrice = strikePrice.trim();
+
+      if (derivativeSegmentSelected && expiryMode === "date" && !normalizedExpiryDate) {
+        setError("Select a valid expiry date for derivative segment.");
+        return;
+      }
+      if (optionSegmentSelected && strikeMode === "atm" && !trimmedAtm) {
+        setError("ATM offset is required for options when ATM mode is selected.");
+        return;
+      }
+      if (optionSegmentSelected && strikeMode === "strike" && !trimmedStrikePrice) {
+        setError("Strike price is required for options when exact strike mode is selected.");
+        return;
+      }
+      if (optionSegmentSelected && trimmedAtm && !/^[-]?\d+(\.\d+)?$/.test(trimmedAtm)) {
+        setError("ATM offset must be a valid number like 0, 100, or -100.");
+        return;
+      }
+      if (optionSegmentSelected && trimmedStrikePrice) {
+        const strikeNumeric = Number(trimmedStrikePrice);
+        if (!Number.isFinite(strikeNumeric) || strikeNumeric <= 0) {
+          setError("Strike price must be a positive number.");
+          return;
+        }
+      }
 
       if (!exitFallbackSelected) {
         if (trimmedQtyDistribution && !trimmedQtyValue) {
@@ -829,7 +1081,20 @@ export default function StrategyPage() {
 
       const token = getToken();
       const marketMaya: Record<string, unknown> = {
+        exchange,
+        segment,
         symbolMode,
+        ...(derivativeSegmentSelected && expiryMode === "contract"
+          ? { contract, expiry }
+          : {}),
+        ...(derivativeSegmentSelected && expiryMode === "date" && normalizedExpiryDate
+          ? { expiryDate: normalizedExpiryDate }
+          : {}),
+        ...(optionSegmentSelected ? { optionType } : {}),
+        ...(optionSegmentSelected && strikeMode === "atm" && trimmedAtm ? { atm: trimmedAtm } : {}),
+        ...(optionSegmentSelected && strikeMode === "strike" && trimmedStrikePrice
+          ? { strikePrice: trimmedStrikePrice }
+          : {}),
         ...(symbolMode === "payloadSymbol" && symbolKey.trim()
           ? { symbolKey: symbolKey.trim() }
           : {}),
@@ -895,6 +1160,16 @@ export default function StrategyPage() {
       }
       setName("");
       setMarketMayaToken("");
+      setExchange(DEFAULT_EQ_EXCHANGE);
+      setSegment(DEFAULT_SEGMENT);
+      setExpiryMode("contract");
+      setContract(DEFAULT_CONTRACT);
+      setExpiry(DEFAULT_EXPIRY);
+      setExpiryDate("");
+      setOptionType(DEFAULT_OPTION_TYPE);
+      setStrikeMode("atm");
+      setAtm(DEFAULT_ATM);
+      setStrikePrice("");
       setSymbolMode("stocksFirst");
       setSymbolKey("symbol");
       setMaxSymbols("");
@@ -943,6 +1218,17 @@ export default function StrategyPage() {
     setEditEnabled(Boolean(item.enabled));
     setEditMarketMayaToken("");
     const mm = item.marketMaya || {};
+    const nextEditSegment = mm.segment || DEFAULT_SEGMENT;
+    setEditSegment(nextEditSegment);
+    setEditExchange(pickExchangeForSegment(mm.exchange || "", nextEditSegment));
+    setEditExpiryMode(mm.expiryDate ? "date" : "contract");
+    setEditContract(mm.contract || DEFAULT_CONTRACT);
+    setEditExpiry(nextEditSegment === "FUT" ? DEFAULT_EXPIRY : mm.expiry || DEFAULT_EXPIRY);
+    setEditExpiryDate(toExpiryDateInputValue(mm.expiryDate || ""));
+    setEditOptionType(mm.optionType || DEFAULT_OPTION_TYPE);
+    setEditStrikeMode(mm.strikePrice ? "strike" : "atm");
+    setEditAtm(mm.atm || DEFAULT_ATM);
+    setEditStrikePrice(mm.strikePrice || "");
     setEditSymbolMode(mm.symbolMode || "stocksFirst");
     setEditSymbolKey(mm.symbolKey || "symbol");
     setEditMaxSymbols(mm.maxSymbols ? String(mm.maxSymbols) : "");
@@ -1003,6 +1289,16 @@ export default function StrategyPage() {
     setEditName("");
     setEditEnabled(false);
     setEditMarketMayaToken("");
+    setEditExchange(DEFAULT_EQ_EXCHANGE);
+    setEditSegment(DEFAULT_SEGMENT);
+    setEditExpiryMode("contract");
+    setEditContract(DEFAULT_CONTRACT);
+    setEditExpiry(DEFAULT_EXPIRY);
+    setEditExpiryDate("");
+    setEditOptionType(DEFAULT_OPTION_TYPE);
+    setEditStrikeMode("atm");
+    setEditAtm(DEFAULT_ATM);
+    setEditStrikePrice("");
     setEditSymbolMode("stocksFirst");
     setEditSymbolKey("symbol");
     setEditMaxSymbols("");
@@ -1066,6 +1362,33 @@ export default function StrategyPage() {
       const trimmedBufferBy = editBufferBy.trim();
       const trimmedBufferPoints = editBufferPoints.trim();
       const trimmedDailyTradeLimit = editDailyTradeLimit.trim();
+      const normalizedEditExpiryDate = toMarketMayaExpiryDate(editExpiryDate);
+      const trimmedEditAtm = editAtm.trim();
+      const trimmedEditStrikePrice = editStrikePrice.trim();
+
+      if (editDerivativeSegmentSelected && editExpiryMode === "date" && !normalizedEditExpiryDate) {
+        setError("Select a valid expiry date for derivative segment.");
+        return;
+      }
+      if (editOptionSegmentSelected && editStrikeMode === "atm" && !trimmedEditAtm) {
+        setError("ATM offset is required for options when ATM mode is selected.");
+        return;
+      }
+      if (editOptionSegmentSelected && editStrikeMode === "strike" && !trimmedEditStrikePrice) {
+        setError("Strike price is required for options when exact strike mode is selected.");
+        return;
+      }
+      if (editOptionSegmentSelected && trimmedEditAtm && !/^[-]?\d+(\.\d+)?$/.test(trimmedEditAtm)) {
+        setError("ATM offset must be a valid number like 0, 100, or -100.");
+        return;
+      }
+      if (editOptionSegmentSelected && trimmedEditStrikePrice) {
+        const strikeNumeric = Number(trimmedEditStrikePrice);
+        if (!Number.isFinite(strikeNumeric) || strikeNumeric <= 0) {
+          setError("Strike price must be a positive number.");
+          return;
+        }
+      }
 
       if (!editExitFallbackSelected) {
         if (trimmedQtyDistribution && !trimmedQtyValue) {
@@ -1161,10 +1484,50 @@ export default function StrategyPage() {
       if (!editUseDailyTradeLimit) {
         marketMayaClear.add("dailyTradeLimit");
       }
+      if (!editDerivativeSegmentSelected) {
+        marketMayaClear.add("contract");
+        marketMayaClear.add("expiry");
+        marketMayaClear.add("expiryDate");
+        marketMayaClear.add("optionType");
+        marketMayaClear.add("atm");
+        marketMayaClear.add("strikePrice");
+      } else {
+        if (editExpiryMode === "date") {
+          marketMayaClear.add("contract");
+          marketMayaClear.add("expiry");
+        } else {
+          marketMayaClear.add("expiryDate");
+        }
+
+        if (!editOptionSegmentSelected) {
+          marketMayaClear.add("optionType");
+          marketMayaClear.add("atm");
+          marketMayaClear.add("strikePrice");
+        } else if (editStrikeMode === "atm") {
+          marketMayaClear.add("strikePrice");
+        } else {
+          marketMayaClear.add("atm");
+        }
+      }
 
       const token = getToken();
       const marketMaya: Record<string, unknown> = {
+        exchange: editExchange,
+        segment: editSegment,
         symbolMode: editSymbolMode,
+        ...(editDerivativeSegmentSelected && editExpiryMode === "contract"
+          ? { contract: editContract, expiry: editExpiry }
+          : {}),
+        ...(editDerivativeSegmentSelected && editExpiryMode === "date" && normalizedEditExpiryDate
+          ? { expiryDate: normalizedEditExpiryDate }
+          : {}),
+        ...(editOptionSegmentSelected ? { optionType: editOptionType } : {}),
+        ...(editOptionSegmentSelected && editStrikeMode === "atm" && trimmedEditAtm
+          ? { atm: trimmedEditAtm }
+          : {}),
+        ...(editOptionSegmentSelected && editStrikeMode === "strike" && trimmedEditStrikePrice
+          ? { strikePrice: trimmedEditStrikePrice }
+          : {}),
         ...(editSymbolMode === "payloadSymbol" && editSymbolKey.trim()
           ? { symbolKey: editSymbolKey.trim() }
           : {}),
@@ -1652,6 +2015,183 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
+              {renderAddTitleWithInfo("Instrument setup", "instrumentSetup", { marginTop: "10px" })}
+              <div className="helper">
+                Select the segment first. EQ keeps the form simple, while FUT and OPT reveal only the derivative fields that matter.
+              </div>
+
+              <div className="grid-2">
+                <div className="input-group">
+                  {renderAddLabelWithInfo("market-exchange", "Exchange", "exchange")}
+                  <select
+                    className="select"
+                    id="market-exchange"
+                    value={exchange}
+                    onChange={(event) => setExchange(event.target.value)}
+                  >
+                    {exchangeOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="input-group">
+                  {renderAddLabelWithInfo("market-segment", "Segment", "segment")}
+                  <select
+                    className="select"
+                    id="market-segment"
+                    value={segment}
+                    onChange={(event) => handleSegmentChange(event.target.value)}
+                  >
+                    {MARKET_SEGMENT_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {derivativeSegmentSelected ? (
+                <>
+                  <div className="input-group">
+                    {renderAddLabelWithInfo("market-expiry-mode", "Expiry selection", "expirySelection")}
+                    <select
+                      className="select"
+                      id="market-expiry-mode"
+                      value={expiryMode}
+                      onChange={(event) => {
+                        const next = event.target.value as "contract" | "date";
+                        setExpiryMode(next);
+                        if (next === "date") {
+                          setContract(DEFAULT_CONTRACT);
+                          setExpiry(DEFAULT_EXPIRY);
+                        } else {
+                          setExpiryDate("");
+                        }
+                      }}
+                    >
+                      <option value="contract">Contract + expiry</option>
+                      <option value="date">Exact expiry date</option>
+                    </select>
+                  </div>
+
+                  {expiryMode === "date" ? (
+                    <div className="input-group">
+                      {renderAddLabelWithInfo("market-expiry-date", "Expiry date", "expiryDate")}
+                      <input
+                        className="input"
+                        id="market-expiry-date"
+                        type="date"
+                        value={expiryDate}
+                        onChange={(event) => setExpiryDate(event.target.value)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="grid-2">
+                      <div className="input-group">
+                        {renderAddLabelWithInfo("market-contract", "Contract", "contract")}
+                        <select
+                          className="select"
+                          id="market-contract"
+                          value={contract}
+                          onChange={(event) => setContract(event.target.value)}
+                        >
+                          {CONTRACT_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        {renderAddLabelWithInfo("market-expiry", "Expiry cycle", "expiryCycle")}
+                        <select
+                          className="select"
+                          id="market-expiry"
+                          value={expiry}
+                          onChange={(event) => setExpiry(event.target.value)}
+                        >
+                          {expiryOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {optionSegmentSelected ? (
+                    <>
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderAddLabelWithInfo("market-option-type", "Option type", "optionType")}
+                          <select
+                            className="select"
+                            id="market-option-type"
+                            value={optionType}
+                            onChange={(event) => setOptionType(event.target.value)}
+                          >
+                            {OPTION_TYPE_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          {renderAddLabelWithInfo("market-strike-mode", "Strike selection", "strikeSelection")}
+                          <select
+                            className="select"
+                            id="market-strike-mode"
+                            value={strikeMode}
+                            onChange={(event) => {
+                              const next = event.target.value as "atm" | "strike";
+                              setStrikeMode(next);
+                              if (next === "atm") {
+                                setStrikePrice("");
+                                setAtm(DEFAULT_ATM);
+                              } else {
+                                setAtm("");
+                              }
+                            }}
+                          >
+                            <option value="atm">ATM offset</option>
+                            <option value="strike">Exact strike</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {strikeMode === "atm" ? (
+                        <div className="input-group">
+                          {renderAddLabelWithInfo("market-atm", "ATM offset", "atm")}
+                          <input
+                            className="input"
+                            id="market-atm"
+                            value={atm}
+                            onChange={(event) => setAtm(event.target.value)}
+                            placeholder="e.g. 0, 100, -100"
+                          />
+                        </div>
+                      ) : (
+                        <div className="input-group">
+                          {renderAddLabelWithInfo("market-strike-price", "Strike price", "strikePrice")}
+                          <input
+                            className="input"
+                            id="market-strike-price"
+                            value={strikePrice}
+                            onChange={(event) => setStrikePrice(event.target.value)}
+                            placeholder="e.g. 53500"
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+
               {renderAddTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
               <div className="helper">
                 Payload `call_type` is used first. Fallback is used only when payload side is missing.
@@ -1678,10 +2218,8 @@ export default function StrategyPage() {
                     onChange={(event) => setTradeWindowEnd(event.target.value)}
                   />
                 </div>
-              </div>
-                <div className="helper">
-                  Default window is 09:15 to 15:30 (server time).
                 </div>
+                <div className="helper">Default window is 09:15 to 15:30 (IST by default).</div>
 
               <div className="grid-2">
                 <div className="input-group">
@@ -2202,6 +2740,183 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
+              {renderEditTitleWithInfo("Instrument setup", "instrumentSetup", { marginTop: "10px" })}
+              <div className="helper">
+                Select the segment first. EQ hides derivative fields, while FUT and OPT reveal only the contract fields needed for that segment.
+              </div>
+
+              <div className="grid-2">
+                <div className="input-group">
+                  {renderEditLabelWithInfo("edit-market-exchange", "Exchange", "exchange")}
+                  <select
+                    className="select"
+                    id="edit-market-exchange"
+                    value={editExchange}
+                    onChange={(event) => setEditExchange(event.target.value)}
+                  >
+                    {editExchangeOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="input-group">
+                  {renderEditLabelWithInfo("edit-market-segment", "Segment", "segment")}
+                  <select
+                    className="select"
+                    id="edit-market-segment"
+                    value={editSegment}
+                    onChange={(event) => handleEditSegmentChange(event.target.value)}
+                  >
+                    {MARKET_SEGMENT_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {editDerivativeSegmentSelected ? (
+                <>
+                  <div className="input-group">
+                    {renderEditLabelWithInfo("edit-market-expiry-mode", "Expiry selection", "expirySelection")}
+                    <select
+                      className="select"
+                      id="edit-market-expiry-mode"
+                      value={editExpiryMode}
+                      onChange={(event) => {
+                        const next = event.target.value as "contract" | "date";
+                        setEditExpiryMode(next);
+                        if (next === "date") {
+                          setEditContract(DEFAULT_CONTRACT);
+                          setEditExpiry(DEFAULT_EXPIRY);
+                        } else {
+                          setEditExpiryDate("");
+                        }
+                      }}
+                    >
+                      <option value="contract">Contract + expiry</option>
+                      <option value="date">Exact expiry date</option>
+                    </select>
+                  </div>
+
+                  {editExpiryMode === "date" ? (
+                    <div className="input-group">
+                      {renderEditLabelWithInfo("edit-market-expiry-date", "Expiry date", "expiryDate")}
+                      <input
+                        className="input"
+                        id="edit-market-expiry-date"
+                        type="date"
+                        value={editExpiryDate}
+                        onChange={(event) => setEditExpiryDate(event.target.value)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="grid-2">
+                      <div className="input-group">
+                        {renderEditLabelWithInfo("edit-market-contract", "Contract", "contract")}
+                        <select
+                          className="select"
+                          id="edit-market-contract"
+                          value={editContract}
+                          onChange={(event) => setEditContract(event.target.value)}
+                        >
+                          {CONTRACT_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        {renderEditLabelWithInfo("edit-market-expiry", "Expiry cycle", "expiryCycle")}
+                        <select
+                          className="select"
+                          id="edit-market-expiry"
+                          value={editExpiry}
+                          onChange={(event) => setEditExpiry(event.target.value)}
+                        >
+                          {editExpiryOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {editOptionSegmentSelected ? (
+                    <>
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderEditLabelWithInfo("edit-market-option-type", "Option type", "optionType")}
+                          <select
+                            className="select"
+                            id="edit-market-option-type"
+                            value={editOptionType}
+                            onChange={(event) => setEditOptionType(event.target.value)}
+                          >
+                            {OPTION_TYPE_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          {renderEditLabelWithInfo("edit-market-strike-mode", "Strike selection", "strikeSelection")}
+                          <select
+                            className="select"
+                            id="edit-market-strike-mode"
+                            value={editStrikeMode}
+                            onChange={(event) => {
+                              const next = event.target.value as "atm" | "strike";
+                              setEditStrikeMode(next);
+                              if (next === "atm") {
+                                setEditStrikePrice("");
+                                setEditAtm(DEFAULT_ATM);
+                              } else {
+                                setEditAtm("");
+                              }
+                            }}
+                          >
+                            <option value="atm">ATM offset</option>
+                            <option value="strike">Exact strike</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {editStrikeMode === "atm" ? (
+                        <div className="input-group">
+                          {renderEditLabelWithInfo("edit-market-atm", "ATM offset", "atm")}
+                          <input
+                            className="input"
+                            id="edit-market-atm"
+                            value={editAtm}
+                            onChange={(event) => setEditAtm(event.target.value)}
+                            placeholder="e.g. 0, 100, -100"
+                          />
+                        </div>
+                      ) : (
+                        <div className="input-group">
+                          {renderEditLabelWithInfo("edit-market-strike-price", "Strike price", "strikePrice")}
+                          <input
+                            className="input"
+                            id="edit-market-strike-price"
+                            value={editStrikePrice}
+                            onChange={(event) => setEditStrikePrice(event.target.value)}
+                            placeholder="e.g. 53500"
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+
               {renderEditTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
               <div className="helper">
                 Payload `call_type` is used first. Fallback is used only when payload side is missing.
@@ -2229,9 +2944,7 @@ export default function StrategyPage() {
                   />
                 </div>
               </div>
-              <div className="helper">
-                Default window is 09:15 to 15:30 (server time).
-              </div>
+              <div className="helper">Default window is 09:15 to 15:30 (IST by default).</div>
 
               <div className="grid-2">
                 <div className="input-group">
