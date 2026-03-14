@@ -12,6 +12,7 @@ type Strategy = {
   webhookPath?: string;
   marketMayaUrl?: string;
   marketMaya?: {
+    token?: string;
     exchange?: string;
     segment?: string;
     symbolMode?: string;
@@ -523,10 +524,51 @@ function toMarketMayaExpiryDate(value: string) {
   return `${inputMatch[3]}-${inputMatch[2]}-${inputMatch[1]}`;
 }
 
+function renderVisibilityIcon(visible: boolean) {
+  if (visible) {
+    return (
+      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path
+          d="M2.2 2.2 17.8 17.8"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M8.1 8.1a2.7 2.7 0 0 0 3.8 3.8"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M3.5 10s2.4-4.5 6.5-4.5S16.5 10 16.5 10a11.8 11.8 0 0 1-2.6 3.2"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path
+        d="M1.9 10s2.6-5 8.1-5 8.1 5 8.1 5-2.6 5-8.1 5-8.1-5-8.1-5Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <circle cx="10" cy="10" r="2.6" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 export default function StrategyPage() {
   const [name, setName] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [marketMayaToken, setMarketMayaToken] = useState("");
+  const [showMarketMayaToken, setShowMarketMayaToken] = useState(false);
   const [exchange, setExchange] = useState(DEFAULT_EQ_EXCHANGE);
   const [segment, setSegment] = useState(DEFAULT_SEGMENT);
   const [expiryMode, setExpiryMode] = useState<"contract" | "date">("contract");
@@ -585,6 +627,7 @@ export default function StrategyPage() {
   const [editName, setEditName] = useState("");
   const [editEnabled, setEditEnabled] = useState(false);
   const [editMarketMayaToken, setEditMarketMayaToken] = useState("");
+  const [showEditMarketMayaToken, setShowEditMarketMayaToken] = useState(false);
   const [editExchange, setEditExchange] = useState(DEFAULT_EQ_EXCHANGE);
   const [editSegment, setEditSegment] = useState(DEFAULT_SEGMENT);
   const [editExpiryMode, setEditExpiryMode] = useState<"contract" | "date">("contract");
@@ -825,6 +868,7 @@ export default function StrategyPage() {
 
   const openAdd = () => {
     setShowAddInfoButtons(true);
+    setShowMarketMayaToken(false);
     setActiveInfoKey(null);
     setShowModal(true);
   };
@@ -832,6 +876,7 @@ export default function StrategyPage() {
   const closeAdd = () => {
     setActiveInfoKey(null);
     setShowAddInfoButtons(true);
+    setShowMarketMayaToken(false);
     setShowModal(false);
   };
 
@@ -1212,12 +1257,13 @@ export default function StrategyPage() {
     setError(null);
     setMessage(null);
     setShowEditInfoButtons(true);
+    setShowEditMarketMayaToken(false);
     setActiveInfoKey(null);
     setEditing({ ...item, _id: normalizeId(item._id) });
     setEditName(item.name || "");
     setEditEnabled(Boolean(item.enabled));
-    setEditMarketMayaToken("");
     const mm = item.marketMaya || {};
+    setEditMarketMayaToken(mm.token || "");
     const nextEditSegment = mm.segment || DEFAULT_SEGMENT;
     setEditSegment(nextEditSegment);
     setEditExchange(pickExchangeForSegment(mm.exchange || "", nextEditSegment));
@@ -1285,6 +1331,7 @@ export default function StrategyPage() {
   const closeEdit = () => {
     setActiveInfoKey(null);
     setShowEditInfoButtons(true);
+    setShowEditMarketMayaToken(false);
     setEditing(null);
     setEditName("");
     setEditEnabled(false);
@@ -1951,14 +1998,25 @@ export default function StrategyPage() {
               {enabled ? (
                 <div className="input-group">
                   {renderAddLabelWithInfo("market-token", "Market Maya Token", "marketMayaToken")}
-                  <input
-                    className="input"
-                    id="market-token"
-                    type="password"
-                    value={marketMayaToken}
-                    onChange={(event) => setMarketMayaToken(event.target.value)}
-                    placeholder="Paste token here"
-                  />
+                  <div className="token-field">
+                    <input
+                      className="input"
+                      id="market-token"
+                      type={showMarketMayaToken ? "text" : "password"}
+                      value={marketMayaToken}
+                      onChange={(event) => setMarketMayaToken(event.target.value)}
+                      placeholder="Paste token here"
+                    />
+                    <button
+                      className="token-visibility-btn"
+                      type="button"
+                      aria-label={showMarketMayaToken ? "Hide Market Maya token" : "Show Market Maya token"}
+                      aria-pressed={showMarketMayaToken}
+                      onClick={() => setShowMarketMayaToken((current) => !current)}
+                    >
+                      {renderVisibilityIcon(showMarketMayaToken)}
+                    </button>
+                  </div>
                   <div className="helper">
                     Required for live trades. Leave blank to use server default.
                   </div>
@@ -2678,15 +2736,28 @@ export default function StrategyPage() {
               {editEnabled ? (
                 <div className="input-group">
                   {renderEditLabelWithInfo("edit-market-token", "Market Maya Token", "marketMayaToken")}
-                  <input
-                    className="input"
-                    id="edit-market-token"
-                    type="password"
-                    value={editMarketMayaToken}
-                    onChange={(event) => setEditMarketMayaToken(event.target.value)}
-                    placeholder="Paste new token to update"
-                  />
-                  <div className="helper">Optional. Leave blank to keep the existing token.</div>
+                  <div className="token-field">
+                    <input
+                      className="input"
+                      id="edit-market-token"
+                      type={showEditMarketMayaToken ? "text" : "password"}
+                      value={editMarketMayaToken}
+                      onChange={(event) => setEditMarketMayaToken(event.target.value)}
+                      placeholder="Market Maya token"
+                    />
+                    <button
+                      className="token-visibility-btn"
+                      type="button"
+                      aria-label={
+                        showEditMarketMayaToken ? "Hide saved Market Maya token" : "Show saved Market Maya token"
+                      }
+                      aria-pressed={showEditMarketMayaToken}
+                      onClick={() => setShowEditMarketMayaToken((current) => !current)}
+                    >
+                      {renderVisibilityIcon(showEditMarketMayaToken)}
+                    </button>
+                  </div>
+                  <div className="helper">Saved token is loaded here. Update it if you want to replace it.</div>
                 </div>
               ) : null}
 

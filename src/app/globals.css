@@ -478,6 +478,41 @@ textarea {
   background: white;
 }
 
+.token-field {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.token-field .input {
+  flex: 1 1 auto;
+}
+
+.token-visibility-btn {
+  width: 46px;
+  min-width: 46px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(31, 122, 140, 0.06);
+  color: #245b68;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.token-visibility-btn:hover {
+  background: rgba(31, 122, 140, 0.14);
+  border-color: rgba(31, 122, 140, 0.3);
+  transform: translateY(-1px);
+}
+
+.token-visibility-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
 .helper {
   font-size: 0.8rem;
   color: var(--muted);
