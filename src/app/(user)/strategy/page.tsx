@@ -26,6 +26,7 @@ type Strategy = {
     atm?: string;
     strikePrice?: string;
     orderType?: string;
+    limitPriceSource?: "fixed" | "trigger" | string;
     limitPrice?: string;
     bufferBy?: string;
     bufferValue?: number | string;
@@ -68,6 +69,8 @@ type InfoContent = {
   description: string;
   points?: string[];
 };
+
+type LimitPriceSource = "fixed" | "trigger";
 
 type InfoButtonVariant = "inline" | "chip";
 
@@ -112,6 +115,7 @@ const DEFAULT_CONTRACT = "NEAR";
 const DEFAULT_EXPIRY = "MONTHLY";
 const DEFAULT_OPTION_TYPE = "CE";
 const DEFAULT_ATM = "0";
+const DEFAULT_LIMIT_PRICE_SOURCE: LimitPriceSource = "fixed";
 const CONTRACT_OPTIONS = ["NEAR", "NEXT", "FAR"];
 const FUT_EXPIRY_OPTIONS = ["MONTHLY"];
 const OPT_EXPIRY_OPTIONS = ["WEEKLY", "MONTHLY"];
@@ -303,8 +307,17 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     title: "Limit Price",
     description: "Use this field to set a direct price for a LIMIT order.",
     points: [
-      "If left blank, the effective price can be derived from trigger price and buffer.",
+      "This is used when fixed limit price is selected.",
+      "Switch to Chartink trigger price if you want webhook trigger_price to control the LIMIT order.",
       "This is used only for LIMIT orders.",
+    ],
+  },
+  limitPriceSource: {
+    title: "Limit Price Source",
+    description: "Choose whether LIMIT order price should come from a fixed value or the Chartink webhook trigger price.",
+    points: [
+      "Fixed limit price sends the exact price you enter.",
+      "Chartink trigger price uses payload trigger_price, and buffer can adjust it.",
     ],
   },
   tradeBuffer: {
@@ -524,6 +537,13 @@ function toMarketMayaExpiryDate(value: string) {
   return `${inputMatch[3]}-${inputMatch[2]}-${inputMatch[1]}`;
 }
 
+function resolveLimitPriceSource(value: unknown, limitPriceValue?: unknown): LimitPriceSource {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "trigger" || raw === "chartink" || raw === "payload") return "trigger";
+  if (raw === "fixed" || raw === "manual" || raw === "limit") return "fixed";
+  return String(limitPriceValue || "").trim() ? "fixed" : "trigger";
+}
+
 function renderVisibilityIcon(visible: boolean) {
   if (visible) {
     return (
@@ -584,6 +604,8 @@ export default function StrategyPage() {
   const [maxSymbols, setMaxSymbols] = useState("");
   const [callTypeFallback, setCallTypeFallback] = useState("");
   const [orderType, setOrderType] = useState("MARKET");
+  const [limitPriceSource, setLimitPriceSource] =
+    useState<LimitPriceSource>(DEFAULT_LIMIT_PRICE_SOURCE);
   const [limitPrice, setLimitPrice] = useState("");
   const [bufferBy, setBufferBy] = useState("");
   const [bufferPoints, setBufferPoints] = useState("");
@@ -643,6 +665,8 @@ export default function StrategyPage() {
   const [editMaxSymbols, setEditMaxSymbols] = useState("");
   const [editCallTypeFallback, setEditCallTypeFallback] = useState("");
   const [editOrderType, setEditOrderType] = useState("MARKET");
+  const [editLimitPriceSource, setEditLimitPriceSource] =
+    useState<LimitPriceSource>(DEFAULT_LIMIT_PRICE_SOURCE);
   const [editLimitPrice, setEditLimitPrice] = useState("");
   const [editBufferBy, setEditBufferBy] = useState("");
   const [editBufferPoints, setEditBufferPoints] = useState("");
@@ -694,12 +718,17 @@ export default function StrategyPage() {
   const emailAlertTarget = profileEmail || "your registered email";
   const exitFallbackSelected = isExitTradeAction(callTypeFallback);
   const editExitFallbackSelected = isExitTradeAction(editCallTypeFallback);
+  const usingFixedLimitPrice = orderType === "LIMIT" && limitPriceSource === "fixed";
+  const usingTriggerLimitPrice = orderType === "LIMIT" && limitPriceSource === "trigger";
   const derivativeSegmentSelected = isDerivativeSegment(segment);
   const optionSegmentSelected = segment === "OPT";
   const exchangeOptions = getExchangeOptions(segment);
   const expiryOptions = getExpiryOptions(segment);
   const editDerivativeSegmentSelected = isDerivativeSegment(editSegment);
   const editOptionSegmentSelected = editSegment === "OPT";
+  const editUsingFixedLimitPrice = editOrderType === "LIMIT" && editLimitPriceSource === "fixed";
+  const editUsingTriggerLimitPrice =
+    editOrderType === "LIMIT" && editLimitPriceSource === "trigger";
   const editExchangeOptions = getExchangeOptions(editSegment);
   const editExpiryOptions = getExpiryOptions(editSegment);
   const activeInfo = activeInfoKey ? INFO_CONTENT[activeInfoKey] || null : null;
@@ -1027,6 +1056,7 @@ export default function StrategyPage() {
       const trimmedQtyDistribution = qtyDistribution.trim();
       const trimmedQtyValue = qtyValue.trim();
       const trimmedCapitalAmount = capitalAmount.trim();
+      const trimmedLimitPrice = limitPrice.trim();
       const trimmedBufferBy = bufferBy.trim();
       const trimmedBufferPoints = bufferPoints.trim();
       const trimmedDailyTradeLimit = dailyTradeLimit.trim();
@@ -1071,11 +1101,15 @@ export default function StrategyPage() {
           setError("Capital amount is required for Capital(%) qty.");
           return;
         }
-        if (trimmedBufferBy && !trimmedBufferPoints) {
+        if (usingFixedLimitPrice && !trimmedLimitPrice) {
+          setError("Limit price is required when fixed limit price is selected.");
+          return;
+        }
+        if (usingTriggerLimitPrice && trimmedBufferBy && !trimmedBufferPoints) {
           setError("Trade buffer value is required when buffer type is selected.");
           return;
         }
-        if (trimmedBufferPoints && !trimmedBufferBy) {
+        if (usingTriggerLimitPrice && trimmedBufferPoints && !trimmedBufferBy) {
           setError("Select trade buffer type (Point/Percentage).");
           return;
         }
@@ -1148,9 +1182,14 @@ export default function StrategyPage() {
           : {}),
         ...(callTypeFallback ? { callTypeFallback } : {}),
         ...(!exitFallbackSelected ? { orderType } : {}),
-        ...(!exitFallbackSelected && limitPrice.trim() ? { limitPrice: limitPrice.trim() } : {}),
-        ...(!exitFallbackSelected && trimmedBufferBy ? { bufferBy: trimmedBufferBy } : {}),
-        ...(!exitFallbackSelected && trimmedBufferPoints
+        ...(!exitFallbackSelected && orderType === "LIMIT" ? { limitPriceSource } : {}),
+        ...(!exitFallbackSelected && usingFixedLimitPrice && trimmedLimitPrice
+          ? { limitPrice: trimmedLimitPrice }
+          : {}),
+        ...(!exitFallbackSelected && usingTriggerLimitPrice && trimmedBufferBy
+          ? { bufferBy: trimmedBufferBy }
+          : {}),
+        ...(!exitFallbackSelected && usingTriggerLimitPrice && trimmedBufferPoints
           ? { bufferValue: bufferPointsNumber }
           : {}),
         ...(!exitFallbackSelected && trimmedCapitalAmount
@@ -1220,6 +1259,7 @@ export default function StrategyPage() {
       setMaxSymbols("");
       setCallTypeFallback("");
       setOrderType("MARKET");
+      setLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
       setLimitPrice("");
       setBufferBy("");
       setBufferPoints("");
@@ -1257,12 +1297,12 @@ export default function StrategyPage() {
     setError(null);
     setMessage(null);
     setShowEditInfoButtons(true);
-    setShowEditMarketMayaToken(false);
     setActiveInfoKey(null);
     setEditing({ ...item, _id: normalizeId(item._id) });
     setEditName(item.name || "");
     setEditEnabled(Boolean(item.enabled));
     const mm = item.marketMaya || {};
+    setShowEditMarketMayaToken(Boolean(mm.token));
     setEditMarketMayaToken(mm.token || "");
     const nextEditSegment = mm.segment || DEFAULT_SEGMENT;
     setEditSegment(nextEditSegment);
@@ -1280,6 +1320,7 @@ export default function StrategyPage() {
     setEditMaxSymbols(mm.maxSymbols ? String(mm.maxSymbols) : "");
     setEditCallTypeFallback(mm.callTypeFallback || "");
     setEditOrderType(mm.orderType || "MARKET");
+    setEditLimitPriceSource(resolveLimitPriceSource(mm.limitPriceSource, mm.limitPrice));
     setEditLimitPrice(mm.limitPrice || "");
     setEditBufferBy(
       mm.bufferBy ||
@@ -1351,6 +1392,7 @@ export default function StrategyPage() {
     setEditMaxSymbols("");
     setEditCallTypeFallback("");
     setEditOrderType("MARKET");
+    setEditLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
     setEditLimitPrice("");
     setEditBufferBy("");
     setEditBufferPoints("");
@@ -1406,6 +1448,7 @@ export default function StrategyPage() {
       const trimmedQtyDistribution = editQtyDistribution.trim();
       const trimmedQtyValue = editQtyValue.trim();
       const trimmedCapitalAmount = editCapitalAmount.trim();
+      const trimmedEditLimitPrice = editLimitPrice.trim();
       const trimmedBufferBy = editBufferBy.trim();
       const trimmedBufferPoints = editBufferPoints.trim();
       const trimmedDailyTradeLimit = editDailyTradeLimit.trim();
@@ -1450,11 +1493,15 @@ export default function StrategyPage() {
           setError("Capital amount is required for Capital(%) qty.");
           return;
         }
-        if (trimmedBufferBy && !trimmedBufferPoints) {
+        if (editUsingFixedLimitPrice && !trimmedEditLimitPrice) {
+          setError("Limit price is required when fixed limit price is selected.");
+          return;
+        }
+        if (editUsingTriggerLimitPrice && trimmedBufferBy && !trimmedBufferPoints) {
           setError("Trade buffer value is required when buffer type is selected.");
           return;
         }
-        if (trimmedBufferPoints && !trimmedBufferBy) {
+        if (editUsingTriggerLimitPrice && trimmedBufferPoints && !trimmedBufferBy) {
           setError("Select trade buffer type (Point/Percentage).");
           return;
         }
@@ -1501,9 +1548,18 @@ export default function StrategyPage() {
 
       const marketMayaClear = new Set<string>();
       if (editExitFallbackSelected || editOrderType !== "LIMIT") {
+        marketMayaClear.add("limitPriceSource");
+        marketMayaClear.add("limitPrice");
+      } else if (editLimitPriceSource === "trigger") {
         marketMayaClear.add("limitPrice");
       }
-      if (editExitFallbackSelected || !trimmedBufferBy || !trimmedBufferPoints) {
+      if (
+        editExitFallbackSelected ||
+        editOrderType !== "LIMIT" ||
+        editLimitPriceSource !== "trigger" ||
+        !trimmedBufferBy ||
+        !trimmedBufferPoints
+      ) {
         marketMayaClear.add("bufferBy");
         marketMayaClear.add("bufferValue");
         marketMayaClear.add("bufferPoints");
@@ -1583,11 +1639,16 @@ export default function StrategyPage() {
           : {}),
         ...(editCallTypeFallback ? { callTypeFallback: editCallTypeFallback } : {}),
         ...(!editExitFallbackSelected ? { orderType: editOrderType } : {}),
-        ...(!editExitFallbackSelected && editLimitPrice.trim()
-          ? { limitPrice: editLimitPrice.trim() }
+        ...(!editExitFallbackSelected && editOrderType === "LIMIT"
+          ? { limitPriceSource: editLimitPriceSource }
           : {}),
-        ...(!editExitFallbackSelected && trimmedBufferBy ? { bufferBy: trimmedBufferBy } : {}),
-        ...(!editExitFallbackSelected && trimmedBufferPoints
+        ...(!editExitFallbackSelected && editUsingFixedLimitPrice && trimmedEditLimitPrice
+          ? { limitPrice: trimmedEditLimitPrice }
+          : {}),
+        ...(!editExitFallbackSelected && editUsingTriggerLimitPrice && trimmedBufferBy
+          ? { bufferBy: trimmedBufferBy }
+          : {}),
+        ...(!editExitFallbackSelected && editUsingTriggerLimitPrice && trimmedBufferPoints
           ? { bufferValue: bufferPointsNumber }
           : {}),
         ...(!editExitFallbackSelected && trimmedCapitalAmount
@@ -2307,6 +2368,7 @@ export default function StrategyPage() {
                         const next = event.target.value;
                         setOrderType(next);
                         if (next !== "LIMIT") {
+                          setLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
                           setLimitPrice("");
                           setBufferBy("");
                           setBufferPoints("");
@@ -2327,58 +2389,86 @@ export default function StrategyPage() {
               ) : (
                 <>
                   {orderType === "LIMIT" ? (
-                    <div className="input-group">
-                      {renderAddLabelWithInfo("market-limit-price", "Limit price", "limitPrice")}
-                      <input
-                        className="input"
-                        id="market-limit-price"
-                        value={limitPrice}
-                        onChange={(event) => setLimitPrice(event.target.value)}
-                        placeholder="e.g. 123.45"
-                      />
-                      <div className="helper">
-                        If blank, trigger price (plus buffer) is used.
+                    <>
+                      <div className="input-group">
+                        {renderAddLabelWithInfo(
+                          "market-limit-price-source",
+                          "Limit price source",
+                          "limitPriceSource"
+                        )}
+                        <select
+                          className="select"
+                          id="market-limit-price-source"
+                          value={limitPriceSource}
+                          onChange={(event) =>
+                            setLimitPriceSource(event.target.value as LimitPriceSource)
+                          }
+                        >
+                          <option value="fixed">Fixed limit price</option>
+                          <option value="trigger">Chartink trigger price</option>
+                        </select>
                       </div>
-                    </div>
+                      {usingFixedLimitPrice ? (
+                        <div className="input-group">
+                          {renderAddLabelWithInfo("market-limit-price", "Limit price", "limitPrice")}
+                          <input
+                            className="input"
+                            id="market-limit-price"
+                            value={limitPrice}
+                            onChange={(event) => setLimitPrice(event.target.value)}
+                            placeholder="e.g. 123.45"
+                          />
+                          <div className="helper">This exact price will be sent for the LIMIT order.</div>
+                        </div>
+                      ) : (
+                        <div className="helper">
+                          Chartink payload `trigger_price` will be used for the LIMIT order.
+                        </div>
+                      )}
+                    </>
                   ) : null}
 
-                  <div className="grid-2">
-                    <div className="input-group">
-                      {renderAddLabelWithInfo("market-buffer-by", "Trade buffer by", "tradeBuffer")}
-                      <select
-                        className="select"
-                        id="market-buffer-by"
-                        value={bufferBy}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setBufferBy(next);
-                          if (!next) setBufferPoints("");
-                        }}
-                        disabled={orderType !== "LIMIT"}
-                      >
-                        <option value="">No buffer</option>
-                        <option value="Point">Point</option>
-                        <option value="Percentage">Percentage</option>
-                      </select>
-                    </div>
-                    <div className="input-group">
-                      {renderAddLabelWithInfo("market-buffer-points", "Trade buffer value", "tradeBuffer")}
-                      <input
-                        className="input"
-                        id="market-buffer-points"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={bufferPoints}
-                        onChange={(event) => setBufferPoints(event.target.value)}
-                        placeholder={bufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
-                        disabled={orderType !== "LIMIT" || !bufferBy}
-                      />
-                    </div>
-                  </div>
-                  <div className="helper">
-                    Buffer is only used for LIMIT orders. BUY = trigger + buffer, SELL = trigger - buffer.
-                  </div>
+                  {usingTriggerLimitPrice ? (
+                    <>
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderAddLabelWithInfo("market-buffer-by", "Trade buffer by", "tradeBuffer")}
+                          <select
+                            className="select"
+                            id="market-buffer-by"
+                            value={bufferBy}
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              setBufferBy(next);
+                              if (!next) setBufferPoints("");
+                            }}
+                            disabled={!usingTriggerLimitPrice}
+                          >
+                            <option value="">No buffer</option>
+                            <option value="Point">Point</option>
+                            <option value="Percentage">Percentage</option>
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          {renderAddLabelWithInfo("market-buffer-points", "Trade buffer value", "tradeBuffer")}
+                          <input
+                            className="input"
+                            id="market-buffer-points"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={bufferPoints}
+                            onChange={(event) => setBufferPoints(event.target.value)}
+                            placeholder={bufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
+                            disabled={!usingTriggerLimitPrice || !bufferBy}
+                          />
+                        </div>
+                      </div>
+                      <div className="helper">
+                        Buffer is only used with Chartink trigger price. BUY = trigger + buffer, SELL = trigger - buffer.
+                      </div>
+                    </>
+                  ) : null}
 
                   <div className="grid-2">
                     <div className="input-group">
@@ -2757,7 +2847,7 @@ export default function StrategyPage() {
                       {renderVisibilityIcon(showEditMarketMayaToken)}
                     </button>
                   </div>
-                  <div className="helper">Saved token is loaded here. Update it if you want to replace it.</div>
+                  <div className="helper">Saved token is shown here. Update it if you want to replace it.</div>
                 </div>
               ) : null}
 
@@ -3045,6 +3135,7 @@ export default function StrategyPage() {
                         const next = event.target.value;
                         setEditOrderType(next);
                         if (next !== "LIMIT") {
+                          setEditLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
                           setEditLimitPrice("");
                           setEditBufferBy("");
                           setEditBufferPoints("");
@@ -3065,58 +3156,86 @@ export default function StrategyPage() {
               ) : (
                 <>
                   {editOrderType === "LIMIT" ? (
-                    <div className="input-group">
-                      {renderEditLabelWithInfo("edit-market-limit-price", "Limit price", "limitPrice")}
-                      <input
-                        className="input"
-                        id="edit-market-limit-price"
-                        value={editLimitPrice}
-                        onChange={(event) => setEditLimitPrice(event.target.value)}
-                        placeholder="e.g. 123.45"
-                      />
-                      <div className="helper">
-                        If blank, trigger price (plus buffer) is used.
+                    <>
+                      <div className="input-group">
+                        {renderEditLabelWithInfo(
+                          "edit-market-limit-price-source",
+                          "Limit price source",
+                          "limitPriceSource"
+                        )}
+                        <select
+                          className="select"
+                          id="edit-market-limit-price-source"
+                          value={editLimitPriceSource}
+                          onChange={(event) =>
+                            setEditLimitPriceSource(event.target.value as LimitPriceSource)
+                          }
+                        >
+                          <option value="fixed">Fixed limit price</option>
+                          <option value="trigger">Chartink trigger price</option>
+                        </select>
                       </div>
-                    </div>
+                      {editUsingFixedLimitPrice ? (
+                        <div className="input-group">
+                          {renderEditLabelWithInfo("edit-market-limit-price", "Limit price", "limitPrice")}
+                          <input
+                            className="input"
+                            id="edit-market-limit-price"
+                            value={editLimitPrice}
+                            onChange={(event) => setEditLimitPrice(event.target.value)}
+                            placeholder="e.g. 123.45"
+                          />
+                          <div className="helper">This exact price will be sent for the LIMIT order.</div>
+                        </div>
+                      ) : (
+                        <div className="helper">
+                          Chartink payload `trigger_price` will be used for the LIMIT order.
+                        </div>
+                      )}
+                    </>
                   ) : null}
 
-                  <div className="grid-2">
-                    <div className="input-group">
-                      {renderEditLabelWithInfo("edit-market-buffer-by", "Trade buffer by", "tradeBuffer")}
-                      <select
-                        className="select"
-                        id="edit-market-buffer-by"
-                        value={editBufferBy}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setEditBufferBy(next);
-                          if (!next) setEditBufferPoints("");
-                        }}
-                        disabled={editOrderType !== "LIMIT"}
-                      >
-                        <option value="">No buffer</option>
-                        <option value="Point">Point</option>
-                        <option value="Percentage">Percentage</option>
-                      </select>
-                    </div>
-                    <div className="input-group">
-                      {renderEditLabelWithInfo("edit-market-buffer-points", "Trade buffer value", "tradeBuffer")}
-                      <input
-                        className="input"
-                        id="edit-market-buffer-points"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={editBufferPoints}
-                        onChange={(event) => setEditBufferPoints(event.target.value)}
-                        placeholder={editBufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
-                        disabled={editOrderType !== "LIMIT" || !editBufferBy}
-                      />
-                    </div>
-                  </div>
-                  <div className="helper">
-                    Buffer is only used for LIMIT orders. BUY = trigger + buffer, SELL = trigger - buffer.
-                  </div>
+                  {editUsingTriggerLimitPrice ? (
+                    <>
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderEditLabelWithInfo("edit-market-buffer-by", "Trade buffer by", "tradeBuffer")}
+                          <select
+                            className="select"
+                            id="edit-market-buffer-by"
+                            value={editBufferBy}
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              setEditBufferBy(next);
+                              if (!next) setEditBufferPoints("");
+                            }}
+                            disabled={!editUsingTriggerLimitPrice}
+                          >
+                            <option value="">No buffer</option>
+                            <option value="Point">Point</option>
+                            <option value="Percentage">Percentage</option>
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          {renderEditLabelWithInfo("edit-market-buffer-points", "Trade buffer value", "tradeBuffer")}
+                          <input
+                            className="input"
+                            id="edit-market-buffer-points"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editBufferPoints}
+                            onChange={(event) => setEditBufferPoints(event.target.value)}
+                            placeholder={editBufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
+                            disabled={!editUsingTriggerLimitPrice || !editBufferBy}
+                          />
+                        </div>
+                      </div>
+                      <div className="helper">
+                        Buffer is only used with Chartink trigger price. BUY = trigger + buffer, SELL = trigger - buffer.
+                      </div>
+                    </>
+                  ) : null}
 
                   <div className="grid-2">
                     <div className="input-group">
