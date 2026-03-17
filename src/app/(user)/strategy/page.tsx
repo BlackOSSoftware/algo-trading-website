@@ -281,7 +281,8 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     description: "The strategy will execute auto trades only within this time range.",
     points: [
       "The default window is 09:15 to 15:30.",
-      "The time window is checked in the trading timezone (IST by default).",
+      "If the webhook payload includes `triggered_at`, that signal time is used first.",
+      "Otherwise the webhook receive time is checked in the trading timezone (IST by default).",
       "Signals received outside this window are skipped.",
     ],
   },
@@ -2338,7 +2339,9 @@ export default function StrategyPage() {
                   />
                 </div>
                 </div>
-                <div className="helper">Default window is 09:15 to 15:30 (IST by default).</div>
+                <div className="helper">
+                  Default window is 09:15 to 15:30. `triggered_at` is used when Chartink sends it.
+                </div>
 
               <div className="grid-2">
                 <div className="input-group">
@@ -3105,7 +3108,9 @@ export default function StrategyPage() {
                   />
                 </div>
               </div>
-              <div className="helper">Default window is 09:15 to 15:30 (IST by default).</div>
+              <div className="helper">
+                Default window is 09:15 to 15:30. `triggered_at` is used when Chartink sends it.
+              </div>
 
               <div className="grid-2">
                 <div className="input-group">
