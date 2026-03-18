@@ -560,6 +560,60 @@ function resolveLimitPriceSource(value: unknown, limitPriceValue?: unknown): Lim
   return String(limitPriceValue || "").trim() ? "fixed" : "trigger";
 }
 
+function parseTestPayloadObject(payloadText: string) {
+  try {
+    const parsed = JSON.parse(payloadText);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeWebhookStocks(value: unknown) {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map((item) => String(item || "").trim().toUpperCase())
+          .filter(Boolean)
+      )
+    );
+  }
+
+  return Array.from(
+    new Set(
+      String(value || "")
+        .split(",")
+        .map((item) => item.trim().toUpperCase())
+        .filter(Boolean)
+    )
+  );
+}
+
+function applyStocksToTestPayload(
+  payload: Record<string, unknown>,
+  stocks: string[]
+) {
+  const next = { ...payload };
+  const normalizedStocks = normalizeWebhookStocks(stocks);
+  const stocksValue = normalizedStocks.join(",");
+  next.stocks = stocksValue;
+  if ("Stocks" in next) {
+    delete next.Stocks;
+  }
+
+  if ("symbol" in next || "Symbol" in next) {
+    const firstStock = normalizedStocks[0] || "";
+    if ("symbol" in next) next.symbol = firstStock;
+    if ("Symbol" in next) next.Symbol = firstStock;
+  }
+
+  return JSON.stringify(next, null, 2);
+}
+
 function renderVisibilityIcon(visible: boolean) {
   if (visible) {
     return (
@@ -656,6 +710,7 @@ export default function StrategyPage() {
   const [showWebhookTestModal, setShowWebhookTestModal] = useState(false);
   const [testWebhookUrl, setTestWebhookUrl] = useState("");
   const [testPayload, setTestPayload] = useState(DEFAULT_WEBHOOK_TEST_PAYLOAD);
+  const [testStockInput, setTestStockInput] = useState("");
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -713,6 +768,13 @@ export default function StrategyPage() {
       process.env.NEXT_PUBLIC_WEBHOOK_URL || API_BASE_URL;
     return `${base}/api/v1/webhooks`;
   }, []);
+
+  const testPayloadObject = useMemo(() => parseTestPayloadObject(testPayload), [testPayload]);
+
+  const testPayloadStocks = useMemo(
+    () => normalizeWebhookStocks(testPayloadObject?.stocks ?? testPayloadObject?.Stocks),
+    [testPayloadObject]
+  );
 
   const resolveWebhookBase = useCallback(
     (provider: WebhookProvider = "chartink") => `${webhookBaseUrl}/${provider}`,
@@ -1001,6 +1063,7 @@ export default function StrategyPage() {
   ) => {
     setTestWebhookUrl(url);
     setTestPayload(payloadText);
+    setTestStockInput("");
     setTestError(null);
     setTestResult(null);
     setShowWebhookTestModal(true);
@@ -1009,7 +1072,41 @@ export default function StrategyPage() {
   const closeWebhookTester = () => {
     setShowWebhookTestModal(false);
     setTestLoading(false);
+    setTestStockInput("");
   };
+
+  const syncTestPayloadStocks = useCallback(
+    (nextStocks: string[]) => {
+      const parsed = parseTestPayloadObject(testPayload);
+      if (!parsed) {
+        setTestError("Fix JSON payload first, then manage multiple stocks.");
+        return false;
+      }
+
+      setTestPayload(applyStocksToTestPayload(parsed, nextStocks));
+      setTestError((current) =>
+        current === "Fix JSON payload first, then manage multiple stocks." ? null : current
+      );
+      return true;
+    },
+    [testPayload]
+  );
+
+  const handleAddTestStock = useCallback(() => {
+    const nextStock = testStockInput.trim().toUpperCase();
+    if (!nextStock) return;
+    const nextStocks = Array.from(new Set([...testPayloadStocks, nextStock]));
+    if (syncTestPayloadStocks(nextStocks)) {
+      setTestStockInput("");
+    }
+  }, [syncTestPayloadStocks, testPayloadStocks, testStockInput]);
+
+  const handleRemoveTestStock = useCallback(
+    (stock: string) => {
+      syncTestPayloadStocks(testPayloadStocks.filter((item) => item !== stock));
+    },
+    [syncTestPayloadStocks, testPayloadStocks]
+  );
 
   const handleWebhookTest = async () => {
     setTestError(null);
@@ -3729,6 +3826,7 @@ export default function StrategyPage() {
                   type="button"
                   onClick={() => {
                     setTestPayload(DEFAULT_WEBHOOK_TEST_PAYLOAD);
+                    setTestStockInput("");
                     setTestWebhookUrl((current) =>
                       current.trim()
                         ? swapWebhookProviderInUrl(current, "chartink")
@@ -3743,6 +3841,7 @@ export default function StrategyPage() {
                   type="button"
                   onClick={() => {
                     setTestPayload(DEFAULT_TRADINGVIEW_TEST_PAYLOAD);
+                    setTestStockInput("");
                     setTestWebhookUrl((current) =>
                       current.trim()
                         ? swapWebhookProviderInUrl(current, "tradingview")
@@ -3752,6 +3851,59 @@ export default function StrategyPage() {
                 >
                   Load TradingView sample
                 </button>
+              </div>
+              <div className="input-group stock-builder-group">
+                <label className="label" htmlFor="test-stock-input">
+                  Multiple stocks
+                </label>
+                <div className="token-field">
+                  <input
+                    className="input"
+                    id="test-stock-input"
+                    value={testStockInput}
+                    onChange={(event) => setTestStockInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleAddTestStock();
+                      }
+                    }}
+                    placeholder="Type stock name like RELIANCE"
+                    disabled={!testPayloadObject}
+                  />
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={handleAddTestStock}
+                    disabled={!testPayloadObject || !testStockInput.trim()}
+                  >
+                    + Add
+                  </button>
+                </div>
+                <div className="helper">
+                  Added names are synced to the `stocks` key in JSON automatically.
+                </div>
+                {!testPayloadObject ? (
+                  <div className="helper">Fix the JSON payload first to use the stock builder.</div>
+                ) : testPayloadStocks.length > 0 ? (
+                  <div className="stock-chip-list">
+                    {testPayloadStocks.map((stock) => (
+                      <span className="stock-chip" key={stock}>
+                        <span>{stock}</span>
+                        <button
+                          className="stock-chip-remove"
+                          type="button"
+                          onClick={() => handleRemoveTestStock(stock)}
+                          aria-label={`Remove ${stock}`}
+                        >
+                          x
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="helper">No stocks added yet.</div>
+                )}
               </div>
               <label className="label" htmlFor="test-webhook-payload">
                 Test payload (JSON)
