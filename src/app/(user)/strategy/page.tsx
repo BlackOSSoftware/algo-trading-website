@@ -17,6 +17,7 @@ type Strategy = {
     segment?: string;
     symbolMode?: string;
     symbolKey?: string;
+    symbols?: string[];
     maxSymbols?: number | string;
     callTypeFallback?: string;
     contract?: string;
@@ -183,6 +184,7 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     points: [
       "`Stocks: first only` uses only the first symbol from the `stocks` list.",
       "`Stocks: all` uses all comma-separated symbols.",
+      "`Fixed stocks list` uses symbols saved from this strategy form.",
       "`Symbol field` reads symbols from a custom payload key.",
     ],
   },
@@ -201,6 +203,15 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     points: [
       "Example: `symbol`, `ticker`, `stock_name`.",
       "This is used only in `Symbol field` mode.",
+    ],
+  },
+  fixedStocks: {
+    title: "Fixed Stocks List",
+    description: "Use this list when you want to define stock names directly from the strategy settings.",
+    points: [
+      "Type one stock name and click Add.",
+      "The saved list is used when Symbol source is `Fixed stocks list`.",
+      "This works well when you want symbols from your side instead of webhook payload.",
     ],
   },
   instrumentSetup: {
@@ -672,6 +683,8 @@ export default function StrategyPage() {
   const [symbolMode, setSymbolMode] = useState("stocksFirst");
   const [symbolKey, setSymbolKey] = useState("symbol");
   const [maxSymbols, setMaxSymbols] = useState("");
+  const [manualSymbols, setManualSymbols] = useState<string[]>([]);
+  const [manualSymbolInput, setManualSymbolInput] = useState("");
   const [callTypeFallback, setCallTypeFallback] = useState("");
   const [orderType, setOrderType] = useState("MARKET");
   const [limitPriceSource, setLimitPriceSource] =
@@ -734,6 +747,8 @@ export default function StrategyPage() {
   const [editSymbolMode, setEditSymbolMode] = useState("stocksFirst");
   const [editSymbolKey, setEditSymbolKey] = useState("symbol");
   const [editMaxSymbols, setEditMaxSymbols] = useState("");
+  const [editManualSymbols, setEditManualSymbols] = useState<string[]>([]);
+  const [editManualSymbolInput, setEditManualSymbolInput] = useState("");
   const [editCallTypeFallback, setEditCallTypeFallback] = useState("");
   const [editOrderType, setEditOrderType] = useState("MARKET");
   const [editLimitPriceSource, setEditLimitPriceSource] =
@@ -1108,6 +1123,28 @@ export default function StrategyPage() {
     [syncTestPayloadStocks, testPayloadStocks]
   );
 
+  const handleAddManualSymbol = useCallback(() => {
+    const nextSymbol = manualSymbolInput.trim().toUpperCase();
+    if (!nextSymbol) return;
+    setManualSymbols((current) => Array.from(new Set([...current, nextSymbol])));
+    setManualSymbolInput("");
+  }, [manualSymbolInput]);
+
+  const handleRemoveManualSymbol = useCallback((stock: string) => {
+    setManualSymbols((current) => current.filter((item) => item !== stock));
+  }, []);
+
+  const handleAddEditManualSymbol = useCallback(() => {
+    const nextSymbol = editManualSymbolInput.trim().toUpperCase();
+    if (!nextSymbol) return;
+    setEditManualSymbols((current) => Array.from(new Set([...current, nextSymbol])));
+    setEditManualSymbolInput("");
+  }, [editManualSymbolInput]);
+
+  const handleRemoveEditManualSymbol = useCallback((stock: string) => {
+    setEditManualSymbols((current) => current.filter((item) => item !== stock));
+  }, []);
+
   const handleWebhookTest = async () => {
     setTestError(null);
     setTestResult(null);
@@ -1300,11 +1337,23 @@ export default function StrategyPage() {
         return;
       }
 
+      const normalizedManualSymbols =
+        symbolMode === "manualList"
+          ? normalizeWebhookStocks([...manualSymbols, manualSymbolInput])
+          : [];
+      if (symbolMode === "manualList" && normalizedManualSymbols.length === 0) {
+        setError("Add at least one stock in Fixed stocks list.");
+        return;
+      }
+
       const token = getToken();
       const marketMaya: Record<string, unknown> = {
         exchange,
         segment,
         symbolMode,
+        ...(symbolMode === "manualList" && normalizedManualSymbols.length
+          ? { symbols: normalizedManualSymbols }
+          : {}),
         ...(derivativeSegmentSelected && expiryMode === "contract"
           ? { contract, expiry }
           : {}),
@@ -1319,7 +1368,7 @@ export default function StrategyPage() {
         ...(symbolMode === "payloadSymbol" && symbolKey.trim()
           ? { symbolKey: symbolKey.trim() }
           : {}),
-        ...(symbolMode !== "stocksFirst" && maxSymbols.trim()
+        ...(symbolMode !== "stocksFirst" && symbolMode !== "manualList" && maxSymbols.trim()
           ? { maxSymbols: maxSymbols.trim() }
           : {}),
         ...(callTypeFallback ? { callTypeFallback } : {}),
@@ -1399,6 +1448,8 @@ export default function StrategyPage() {
       setSymbolMode("stocksFirst");
       setSymbolKey("symbol");
       setMaxSymbols("");
+      setManualSymbols([]);
+      setManualSymbolInput("");
       setCallTypeFallback("");
       setOrderType("MARKET");
       setLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
@@ -1460,6 +1511,8 @@ export default function StrategyPage() {
     setEditSymbolMode(mm.symbolMode || "stocksFirst");
     setEditSymbolKey(mm.symbolKey || "symbol");
     setEditMaxSymbols(mm.maxSymbols ? String(mm.maxSymbols) : "");
+    setEditManualSymbols(normalizeWebhookStocks(mm.symbols || ""));
+    setEditManualSymbolInput("");
     setEditCallTypeFallback(mm.callTypeFallback || "");
     setEditOrderType(mm.orderType || "MARKET");
     setEditLimitPriceSource(resolveLimitPriceSource(mm.limitPriceSource, mm.limitPrice));
@@ -1532,6 +1585,8 @@ export default function StrategyPage() {
     setEditSymbolMode("stocksFirst");
     setEditSymbolKey("symbol");
     setEditMaxSymbols("");
+    setEditManualSymbols([]);
+    setEditManualSymbolInput("");
     setEditCallTypeFallback("");
     setEditOrderType("MARKET");
     setEditLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
@@ -1688,7 +1743,29 @@ export default function StrategyPage() {
         return;
       }
 
+      const normalizedEditManualSymbols =
+        editSymbolMode === "manualList"
+          ? normalizeWebhookStocks([...editManualSymbols, editManualSymbolInput])
+          : [];
+      if (editSymbolMode === "manualList" && normalizedEditManualSymbols.length === 0) {
+        setError("Add at least one stock in Fixed stocks list.");
+        return;
+      }
+
       const marketMayaClear = new Set<string>();
+      if (editSymbolMode !== "payloadSymbol" || !editSymbolKey.trim()) {
+        marketMayaClear.add("symbolKey");
+      }
+      if (editSymbolMode !== "manualList" || normalizedEditManualSymbols.length === 0) {
+        marketMayaClear.add("symbols");
+      }
+      if (
+        editSymbolMode === "stocksFirst" ||
+        editSymbolMode === "manualList" ||
+        !editMaxSymbols.trim()
+      ) {
+        marketMayaClear.add("maxSymbols");
+      }
       if (editExitFallbackSelected || editOrderType !== "LIMIT") {
         marketMayaClear.add("limitPriceSource");
         marketMayaClear.add("limitPrice");
@@ -1760,6 +1837,9 @@ export default function StrategyPage() {
         exchange: editExchange,
         segment: editSegment,
         symbolMode: editSymbolMode,
+        ...(editSymbolMode === "manualList" && normalizedEditManualSymbols.length
+          ? { symbols: normalizedEditManualSymbols }
+          : {}),
         ...(editDerivativeSegmentSelected && editExpiryMode === "contract"
           ? { contract: editContract, expiry: editExpiry }
           : {}),
@@ -1776,7 +1856,9 @@ export default function StrategyPage() {
         ...(editSymbolMode === "payloadSymbol" && editSymbolKey.trim()
           ? { symbolKey: editSymbolKey.trim() }
           : {}),
-        ...(editSymbolMode !== "stocksFirst" && editMaxSymbols.trim()
+        ...(editSymbolMode !== "stocksFirst" &&
+        editSymbolMode !== "manualList" &&
+        editMaxSymbols.trim()
           ? { maxSymbols: editMaxSymbols.trim() }
           : {}),
         ...(editCallTypeFallback ? { callTypeFallback: editCallTypeFallback } : {}),
@@ -2301,6 +2383,7 @@ export default function StrategyPage() {
                   >
                     <option value="stocksFirst">Stocks: first only</option>
                     <option value="stocksAll">Stocks: all (comma-separated)</option>
+                    <option value="manualList">Fixed stocks list</option>
                     <option value="payloadSymbol">Symbol field (comma-separated)</option>
                   </select>
                 </div>
@@ -2315,11 +2398,64 @@ export default function StrategyPage() {
                     value={maxSymbols}
                     onChange={(event) => setMaxSymbols(event.target.value)}
                     placeholder="5"
-                    disabled={symbolMode === "stocksFirst"}
+                    disabled={symbolMode === "stocksFirst" || symbolMode === "manualList"}
                   />
-                  <div className="helper">Up to 25. Leave blank for default 5.</div>
+                  <div className="helper">
+                    Up to 25. Used only when webhook sends multiple symbols.
+                  </div>
                 </div>
               </div>
+
+              {symbolMode === "manualList" ? (
+                <div className="input-group stock-builder-group">
+                  {renderAddLabelWithInfo("fixed-stock-input", "Fixed stocks list", "fixedStocks")}
+                  <div className="token-field">
+                    <input
+                      className="input"
+                      id="fixed-stock-input"
+                      value={manualSymbolInput}
+                      onChange={(event) => setManualSymbolInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleAddManualSymbol();
+                        }
+                      }}
+                      placeholder="Type stock name like RELIANCE"
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      onClick={handleAddManualSymbol}
+                      disabled={!manualSymbolInput.trim()}
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  <div className="helper">
+                    Added names are saved with this strategy and used from your side.
+                  </div>
+                  {manualSymbols.length > 0 ? (
+                    <div className="stock-chip-list">
+                      {manualSymbols.map((stock) => (
+                        <span className="stock-chip" key={stock}>
+                          <span>{stock}</span>
+                          <button
+                            className="stock-chip-remove"
+                            type="button"
+                            onClick={() => handleRemoveManualSymbol(stock)}
+                            aria-label={`Remove ${stock}`}
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="helper">No fixed stocks added yet.</div>
+                  )}
+                </div>
+              ) : null}
 
               {symbolMode === "payloadSymbol" ? (
                 <div className="input-group">
@@ -3088,6 +3224,7 @@ export default function StrategyPage() {
                   >
                     <option value="stocksFirst">Stocks: first only</option>
                     <option value="stocksAll">Stocks: all (comma-separated)</option>
+                    <option value="manualList">Fixed stocks list</option>
                     <option value="payloadSymbol">Symbol field (comma-separated)</option>
                   </select>
                 </div>
@@ -3102,11 +3239,64 @@ export default function StrategyPage() {
                     value={editMaxSymbols}
                     onChange={(event) => setEditMaxSymbols(event.target.value)}
                     placeholder="5"
-                    disabled={editSymbolMode === "stocksFirst"}
+                    disabled={editSymbolMode === "stocksFirst" || editSymbolMode === "manualList"}
                   />
-                  <div className="helper">Up to 25. Leave blank for default 5.</div>
+                  <div className="helper">
+                    Up to 25. Used only when webhook sends multiple symbols.
+                  </div>
                 </div>
               </div>
+
+              {editSymbolMode === "manualList" ? (
+                <div className="input-group stock-builder-group">
+                  {renderEditLabelWithInfo("edit-fixed-stock-input", "Fixed stocks list", "fixedStocks")}
+                  <div className="token-field">
+                    <input
+                      className="input"
+                      id="edit-fixed-stock-input"
+                      value={editManualSymbolInput}
+                      onChange={(event) => setEditManualSymbolInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleAddEditManualSymbol();
+                        }
+                      }}
+                      placeholder="Type stock name like RELIANCE"
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      onClick={handleAddEditManualSymbol}
+                      disabled={!editManualSymbolInput.trim()}
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  <div className="helper">
+                    Added names stay saved with this strategy and are reused on trigger.
+                  </div>
+                  {editManualSymbols.length > 0 ? (
+                    <div className="stock-chip-list">
+                      {editManualSymbols.map((stock) => (
+                        <span className="stock-chip" key={stock}>
+                          <span>{stock}</span>
+                          <button
+                            className="stock-chip-remove"
+                            type="button"
+                            onClick={() => handleRemoveEditManualSymbol(stock)}
+                            aria-label={`Remove ${stock}`}
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="helper">No fixed stocks added yet.</div>
+                  )}
+                </div>
+              ) : null}
 
               {editSymbolMode === "payloadSymbol" ? (
                 <div className="input-group">
