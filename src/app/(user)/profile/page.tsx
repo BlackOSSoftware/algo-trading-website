@@ -29,9 +29,6 @@ export default function ProfilePage() {
           <div className="page-title">Profile</div>
           <div className="helper">Manage account and notification settings</div>
         </div>
-        <button className="btn btn-primary" type="button">
-          Save changes
-        </button>
       </div>
 
       <div className="grid-2">

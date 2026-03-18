@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "@/components/BrandLogo";
 import LoginWelcomeModal from "@/components/LoginWelcomeModal";
 import { clearToken } from "@/lib/auth";
 import { consumeLoginWelcomePending } from "@/lib/loginWelcome";
@@ -142,7 +143,7 @@ export default function UserShell({
       <aside className={`sidebar${navOpen ? " open" : ""}`}>
         <div className="sidebar-top">
           <div className="brand">
-            <div className="brand-mark">WT</div>
+            <BrandLogo />
             <div>
               <div className="brand-title">User Portal</div>
               <div className="brand-sub">Alerts and strategies</div>
@@ -207,9 +208,6 @@ export default function UserShell({
                 Track alerts and keep strategies in sync
               </div>
             </div>
-          </div>
-          <div className="topbar-actions">
-            <div className="status-pill">Live Feed</div>
           </div>
         </header>
         <main className="content">{children}</main>

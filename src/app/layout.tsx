@@ -13,8 +13,37 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Webhook Trigger Algo",
-  description: "Chartink alert intake and trading strategy dashboard",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://emotionlesstraders.com"),
+  title: "Emotionless Traders | Trading Signals via Chartink & TradingView Webhooks",
+  description:
+    "Get real-time trading signals using Chartink alerts and TradingView webhook integration. Built for speed, accuracy, and disciplined trading.",
+  icons: {
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/apple-icon.png",
+  },
+  keywords: [
+    "trading signals",
+    "chartink alerts",
+    "webhook trading",
+    "tradingview alerts",
+    "algo signals",
+  ],
+  openGraph: {
+    title: "Emotionless Traders | Trading Signals via Chartink & TradingView Webhooks",
+    description:
+      "Get real-time trading signals using Chartink alerts and TradingView webhook integration. Built for speed, accuracy, and disciplined trading.",
+    type: "website",
+    siteName: "Emotionless Traders",
+    images: ["/logo.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Emotionless Traders | Trading Signals via Chartink & TradingView Webhooks",
+    description:
+      "Get real-time trading signals using Chartink alerts and TradingView webhook integration. Built for speed, accuracy, and disciplined trading.",
+    images: ["/logo.png"],
+  },
 };
 
 export const viewport: Viewport = {

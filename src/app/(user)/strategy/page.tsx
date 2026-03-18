@@ -71,6 +71,7 @@ type InfoContent = {
 };
 
 type LimitPriceSource = "fixed" | "trigger";
+type WebhookProvider = "chartink" | "tradingview";
 
 type InfoButtonVariant = "inline" | "chip";
 
@@ -81,6 +82,19 @@ const DEFAULT_WEBHOOK_TEST_PAYLOAD = JSON.stringify(
     scan_name: "Chartink Scanner",
     stocks: "RELIANCE",
     trigger_price: 300,
+  },
+  null,
+  2
+);
+const DEFAULT_TRADINGVIEW_TEST_PAYLOAD = JSON.stringify(
+  {
+    alert_name: "TradingView Alert",
+    scan_name: "TradingView Strategy",
+    symbol: "RELIANCE",
+    stocks: "RELIANCE",
+    trigger_price: 300,
+    call_type: "BUY",
+    triggered_at: "09:20:00",
   },
   null,
   2
@@ -134,7 +148,7 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     title: "Saved Strategies",
     description: "This section lists all saved webhook strategies and shows their current status.",
     points: [
-      "Use Copy Webhook to copy the Chartink URL.",
+      "Copy either the Chartink URL or the TradingView URL.",
       "Enable or Disable turns auto trading on or off.",
       "Edit updates the strategy configuration.",
     ],
@@ -450,17 +464,18 @@ const INFO_CONTENT: Record<string, InfoContent> = {
   },
   webhookUrl: {
     title: "Webhook URL",
-    description: "This is the URL you paste into Chartink or any other webhook sender.",
+    description: "Use the same strategy key with either the Chartink or the TradingView webhook URL.",
     points: [
       "Each strategy can have its own unique webhook key.",
       "The existing webhook key can stay the same when you edit the strategy.",
+      "TradingView can send the same JSON fields used by Chartink-compatible payloads.",
     ],
   },
   testWebhook: {
     title: "Test Webhook",
-    description: "Use this modal to test the strategy webhook by sending a sample payload.",
+    description: "Use this modal to test either the Chartink or the TradingView webhook with sample JSON.",
     points: [
-      "Paste a Chartink-like JSON payload.",
+      "Choose the sample payload closest to your sender.",
       "The response status and body are shown here.",
     ],
   },
@@ -693,11 +708,16 @@ export default function StrategyPage() {
   const [showEditInfoButtons, setShowEditInfoButtons] = useState(true);
   const [activeInfoKey, setActiveInfoKey] = useState<string | null>(null);
 
-  const webhookBase = useMemo(() => {
+  const webhookBaseUrl = useMemo(() => {
     const base =
       process.env.NEXT_PUBLIC_WEBHOOK_URL || API_BASE_URL;
-    return `${base}/api/v1/webhooks/chartink`;
+    return `${base}/api/v1/webhooks`;
   }, []);
+
+  const resolveWebhookBase = useCallback(
+    (provider: WebhookProvider = "chartink") => `${webhookBaseUrl}/${provider}`,
+    [webhookBaseUrl]
+  );
 
   const normalizeId = useCallback((value: unknown) => {
     if (!value) return "";
@@ -885,16 +905,33 @@ export default function StrategyPage() {
   const renderEditTitleWithInfo = (title: string, infoKey: string, style?: React.CSSProperties) =>
     renderTitleWithInfo(title, infoKey, style, showEditInfoButtons);
 
-  const resolveWebhookUrl = (item?: Strategy | null) => {
-    if (!item) return webhookBase;
-    if (item.webhookPath) {
-      return `${webhookBase}${item.webhookPath.replace("/api/v1/webhooks/chartink", "")}`;
-    }
-    if (item.webhookKey) {
-      return `${webhookBase}?key=${item.webhookKey}`;
-    }
-    return webhookBase;
-  };
+  const swapWebhookProviderInUrl = useCallback(
+    (url: string, provider: WebhookProvider) => {
+      const trimmed = url.trim();
+      if (!trimmed) return resolveWebhookBase(provider);
+      return trimmed.replace(/\/api\/v1\/webhooks\/(chartink|tradingview)/i, `/api/v1/webhooks/${provider}`);
+    },
+    [resolveWebhookBase]
+  );
+
+  const resolveWebhookUrl = useCallback(
+    (item?: Strategy | null, provider: WebhookProvider = "chartink") => {
+      const base = resolveWebhookBase(provider);
+      if (!item) return base;
+      if (item.webhookPath) {
+        const normalizedPath = String(item.webhookPath).replace(
+          "/api/v1/webhooks/chartink",
+          `/api/v1/webhooks/${provider}`
+        );
+        return `${base}${normalizedPath.replace(`/api/v1/webhooks/${provider}`, "")}`;
+      }
+      if (item.webhookKey) {
+        return `${base}?key=${item.webhookKey}`;
+      }
+      return base;
+    },
+    [resolveWebhookBase]
+  );
 
   const openAdd = () => {
     setShowAddInfoButtons(true);
@@ -958,8 +995,12 @@ export default function StrategyPage() {
     loadProfile();
   }, [loadProfile, loadStrategies, loadTokens]);
 
-  const openWebhookTester = (url: string) => {
+  const openWebhookTester = (
+    url: string,
+    payloadText = DEFAULT_WEBHOOK_TEST_PAYLOAD
+  ) => {
     setTestWebhookUrl(url);
+    setTestPayload(payloadText);
     setTestError(null);
     setTestResult(null);
     setShowWebhookTestModal(true);
@@ -1029,6 +1070,9 @@ export default function StrategyPage() {
 
   const showModalError = Boolean(error) && (showModal || editing);
   const showPageError = Boolean(error) && !showModalError;
+  const recentTradingViewWebhookUrl = recentWebhookUrl
+    ? swapWebhookProviderInUrl(recentWebhookUrl, "tradingview")
+    : null;
 
   const isRatioTarget = useTarget && targetBy === "Ratio";
   const activeSl = useStopLoss ? sl : "";
@@ -1221,7 +1265,7 @@ export default function StrategyPage() {
       };
       const payload: Record<string, unknown> = {
         name,
-        webhookUrl: webhookBase,
+        webhookUrl: resolveWebhookBase("chartink"),
         enabled,
         emailEnabled,
         telegramEnabled,
@@ -1869,39 +1913,75 @@ export default function StrategyPage() {
       {message ? <div className="alert alert-success">{message}</div> : null}
       {recentWebhookUrl ? (
         <div className="card">
-          <div className="page-title">Webhook URL ready</div>
+          <div className="page-title">Webhook URLs ready</div>
           <div className="helper">
-            Use this URL in Chartink for{" "}
+            Use these URLs in Chartink or TradingView for{" "}
             {recentStrategyName ? `"${recentStrategyName}"` : "your strategy"}.
           </div>
-          <div className="list-item" style={{ justifyContent: "space-between", marginTop: "12px" }}>
-            <code className="mono">{recentWebhookUrl}</code>
-            <div className="cta-row" style={{ gap: "8px" }}>
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => copyToClipboard(recentWebhookUrl)}
-              >
-                Copy
-              </button>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={() => openWebhookTester(recentWebhookUrl)}
-              >
-                Test
-              </button>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={() => {
-                  setRecentWebhookUrl(null);
-                  setRecentStrategyName(null);
-                }}
-              >
-                Dismiss
-              </button>
+          <div className="list" style={{ marginTop: "12px" }}>
+            <div className="list-item" style={{ justifyContent: "space-between" }}>
+              <div>
+                <div><strong>Chartink</strong></div>
+                <code className="mono">{recentWebhookUrl}</code>
+              </div>
+              <div className="cta-row" style={{ gap: "8px" }}>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => copyToClipboard(recentWebhookUrl)}
+                >
+                  Copy
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={() => openWebhookTester(recentWebhookUrl, DEFAULT_WEBHOOK_TEST_PAYLOAD)}
+                >
+                  Test
+                </button>
+              </div>
             </div>
+            {recentTradingViewWebhookUrl ? (
+              <div className="list-item" style={{ justifyContent: "space-between" }}>
+                <div>
+                  <div><strong>TradingView</strong></div>
+                  <code className="mono">{recentTradingViewWebhookUrl}</code>
+                </div>
+                <div className="cta-row" style={{ gap: "8px" }}>
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => copyToClipboard(recentTradingViewWebhookUrl)}
+                  >
+                    Copy
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() =>
+                      openWebhookTester(
+                        recentTradingViewWebhookUrl,
+                        DEFAULT_TRADINGVIEW_TEST_PAYLOAD
+                      )
+                    }
+                  >
+                    Test
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="cta-row" style={{ gap: "8px", marginTop: "12px" }}>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={() => {
+                setRecentWebhookUrl(null);
+                setRecentStrategyName(null);
+              }}
+            >
+              Dismiss
+            </button>
           </div>
         </div>
       ) : null}
@@ -1976,17 +2056,40 @@ export default function StrategyPage() {
                     className="btn btn-ghost"
                     type="button"
                     onClick={() => {
-                      copyToClipboard(resolveWebhookUrl(item));
+                      copyToClipboard(resolveWebhookUrl(item, "chartink"));
                     }}
                   >
-                    Copy Webhook
+                    Copy Chartink
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => {
+                      copyToClipboard(resolveWebhookUrl(item, "tradingview"));
+                    }}
+                  >
+                    Copy TV
                   </button>
                   <button
                     className="btn btn-secondary"
                     type="button"
-                    onClick={() => openWebhookTester(resolveWebhookUrl(item))}
+                    onClick={() =>
+                      openWebhookTester(resolveWebhookUrl(item, "chartink"), DEFAULT_WEBHOOK_TEST_PAYLOAD)
+                    }
                   >
-                    Test
+                    Test Chartink
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() =>
+                      openWebhookTester(
+                        resolveWebhookUrl(item, "tradingview"),
+                        DEFAULT_TRADINGVIEW_TEST_PAYLOAD
+                      )
+                    }
+                  >
+                    Test TV
                   </button>
                   <button
                     className="btn btn-secondary"
@@ -2800,17 +2903,35 @@ export default function StrategyPage() {
                   <label className="label">Webhook URL</label>
                   {renderInfoButton("webhookUrl", "inline", showEditInfoButtons)}
                 </div>
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <code className="mono">{resolveWebhookUrl(editing)}</code>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    onClick={() => copyToClipboard(resolveWebhookUrl(editing))}
-                  >
-                    Copy
-                  </button>
+                <div className="list" style={{ gap: "10px" }}>
+                  <div className="list-item" style={{ justifyContent: "space-between" }}>
+                    <div>
+                      <div><strong>Chartink</strong></div>
+                      <code className="mono">{resolveWebhookUrl(editing, "chartink")}</code>
+                    </div>
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => copyToClipboard(resolveWebhookUrl(editing, "chartink"))}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <div className="list-item" style={{ justifyContent: "space-between" }}>
+                    <div>
+                      <div><strong>TradingView</strong></div>
+                      <code className="mono">{resolveWebhookUrl(editing, "tradingview")}</code>
+                    </div>
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => copyToClipboard(resolveWebhookUrl(editing, "tradingview"))}
+                    >
+                      Copy
+                    </button>
+                  </div>
                 </div>
-                <div className="helper">Webhook key stays the same.</div>
+                <div className="helper">Webhook key stays the same for both providers.</div>
               </div>
 
               <div className="input-group">
@@ -3579,7 +3700,7 @@ export default function StrategyPage() {
           <div className="modal card" onClick={(event) => event.stopPropagation()}>
             {renderTitleWithInfo("Test webhook", "testWebhook")}
             <div className="helper" style={{ marginTop: "8px" }}>
-              Paste Chartink-like payload and click test to verify strategy webhook.
+              Paste Chartink-like or TradingView JSON payload and click test to verify strategy webhook.
             </div>
 
             {testError ? (
@@ -3597,11 +3718,41 @@ export default function StrategyPage() {
                 id="test-webhook-url"
                 value={testWebhookUrl}
                 onChange={(event) => setTestWebhookUrl(event.target.value)}
-                placeholder="https://.../api/v1/webhooks/chartink?key=..."
+                placeholder="https://.../api/v1/webhooks/chartink?key=... or /tradingview?key=..."
               />
             </div>
 
             <div className="input-group">
+              <div className="cta-row" style={{ gap: "8px", marginBottom: "8px" }}>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => {
+                    setTestPayload(DEFAULT_WEBHOOK_TEST_PAYLOAD);
+                    setTestWebhookUrl((current) =>
+                      current.trim()
+                        ? swapWebhookProviderInUrl(current, "chartink")
+                        : resolveWebhookBase("chartink")
+                    );
+                  }}
+                >
+                  Load Chartink sample
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => {
+                    setTestPayload(DEFAULT_TRADINGVIEW_TEST_PAYLOAD);
+                    setTestWebhookUrl((current) =>
+                      current.trim()
+                        ? swapWebhookProviderInUrl(current, "tradingview")
+                        : resolveWebhookBase("tradingview")
+                    );
+                  }}
+                >
+                  Load TradingView sample
+                </button>
+              </div>
               <label className="label" htmlFor="test-webhook-payload">
                 Test payload (JSON)
               </label>
@@ -3613,7 +3764,7 @@ export default function StrategyPage() {
                 onChange={(event) => setTestPayload(event.target.value)}
               />
               <div className="helper">
-                Example keys: `alert_name`, `scan_name`, `stocks`, `trigger_price`. Optional: `call_type` (strategy fallback is used when missing).
+                Example keys: `alert_name`, `scan_name`, `stocks` or `symbol`, `trigger_price`, optional `call_type`.
               </div>
             </div>
 
