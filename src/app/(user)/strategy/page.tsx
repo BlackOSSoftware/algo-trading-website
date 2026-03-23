@@ -16,8 +16,15 @@ type Strategy = {
     exchange?: string;
     segment?: string;
     symbolMode?: string;
+    symbol_mode?: string;
+    symbolSource?: string;
+    symbol_source?: string;
     symbolKey?: string;
     symbols?: string[];
+    stockList?: string[] | string;
+    stock_list?: string[] | string;
+    fixedStocks?: string[] | string;
+    fixed_stocks?: string[] | string;
     maxSymbols?: number | string;
     callTypeFallback?: string;
     contract?: string;
@@ -601,6 +608,48 @@ function normalizeWebhookStocks(value: unknown) {
         .map((item) => item.trim().toUpperCase())
         .filter(Boolean)
     )
+  );
+}
+
+function normalizeStoredSymbolMode(value: unknown, fallback = "stocksFirst") {
+  const compact = String(value || "").trim().replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (!compact) return fallback;
+  if (compact === "stocksfirst" || compact === "firststock" || compact === "firststocks") {
+    return "stocksFirst";
+  }
+  if (compact === "stocksall" || compact === "allstocks") {
+    return "stocksAll";
+  }
+  if (
+    compact === "payloadsymbol" ||
+    compact === "payloadsymbols" ||
+    compact === "symbolfield" ||
+    compact === "customsymbol"
+  ) {
+    return "payloadSymbol";
+  }
+  if (
+    compact === "manuallist" ||
+    compact === "manualstocks" ||
+    compact === "manualstocklist" ||
+    compact === "fixedstocks" ||
+    compact === "fixedstockslist" ||
+    compact === "stocklist" ||
+    compact === "whitelist"
+  ) {
+    return "manualList";
+  }
+  return fallback;
+}
+
+function getStoredManualSymbols(config: Strategy["marketMaya"]) {
+  return normalizeWebhookStocks(
+    config?.symbols ??
+      config?.stockList ??
+      config?.stock_list ??
+      config?.fixedStocks ??
+      config?.fixed_stocks ??
+      ""
   );
 }
 
@@ -1508,10 +1557,16 @@ export default function StrategyPage() {
     setEditStrikeMode(mm.strikePrice ? "strike" : "atm");
     setEditAtm(mm.atm || DEFAULT_ATM);
     setEditStrikePrice(mm.strikePrice || "");
-    setEditSymbolMode(mm.symbolMode || "stocksFirst");
+    const storedManualSymbols = getStoredManualSymbols(mm);
+    setEditSymbolMode(
+      normalizeStoredSymbolMode(
+        mm.symbolMode ?? mm.symbol_mode ?? mm.symbolSource ?? mm.symbol_source,
+        storedManualSymbols.length > 0 ? "manualList" : "stocksFirst"
+      )
+    );
     setEditSymbolKey(mm.symbolKey || "symbol");
     setEditMaxSymbols(mm.maxSymbols ? String(mm.maxSymbols) : "");
-    setEditManualSymbols(normalizeWebhookStocks(mm.symbols || ""));
+    setEditManualSymbols(storedManualSymbols);
     setEditManualSymbolInput("");
     setEditCallTypeFallback(mm.callTypeFallback || "");
     setEditOrderType(mm.orderType || "MARKET");
