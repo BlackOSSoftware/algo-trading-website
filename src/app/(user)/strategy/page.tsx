@@ -36,6 +36,13 @@ type Strategy = {
     orderType?: string;
     limitPriceSource?: "fixed" | "trigger" | string;
     limitPrice?: string;
+    mStockApiType?: string;
+    mStockApiKey?: string;
+    mStockAuthToken?: string;
+    mStockExchange?: string;
+    mStockInstrumentToken?: string;
+    mStockInterval?: string;
+    mStockCandleOffset?: number | string;
     bufferBy?: string;
     bufferValue?: number | string;
     bufferPoints?: number | string;
@@ -78,7 +85,7 @@ type InfoContent = {
   points?: string[];
 };
 
-type LimitPriceSource = "fixed" | "trigger";
+type LimitPriceSource = "fixed" | "trigger" | "mstockHigh" | "mstockLow";
 type WebhookProvider = "chartink" | "tradingview";
 
 type InfoButtonVariant = "inline" | "chip";
@@ -138,6 +145,23 @@ const DEFAULT_EXPIRY = "MONTHLY";
 const DEFAULT_OPTION_TYPE = "CE";
 const DEFAULT_ATM = "0";
 const DEFAULT_LIMIT_PRICE_SOURCE: LimitPriceSource = "fixed";
+const DEFAULT_MSTOCK_API_TYPE = "typeB";
+const DEFAULT_MSTOCK_INTERVAL = "5minute";
+const DEFAULT_MSTOCK_CANDLE_OFFSET = "1";
+const M_STOCK_API_TYPE_OPTIONS = [
+  { value: "typeA", label: "Type A" },
+  { value: "typeB", label: "Type B" },
+];
+const M_STOCK_INTERVAL_OPTIONS = [
+  { value: "minute", label: "1 minute" },
+  { value: "3minute", label: "3 minute" },
+  { value: "5minute", label: "5 minute" },
+  { value: "10minute", label: "10 minute" },
+  { value: "15minute", label: "15 minute" },
+  { value: "30minute", label: "30 minute" },
+  { value: "60minute", label: "60 minute" },
+  { value: "day", label: "1 day" },
+];
 const CONTRACT_OPTIONS = ["NEAR", "NEXT", "FAR"];
 const FUT_EXPIRY_OPTIONS = ["MONTHLY"];
 const OPT_EXPIRY_OPTIONS = ["WEEKLY", "MONTHLY"];
@@ -347,18 +371,76 @@ const INFO_CONTENT: Record<string, InfoContent> = {
   },
   limitPriceSource: {
     title: "Limit Price Source",
-    description: "Choose whether LIMIT order price should come from a fixed value or the Chartink webhook trigger price.",
+    description: "Choose whether LIMIT order price should come from a fixed value, the webhook trigger price, or the latest mStock candle high/low.",
     points: [
       "Fixed limit price sends the exact price you enter.",
       "Chartink trigger price uses payload trigger_price, and buffer can adjust it.",
+      "mStock candle high/low fetches candle data from your configured mStock API instrument.",
+    ],
+  },
+  mStockApiType: {
+    title: "mStock API Type",
+    description: "Select the same API type that you generated in your mStock developer panel.",
+    points: [
+      "Type A uses API key + access token headers.",
+      "Type B uses API key + JWT token headers.",
+    ],
+  },
+  mStockApiKey: {
+    title: "mStock API Key",
+    description: "Paste the active mStock API key used for candle data requests.",
+    points: [
+      "Use the key from your mStock Trading API dashboard.",
+      "If you shared a key publicly, revoke and regenerate it first.",
+    ],
+  },
+  mStockAuthToken: {
+    title: "mStock Access / JWT Token",
+    description: "Paste the current session token required by mStock for API calls.",
+    points: [
+      "Type A expects an access token.",
+      "Type B expects a JWT token.",
+      "mStock docs say this token is valid till midnight on the same day, so renew it daily.",
+    ],
+  },
+  mStockExchange: {
+    title: "mStock Exchange",
+    description: "This exchange is used only for mStock candle data lookup.",
+    points: [
+      "Examples: NSE, BSE, NFO, BFO.",
+      "Keep this aligned with the instrument token you are using.",
+    ],
+  },
+  mStockInstrumentToken: {
+    title: "mStock Instrument Token",
+    description: "Enter the instrument token used by Type A historical API, or the symbol token used by Type B historical API.",
+    points: [
+      "You can get this from mStock script master / symbol master data.",
+      "This lets the app fetch the exact candle that should drive your limit price.",
+    ],
+  },
+  mStockInterval: {
+    title: "mStock Candle Interval",
+    description: "This decides which candle timeframe is used for the fetched high/low price.",
+    points: [
+      "Examples: 1 minute, 5 minute, 15 minute, or day.",
+      "The selected candle high/low becomes the dynamic limit price.",
+    ],
+  },
+  mStockCandleOffset: {
+    title: "mStock Candle Offset",
+    description: "Choose which candle from the latest series should be used.",
+    points: [
+      "1 means latest candle returned by mStock.",
+      "2 means previous candle, 3 means one candle further back, and so on.",
     ],
   },
   tradeBuffer: {
     title: "Trade Buffer",
-    description: "For LIMIT orders, a buffer can be added above or below the trigger price to derive the final price.",
+    description: "For LIMIT orders, a buffer can be added above or below the dynamic source price to derive the final price.",
     points: [
-      "For BUY, the final price is trigger plus buffer.",
-      "For SELL, the final price is trigger minus buffer.",
+      "For BUY, the final price is source price plus buffer.",
+      "For SELL, the final price is source price minus buffer.",
       "This is active only for LIMIT orders.",
     ],
   },
@@ -574,6 +656,12 @@ function toMarketMayaExpiryDate(value: string) {
 function resolveLimitPriceSource(value: unknown, limitPriceValue?: unknown): LimitPriceSource {
   const raw = String(value || "").trim().toLowerCase();
   if (raw === "trigger" || raw === "chartink" || raw === "payload") return "trigger";
+  if (raw === "mstock" || raw === "mstockhigh" || raw === "mstockcandlehigh") {
+    return "mstockHigh";
+  }
+  if (raw === "mstocklow" || raw === "mstockcandlelow") {
+    return "mstockLow";
+  }
   if (raw === "fixed" || raw === "manual" || raw === "limit") return "fixed";
   return String(limitPriceValue || "").trim() ? "fixed" : "trigger";
 }
@@ -739,6 +827,15 @@ export default function StrategyPage() {
   const [limitPriceSource, setLimitPriceSource] =
     useState<LimitPriceSource>(DEFAULT_LIMIT_PRICE_SOURCE);
   const [limitPrice, setLimitPrice] = useState("");
+  const [mStockApiType, setMStockApiType] = useState(DEFAULT_MSTOCK_API_TYPE);
+  const [mStockApiKey, setMStockApiKey] = useState("");
+  const [showMStockApiKey, setShowMStockApiKey] = useState(false);
+  const [mStockAuthToken, setMStockAuthToken] = useState("");
+  const [showMStockAuthToken, setShowMStockAuthToken] = useState(false);
+  const [mStockExchange, setMStockExchange] = useState(DEFAULT_EQ_EXCHANGE);
+  const [mStockInstrumentToken, setMStockInstrumentToken] = useState("");
+  const [mStockInterval, setMStockInterval] = useState(DEFAULT_MSTOCK_INTERVAL);
+  const [mStockCandleOffset, setMStockCandleOffset] = useState(DEFAULT_MSTOCK_CANDLE_OFFSET);
   const [bufferBy, setBufferBy] = useState("");
   const [bufferPoints, setBufferPoints] = useState("");
   const [capitalAmount, setCapitalAmount] = useState("");
@@ -803,6 +900,16 @@ export default function StrategyPage() {
   const [editLimitPriceSource, setEditLimitPriceSource] =
     useState<LimitPriceSource>(DEFAULT_LIMIT_PRICE_SOURCE);
   const [editLimitPrice, setEditLimitPrice] = useState("");
+  const [editMStockApiType, setEditMStockApiType] = useState(DEFAULT_MSTOCK_API_TYPE);
+  const [editMStockApiKey, setEditMStockApiKey] = useState("");
+  const [showEditMStockApiKey, setShowEditMStockApiKey] = useState(false);
+  const [editMStockAuthToken, setEditMStockAuthToken] = useState("");
+  const [showEditMStockAuthToken, setShowEditMStockAuthToken] = useState(false);
+  const [editMStockExchange, setEditMStockExchange] = useState(DEFAULT_EQ_EXCHANGE);
+  const [editMStockInstrumentToken, setEditMStockInstrumentToken] = useState("");
+  const [editMStockInterval, setEditMStockInterval] = useState(DEFAULT_MSTOCK_INTERVAL);
+  const [editMStockCandleOffset, setEditMStockCandleOffset] =
+    useState(DEFAULT_MSTOCK_CANDLE_OFFSET);
   const [editBufferBy, setEditBufferBy] = useState("");
   const [editBufferPoints, setEditBufferPoints] = useState("");
   const [editCapitalAmount, setEditCapitalAmount] = useState("");
@@ -867,6 +974,10 @@ export default function StrategyPage() {
   const editExitFallbackSelected = isExitTradeAction(editCallTypeFallback);
   const usingFixedLimitPrice = orderType === "LIMIT" && limitPriceSource === "fixed";
   const usingTriggerLimitPrice = orderType === "LIMIT" && limitPriceSource === "trigger";
+  const usingMStockLimitPrice =
+    orderType === "LIMIT" &&
+    (limitPriceSource === "mstockHigh" || limitPriceSource === "mstockLow");
+  const usingDynamicLimitPrice = orderType === "LIMIT" && limitPriceSource !== "fixed";
   const derivativeSegmentSelected = isDerivativeSegment(segment);
   const optionSegmentSelected = segment === "OPT";
   const exchangeOptions = getExchangeOptions(segment);
@@ -876,6 +987,11 @@ export default function StrategyPage() {
   const editUsingFixedLimitPrice = editOrderType === "LIMIT" && editLimitPriceSource === "fixed";
   const editUsingTriggerLimitPrice =
     editOrderType === "LIMIT" && editLimitPriceSource === "trigger";
+  const editUsingMStockLimitPrice =
+    editOrderType === "LIMIT" &&
+    (editLimitPriceSource === "mstockHigh" || editLimitPriceSource === "mstockLow");
+  const editUsingDynamicLimitPrice =
+    editOrderType === "LIMIT" && editLimitPriceSource !== "fixed";
   const editExchangeOptions = getExchangeOptions(editSegment);
   const editExpiryOptions = getExpiryOptions(editSegment);
   const activeInfo = activeInfoKey ? INFO_CONTENT[activeInfoKey] || null : null;
@@ -1062,6 +1178,8 @@ export default function StrategyPage() {
   const openAdd = () => {
     setShowAddInfoButtons(true);
     setShowMarketMayaToken(false);
+    setShowMStockApiKey(false);
+    setShowMStockAuthToken(false);
     setActiveInfoKey(null);
     setShowModal(true);
   };
@@ -1070,6 +1188,8 @@ export default function StrategyPage() {
     setActiveInfoKey(null);
     setShowAddInfoButtons(true);
     setShowMarketMayaToken(false);
+    setShowMStockApiKey(false);
+    setShowMStockAuthToken(false);
     setShowModal(false);
   };
 
@@ -1287,6 +1407,10 @@ export default function StrategyPage() {
       const trimmedLimitPrice = limitPrice.trim();
       const trimmedBufferBy = bufferBy.trim();
       const trimmedBufferPoints = bufferPoints.trim();
+      const trimmedMStockApiKey = mStockApiKey.trim();
+      const trimmedMStockAuthToken = mStockAuthToken.trim();
+      const trimmedMStockInstrumentToken = mStockInstrumentToken.trim();
+      const trimmedMStockCandleOffset = mStockCandleOffset.trim();
       const trimmedDailyTradeLimit = dailyTradeLimit.trim();
       const normalizedExpiryDate = toMarketMayaExpiryDate(expiryDate);
       const trimmedAtm = atm.trim();
@@ -1333,11 +1457,11 @@ export default function StrategyPage() {
           setError("Limit price is required when fixed limit price is selected.");
           return;
         }
-        if (usingTriggerLimitPrice && trimmedBufferBy && !trimmedBufferPoints) {
+        if (usingDynamicLimitPrice && trimmedBufferBy && !trimmedBufferPoints) {
           setError("Trade buffer value is required when buffer type is selected.");
           return;
         }
-        if (usingTriggerLimitPrice && trimmedBufferPoints && !trimmedBufferBy) {
+        if (usingDynamicLimitPrice && trimmedBufferPoints && !trimmedBufferBy) {
           setError("Select trade buffer type (Point/Percentage).");
           return;
         }
@@ -1374,6 +1498,18 @@ export default function StrategyPage() {
         (!Number.isFinite(bufferPointsNumber) || bufferPointsNumber < 0)
       ) {
         setError("Buffer points must be zero or a positive number.");
+        return;
+      }
+
+      const mStockCandleOffsetNumber = trimmedMStockCandleOffset
+        ? Number(trimmedMStockCandleOffset)
+        : NaN;
+      if (
+        usingMStockLimitPrice &&
+        trimmedMStockCandleOffset &&
+        (!Number.isFinite(mStockCandleOffsetNumber) || mStockCandleOffsetNumber <= 0)
+      ) {
+        setError("mStock candle offset must be a positive whole number.");
         return;
       }
 
@@ -1426,10 +1562,29 @@ export default function StrategyPage() {
         ...(!exitFallbackSelected && usingFixedLimitPrice && trimmedLimitPrice
           ? { limitPrice: trimmedLimitPrice }
           : {}),
-        ...(!exitFallbackSelected && usingTriggerLimitPrice && trimmedBufferBy
+        ...(!exitFallbackSelected && usingMStockLimitPrice ? { mStockApiType } : {}),
+        ...(!exitFallbackSelected && usingMStockLimitPrice && trimmedMStockApiKey
+          ? { mStockApiKey: trimmedMStockApiKey }
+          : {}),
+        ...(!exitFallbackSelected && usingMStockLimitPrice && trimmedMStockAuthToken
+          ? { mStockAuthToken: trimmedMStockAuthToken }
+          : {}),
+        ...(!exitFallbackSelected && usingMStockLimitPrice && mStockExchange.trim()
+          ? { mStockExchange: mStockExchange.trim().toUpperCase() }
+          : {}),
+        ...(!exitFallbackSelected && usingMStockLimitPrice && trimmedMStockInstrumentToken
+          ? { mStockInstrumentToken: trimmedMStockInstrumentToken }
+          : {}),
+        ...(!exitFallbackSelected && usingMStockLimitPrice && mStockInterval.trim()
+          ? { mStockInterval: mStockInterval.trim() }
+          : {}),
+        ...(!exitFallbackSelected && usingMStockLimitPrice && trimmedMStockCandleOffset
+          ? { mStockCandleOffset: Math.floor(mStockCandleOffsetNumber) }
+          : {}),
+        ...(!exitFallbackSelected && usingDynamicLimitPrice && trimmedBufferBy
           ? { bufferBy: trimmedBufferBy }
           : {}),
-        ...(!exitFallbackSelected && usingTriggerLimitPrice && trimmedBufferPoints
+        ...(!exitFallbackSelected && usingDynamicLimitPrice && trimmedBufferPoints
           ? { bufferValue: bufferPointsNumber }
           : {}),
         ...(!exitFallbackSelected && trimmedCapitalAmount
@@ -1503,6 +1658,15 @@ export default function StrategyPage() {
       setOrderType("MARKET");
       setLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
       setLimitPrice("");
+      setMStockApiType(DEFAULT_MSTOCK_API_TYPE);
+      setMStockApiKey("");
+      setShowMStockApiKey(false);
+      setMStockAuthToken("");
+      setShowMStockAuthToken(false);
+      setMStockExchange(DEFAULT_EQ_EXCHANGE);
+      setMStockInstrumentToken("");
+      setMStockInterval(DEFAULT_MSTOCK_INTERVAL);
+      setMStockCandleOffset(DEFAULT_MSTOCK_CANDLE_OFFSET);
       setBufferBy("");
       setBufferPoints("");
       setCapitalAmount("");
@@ -1572,6 +1736,19 @@ export default function StrategyPage() {
     setEditOrderType(mm.orderType || "MARKET");
     setEditLimitPriceSource(resolveLimitPriceSource(mm.limitPriceSource, mm.limitPrice));
     setEditLimitPrice(mm.limitPrice || "");
+    setShowEditMStockApiKey(false);
+    setEditMStockApiType(mm.mStockApiType || DEFAULT_MSTOCK_API_TYPE);
+    setEditMStockApiKey(mm.mStockApiKey || "");
+    setShowEditMStockAuthToken(false);
+    setEditMStockAuthToken(mm.mStockAuthToken || "");
+    setEditMStockExchange(mm.mStockExchange || mm.exchange || DEFAULT_EQ_EXCHANGE);
+    setEditMStockInstrumentToken(mm.mStockInstrumentToken || "");
+    setEditMStockInterval(mm.mStockInterval || DEFAULT_MSTOCK_INTERVAL);
+    setEditMStockCandleOffset(
+      mm.mStockCandleOffset !== undefined && mm.mStockCandleOffset !== null
+        ? String(mm.mStockCandleOffset)
+        : DEFAULT_MSTOCK_CANDLE_OFFSET
+    );
     setEditBufferBy(
       mm.bufferBy ||
         (mm.bufferValue !== undefined && mm.bufferValue !== null
@@ -1627,6 +1804,8 @@ export default function StrategyPage() {
     setEditName("");
     setEditEnabled(false);
     setEditMarketMayaToken("");
+    setShowEditMStockApiKey(false);
+    setShowEditMStockAuthToken(false);
     setEditExchange(DEFAULT_EQ_EXCHANGE);
     setEditSegment(DEFAULT_SEGMENT);
     setEditExpiryMode("contract");
@@ -1646,6 +1825,13 @@ export default function StrategyPage() {
     setEditOrderType("MARKET");
     setEditLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
     setEditLimitPrice("");
+    setEditMStockApiType(DEFAULT_MSTOCK_API_TYPE);
+    setEditMStockApiKey("");
+    setEditMStockAuthToken("");
+    setEditMStockExchange(DEFAULT_EQ_EXCHANGE);
+    setEditMStockInstrumentToken("");
+    setEditMStockInterval(DEFAULT_MSTOCK_INTERVAL);
+    setEditMStockCandleOffset(DEFAULT_MSTOCK_CANDLE_OFFSET);
     setEditBufferBy("");
     setEditBufferPoints("");
     setEditCapitalAmount("");
@@ -1703,6 +1889,10 @@ export default function StrategyPage() {
       const trimmedEditLimitPrice = editLimitPrice.trim();
       const trimmedBufferBy = editBufferBy.trim();
       const trimmedBufferPoints = editBufferPoints.trim();
+      const trimmedEditMStockApiKey = editMStockApiKey.trim();
+      const trimmedEditMStockAuthToken = editMStockAuthToken.trim();
+      const trimmedEditMStockInstrumentToken = editMStockInstrumentToken.trim();
+      const trimmedEditMStockCandleOffset = editMStockCandleOffset.trim();
       const trimmedDailyTradeLimit = editDailyTradeLimit.trim();
       const normalizedEditExpiryDate = toMarketMayaExpiryDate(editExpiryDate);
       const trimmedEditAtm = editAtm.trim();
@@ -1749,11 +1939,11 @@ export default function StrategyPage() {
           setError("Limit price is required when fixed limit price is selected.");
           return;
         }
-        if (editUsingTriggerLimitPrice && trimmedBufferBy && !trimmedBufferPoints) {
+        if (editUsingDynamicLimitPrice && trimmedBufferBy && !trimmedBufferPoints) {
           setError("Trade buffer value is required when buffer type is selected.");
           return;
         }
-        if (editUsingTriggerLimitPrice && trimmedBufferPoints && !trimmedBufferBy) {
+        if (editUsingDynamicLimitPrice && trimmedBufferPoints && !trimmedBufferBy) {
           setError("Select trade buffer type (Point/Percentage).");
           return;
         }
@@ -1786,6 +1976,18 @@ export default function StrategyPage() {
         (!Number.isFinite(bufferPointsNumber) || bufferPointsNumber < 0)
       ) {
         setError("Buffer points must be zero or a positive number.");
+        return;
+      }
+
+      const editMStockCandleOffsetNumber = trimmedEditMStockCandleOffset
+        ? Number(trimmedEditMStockCandleOffset)
+        : NaN;
+      if (
+        editUsingMStockLimitPrice &&
+        trimmedEditMStockCandleOffset &&
+        (!Number.isFinite(editMStockCandleOffsetNumber) || editMStockCandleOffsetNumber <= 0)
+      ) {
+        setError("mStock candle offset must be a positive whole number.");
         return;
       }
 
@@ -1827,10 +2029,38 @@ export default function StrategyPage() {
       } else if (editLimitPriceSource === "trigger") {
         marketMayaClear.add("limitPrice");
       }
+      if (!editUsingMStockLimitPrice) {
+        marketMayaClear.add("mStockApiType");
+        marketMayaClear.add("mStockApiKey");
+        marketMayaClear.add("mStockAuthToken");
+        marketMayaClear.add("mStockExchange");
+        marketMayaClear.add("mStockInstrumentToken");
+        marketMayaClear.add("mStockInterval");
+        marketMayaClear.add("mStockCandleOffset");
+      } else {
+        if (!trimmedEditMStockApiKey) {
+          marketMayaClear.add("mStockApiKey");
+        }
+        if (!trimmedEditMStockAuthToken) {
+          marketMayaClear.add("mStockAuthToken");
+        }
+        if (!editMStockExchange.trim()) {
+          marketMayaClear.add("mStockExchange");
+        }
+        if (!trimmedEditMStockInstrumentToken) {
+          marketMayaClear.add("mStockInstrumentToken");
+        }
+        if (!editMStockInterval.trim()) {
+          marketMayaClear.add("mStockInterval");
+        }
+        if (!trimmedEditMStockCandleOffset) {
+          marketMayaClear.add("mStockCandleOffset");
+        }
+      }
       if (
         editExitFallbackSelected ||
         editOrderType !== "LIMIT" ||
-        editLimitPriceSource !== "trigger" ||
+        editLimitPriceSource === "fixed" ||
         !trimmedBufferBy ||
         !trimmedBufferPoints
       ) {
@@ -1924,10 +2154,31 @@ export default function StrategyPage() {
         ...(!editExitFallbackSelected && editUsingFixedLimitPrice && trimmedEditLimitPrice
           ? { limitPrice: trimmedEditLimitPrice }
           : {}),
-        ...(!editExitFallbackSelected && editUsingTriggerLimitPrice && trimmedBufferBy
+        ...(!editExitFallbackSelected && editUsingMStockLimitPrice
+          ? { mStockApiType: editMStockApiType }
+          : {}),
+        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && trimmedEditMStockApiKey
+          ? { mStockApiKey: trimmedEditMStockApiKey }
+          : {}),
+        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && trimmedEditMStockAuthToken
+          ? { mStockAuthToken: trimmedEditMStockAuthToken }
+          : {}),
+        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && editMStockExchange.trim()
+          ? { mStockExchange: editMStockExchange.trim().toUpperCase() }
+          : {}),
+        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && trimmedEditMStockInstrumentToken
+          ? { mStockInstrumentToken: trimmedEditMStockInstrumentToken }
+          : {}),
+        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && editMStockInterval.trim()
+          ? { mStockInterval: editMStockInterval.trim() }
+          : {}),
+        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && trimmedEditMStockCandleOffset
+          ? { mStockCandleOffset: Math.floor(editMStockCandleOffsetNumber) }
+          : {}),
+        ...(!editExitFallbackSelected && editUsingDynamicLimitPrice && trimmedBufferBy
           ? { bufferBy: trimmedBufferBy }
           : {}),
-        ...(!editExitFallbackSelected && editUsingTriggerLimitPrice && trimmedBufferPoints
+        ...(!editExitFallbackSelected && editUsingDynamicLimitPrice && trimmedBufferPoints
           ? { bufferValue: bufferPointsNumber }
           : {}),
         ...(!editExitFallbackSelected && trimmedCapitalAmount
@@ -2800,6 +3051,8 @@ export default function StrategyPage() {
                         >
                           <option value="fixed">Fixed limit price</option>
                           <option value="trigger">Chartink trigger price</option>
+                          <option value="mstockHigh">mStock candle high</option>
+                          <option value="mstockLow">mStock candle low</option>
                         </select>
                       </div>
                       {usingFixedLimitPrice ? (
@@ -2816,13 +3069,172 @@ export default function StrategyPage() {
                         </div>
                       ) : (
                         <div className="helper">
-                          Chartink payload `trigger_price` will be used for the LIMIT order.
+                          {usingTriggerLimitPrice
+                            ? "Chartink payload `trigger_price` will be used for the LIMIT order."
+                            : "mStock candle price will be used for the LIMIT order."}
                         </div>
                       )}
                     </>
                   ) : null}
 
-                  {usingTriggerLimitPrice ? (
+                  {usingMStockLimitPrice ? (
+                    <>
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderAddLabelWithInfo(
+                            "market-mstock-api-type",
+                            "mStock API type",
+                            "mStockApiType"
+                          )}
+                          <select
+                            className="select"
+                            id="market-mstock-api-type"
+                            value={mStockApiType}
+                            onChange={(event) => setMStockApiType(event.target.value)}
+                          >
+                            {M_STOCK_API_TYPE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          {renderAddLabelWithInfo(
+                            "market-mstock-exchange",
+                            "mStock exchange",
+                            "mStockExchange"
+                          )}
+                          <input
+                            className="input"
+                            id="market-mstock-exchange"
+                            value={mStockExchange}
+                            onChange={(event) => setMStockExchange(event.target.value.toUpperCase())}
+                            placeholder="e.g. NSE"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderAddLabelWithInfo(
+                            "market-mstock-api-key",
+                            "mStock API key",
+                            "mStockApiKey"
+                          )}
+                          <div className="token-field">
+                            <input
+                              className="input"
+                              id="market-mstock-api-key"
+                              type={showMStockApiKey ? "text" : "password"}
+                              value={mStockApiKey}
+                              onChange={(event) => setMStockApiKey(event.target.value)}
+                              placeholder="Leave blank to use server env"
+                            />
+                            <button
+                              className="token-visibility-btn"
+                              type="button"
+                              aria-label={showMStockApiKey ? "Hide mStock API key" : "Show mStock API key"}
+                              aria-pressed={showMStockApiKey}
+                              onClick={() => setShowMStockApiKey((current) => !current)}
+                            >
+                              {renderVisibilityIcon(showMStockApiKey)}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="input-group">
+                          {renderAddLabelWithInfo(
+                            "market-mstock-auth-token",
+                            "mStock access / JWT token",
+                            "mStockAuthToken"
+                          )}
+                          <div className="token-field">
+                            <input
+                              className="input"
+                              id="market-mstock-auth-token"
+                              type={showMStockAuthToken ? "text" : "password"}
+                              value={mStockAuthToken}
+                              onChange={(event) => setMStockAuthToken(event.target.value)}
+                              placeholder="Leave blank to use server env"
+                            />
+                            <button
+                              className="token-visibility-btn"
+                              type="button"
+                              aria-label={
+                                showMStockAuthToken
+                                  ? "Hide mStock access / JWT token"
+                                  : "Show mStock access / JWT token"
+                              }
+                              aria-pressed={showMStockAuthToken}
+                              onClick={() => setShowMStockAuthToken((current) => !current)}
+                            >
+                              {renderVisibilityIcon(showMStockAuthToken)}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderAddLabelWithInfo(
+                            "market-mstock-token",
+                            "mStock instrument token",
+                            "mStockInstrumentToken"
+                          )}
+                          <input
+                            className="input"
+                            id="market-mstock-token"
+                            value={mStockInstrumentToken}
+                            onChange={(event) => setMStockInstrumentToken(event.target.value)}
+                            placeholder="Type A: instrument_token, Type B: symboltoken"
+                          />
+                        </div>
+                        <div className="input-group">
+                          {renderAddLabelWithInfo(
+                            "market-mstock-interval",
+                            "mStock candle interval",
+                            "mStockInterval"
+                          )}
+                          <select
+                            className="select"
+                            id="market-mstock-interval"
+                            value={mStockInterval}
+                            onChange={(event) => setMStockInterval(event.target.value)}
+                          >
+                            {M_STOCK_INTERVAL_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="input-group">
+                        {renderAddLabelWithInfo(
+                          "market-mstock-candle-offset",
+                          "mStock candle offset",
+                          "mStockCandleOffset"
+                        )}
+                        <input
+                          className="input"
+                          id="market-mstock-candle-offset"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={mStockCandleOffset}
+                          onChange={(event) => setMStockCandleOffset(event.target.value)}
+                          placeholder="1"
+                        />
+                        <div className="helper">
+                          Leave API key/token blank here if you want to use server env defaults.
+                          `1` = latest returned candle, `2` = previous candle.
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {usingDynamicLimitPrice ? (
                     <>
                       <div className="grid-2">
                         <div className="input-group">
@@ -2836,7 +3248,7 @@ export default function StrategyPage() {
                               setBufferBy(next);
                               if (!next) setBufferPoints("");
                             }}
-                            disabled={!usingTriggerLimitPrice}
+                            disabled={!usingDynamicLimitPrice}
                           >
                             <option value="">No buffer</option>
                             <option value="Point">Point</option>
@@ -2854,12 +3266,12 @@ export default function StrategyPage() {
                             value={bufferPoints}
                             onChange={(event) => setBufferPoints(event.target.value)}
                             placeholder={bufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
-                            disabled={!usingTriggerLimitPrice || !bufferBy}
+                            disabled={!usingDynamicLimitPrice || !bufferBy}
                           />
                         </div>
                       </div>
                       <div className="helper">
-                        Buffer is only used with Chartink trigger price. BUY = trigger + buffer, SELL = trigger - buffer.
+                        Buffer works on the selected dynamic source price. BUY = source + buffer, SELL = source - buffer.
                       </div>
                     </>
                   ) : null}
@@ -3641,6 +4053,8 @@ export default function StrategyPage() {
                         >
                           <option value="fixed">Fixed limit price</option>
                           <option value="trigger">Chartink trigger price</option>
+                          <option value="mstockHigh">mStock candle high</option>
+                          <option value="mstockLow">mStock candle low</option>
                         </select>
                       </div>
                       {editUsingFixedLimitPrice ? (
@@ -3657,13 +4071,174 @@ export default function StrategyPage() {
                         </div>
                       ) : (
                         <div className="helper">
-                          Chartink payload `trigger_price` will be used for the LIMIT order.
+                          {editUsingTriggerLimitPrice
+                            ? "Chartink payload `trigger_price` will be used for the LIMIT order."
+                            : "mStock candle price will be used for the LIMIT order."}
                         </div>
                       )}
                     </>
                   ) : null}
 
-                  {editUsingTriggerLimitPrice ? (
+                  {editUsingMStockLimitPrice ? (
+                    <>
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderEditLabelWithInfo(
+                            "edit-market-mstock-api-type",
+                            "mStock API type",
+                            "mStockApiType"
+                          )}
+                          <select
+                            className="select"
+                            id="edit-market-mstock-api-type"
+                            value={editMStockApiType}
+                            onChange={(event) => setEditMStockApiType(event.target.value)}
+                          >
+                            {M_STOCK_API_TYPE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          {renderEditLabelWithInfo(
+                            "edit-market-mstock-exchange",
+                            "mStock exchange",
+                            "mStockExchange"
+                          )}
+                          <input
+                            className="input"
+                            id="edit-market-mstock-exchange"
+                            value={editMStockExchange}
+                            onChange={(event) => setEditMStockExchange(event.target.value.toUpperCase())}
+                            placeholder="e.g. NSE"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderEditLabelWithInfo(
+                            "edit-market-mstock-api-key",
+                            "mStock API key",
+                            "mStockApiKey"
+                          )}
+                          <div className="token-field">
+                            <input
+                              className="input"
+                              id="edit-market-mstock-api-key"
+                              type={showEditMStockApiKey ? "text" : "password"}
+                              value={editMStockApiKey}
+                              onChange={(event) => setEditMStockApiKey(event.target.value)}
+                              placeholder="Leave blank to keep server env"
+                            />
+                            <button
+                              className="token-visibility-btn"
+                              type="button"
+                              aria-label={
+                                showEditMStockApiKey ? "Hide mStock API key" : "Show mStock API key"
+                              }
+                              aria-pressed={showEditMStockApiKey}
+                              onClick={() => setShowEditMStockApiKey((current) => !current)}
+                            >
+                              {renderVisibilityIcon(showEditMStockApiKey)}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="input-group">
+                          {renderEditLabelWithInfo(
+                            "edit-market-mstock-auth-token",
+                            "mStock access / JWT token",
+                            "mStockAuthToken"
+                          )}
+                          <div className="token-field">
+                            <input
+                              className="input"
+                              id="edit-market-mstock-auth-token"
+                              type={showEditMStockAuthToken ? "text" : "password"}
+                              value={editMStockAuthToken}
+                              onChange={(event) => setEditMStockAuthToken(event.target.value)}
+                              placeholder="Leave blank to keep server env"
+                            />
+                            <button
+                              className="token-visibility-btn"
+                              type="button"
+                              aria-label={
+                                showEditMStockAuthToken
+                                  ? "Hide mStock access / JWT token"
+                                  : "Show mStock access / JWT token"
+                              }
+                              aria-pressed={showEditMStockAuthToken}
+                              onClick={() => setShowEditMStockAuthToken((current) => !current)}
+                            >
+                              {renderVisibilityIcon(showEditMStockAuthToken)}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid-2">
+                        <div className="input-group">
+                          {renderEditLabelWithInfo(
+                            "edit-market-mstock-token",
+                            "mStock instrument token",
+                            "mStockInstrumentToken"
+                          )}
+                          <input
+                            className="input"
+                            id="edit-market-mstock-token"
+                            value={editMStockInstrumentToken}
+                            onChange={(event) => setEditMStockInstrumentToken(event.target.value)}
+                            placeholder="Type A: instrument_token, Type B: symboltoken"
+                          />
+                        </div>
+                        <div className="input-group">
+                          {renderEditLabelWithInfo(
+                            "edit-market-mstock-interval",
+                            "mStock candle interval",
+                            "mStockInterval"
+                          )}
+                          <select
+                            className="select"
+                            id="edit-market-mstock-interval"
+                            value={editMStockInterval}
+                            onChange={(event) => setEditMStockInterval(event.target.value)}
+                          >
+                            {M_STOCK_INTERVAL_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="input-group">
+                        {renderEditLabelWithInfo(
+                          "edit-market-mstock-candle-offset",
+                          "mStock candle offset",
+                          "mStockCandleOffset"
+                        )}
+                        <input
+                          className="input"
+                          id="edit-market-mstock-candle-offset"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={editMStockCandleOffset}
+                          onChange={(event) => setEditMStockCandleOffset(event.target.value)}
+                          placeholder="1"
+                        />
+                        <div className="helper">
+                          Leave API key/token blank here if you want to keep using server env defaults.
+                          `1` = latest returned candle, `2` = previous candle.
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {editUsingDynamicLimitPrice ? (
                     <>
                       <div className="grid-2">
                         <div className="input-group">
@@ -3677,7 +4252,7 @@ export default function StrategyPage() {
                               setEditBufferBy(next);
                               if (!next) setEditBufferPoints("");
                             }}
-                            disabled={!editUsingTriggerLimitPrice}
+                            disabled={!editUsingDynamicLimitPrice}
                           >
                             <option value="">No buffer</option>
                             <option value="Point">Point</option>
@@ -3695,12 +4270,12 @@ export default function StrategyPage() {
                             value={editBufferPoints}
                             onChange={(event) => setEditBufferPoints(event.target.value)}
                             placeholder={editBufferBy === "Percentage" ? "e.g. 1" : "e.g. 1"}
-                            disabled={!editUsingTriggerLimitPrice || !editBufferBy}
+                            disabled={!editUsingDynamicLimitPrice || !editBufferBy}
                           />
                         </div>
                       </div>
                       <div className="helper">
-                        Buffer is only used with Chartink trigger price. BUY = trigger + buffer, SELL = trigger - buffer.
+                        Buffer works on the selected dynamic source price. BUY = source + buffer, SELL = source - buffer.
                       </div>
                     </>
                   ) : null}
