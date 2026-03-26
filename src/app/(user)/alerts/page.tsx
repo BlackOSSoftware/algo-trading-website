@@ -364,13 +364,13 @@ export default function AlertsPage() {
                                       : qty || "-"}
                                   </span>
                                 </div>
-                                <div className="detail-row">
+                                <div className="detail-row detail-row-target">
                                   <span>Target</span>
                                   <span>
                                     {targetBy || target ? `${targetBy || "-"} / ${target || "-"}` : "-"}
                                   </span>
                                 </div>
-                                <div className="detail-row">
+                                <div className="detail-row detail-row-stop">
                                   <span>Stop loss</span>
                                   <span>{slBy || sl ? `${slBy || "-"} / ${sl || "-"}` : "-"}</span>
                                 </div>

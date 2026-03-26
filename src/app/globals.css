@@ -1374,6 +1374,16 @@ textarea {
   text-align: right;
 }
 
+.detail-row-target span:first-child,
+.detail-row-target span:last-child {
+  color: #1a7f5a;
+}
+
+.detail-row-stop span:first-child,
+.detail-row-stop span:last-child {
+  color: #b42318;
+}
+
 .btn-xs {
   padding: 6px 12px;
   font-size: 0.78rem;

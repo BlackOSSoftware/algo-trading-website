@@ -85,7 +85,13 @@ type InfoContent = {
   points?: string[];
 };
 
-type LimitPriceSource = "fixed" | "trigger" | "mstockHigh" | "mstockLow";
+type LimitPriceSource =
+  | "fixed"
+  | "trigger"
+  | "mstockHigh"
+  | "mstockLow"
+  | "mstockOpen"
+  | "mstockClose";
 type LimitPriceSourceOption = LimitPriceSource | "mstockCandle";
 type WebhookProvider = "chartink" | "tradingview";
 
@@ -372,11 +378,12 @@ const INFO_CONTENT: Record<string, InfoContent> = {
   },
   limitPriceSource: {
     title: "Limit Price Source",
-    description: "Choose whether LIMIT order price should come from a fixed value, the webhook trigger price, or the latest mStock candle high/low.",
+    description:
+      "Choose whether LIMIT order price should come from a fixed value, the webhook trigger price, or the latest mStock candle open/high/low/close.",
     points: [
       "Fixed limit price sends the exact price you enter.",
       "Chartink trigger price uses payload trigger_price, and buffer can adjust it.",
-      "mStock candle high/low fetches candle data from your configured mStock API instrument.",
+      "mStock candle OHLC fetches candle data from your configured mStock API instrument.",
     ],
   },
   mStockApiType: {
@@ -422,18 +429,20 @@ const INFO_CONTENT: Record<string, InfoContent> = {
   },
   mStockInterval: {
     title: "mStock Candle Interval",
-    description: "This decides which candle timeframe is used for the fetched high/low price.",
+    description: "This decides which candle timeframe is used for the fetched candle price.",
     points: [
       "Examples: 1 minute, 5 minute, 15 minute, or day.",
-      "The selected candle high/low becomes the dynamic limit price.",
+      "The selected candle open/high/low/close becomes the dynamic limit price.",
     ],
   },
   mStockPriceField: {
     title: "Candle Level",
-    description: "Choose whether the order price should use the selected candle high or candle low.",
+    description:
+      "Choose whether the order price should use the selected candle open, high, low, or close.",
     points: [
-      "If timeframe is `day` and level is `High`, order price uses the daily candle high.",
-      "If timeframe is `day` and level is `Low`, order price uses the daily candle low.",
+      "If timeframe is `day` and level is `Open`, order price uses the daily candle open.",
+      "If timeframe is `day` and level is `High` or `Low`, order price uses the daily candle high or low.",
+      "If timeframe is `day` and level is `Close`, order price uses the daily candle close.",
     ],
   },
   mStockCandleOffset: {
@@ -671,21 +680,40 @@ function resolveLimitPriceSource(value: unknown, limitPriceValue?: unknown): Lim
   if (raw === "mstocklow" || raw === "mstockcandlelow") {
     return "mstockLow";
   }
+  if (raw === "mstockopen" || raw === "mstockcandleopen") {
+    return "mstockOpen";
+  }
+  if (raw === "mstockclose" || raw === "mstockcandleclose") {
+    return "mstockClose";
+  }
   if (raw === "fixed" || raw === "manual" || raw === "limit") return "fixed";
   return String(limitPriceValue || "").trim() ? "fixed" : "trigger";
 }
 
 function getLimitPriceSourceOptionValue(source: LimitPriceSource): LimitPriceSourceOption {
-  if (source === "mstockHigh" || source === "mstockLow") return "mstockCandle";
+  if (
+    source === "mstockHigh" ||
+    source === "mstockLow" ||
+    source === "mstockOpen" ||
+    source === "mstockClose"
+  ) {
+    return "mstockCandle";
+  }
   return source;
 }
 
 function getMStockPriceField(source: LimitPriceSource) {
-  return source === "mstockLow" ? "low" : "high";
+  if (source === "mstockLow") return "low";
+  if (source === "mstockOpen") return "open";
+  if (source === "mstockClose") return "close";
+  return "high";
 }
 
 function getLimitPriceSourceFromMStockField(field: string): LimitPriceSource {
-  return field === "low" ? "mstockLow" : "mstockHigh";
+  if (field === "low") return "mstockLow";
+  if (field === "open") return "mstockOpen";
+  if (field === "close") return "mstockClose";
+  return "mstockHigh";
 }
 
 function parseTestPayloadObject(payloadText: string) {
@@ -998,7 +1026,10 @@ export default function StrategyPage() {
   const usingTriggerLimitPrice = orderType === "LIMIT" && limitPriceSource === "trigger";
   const usingMStockLimitPrice =
     orderType === "LIMIT" &&
-    (limitPriceSource === "mstockHigh" || limitPriceSource === "mstockLow");
+    (limitPriceSource === "mstockHigh" ||
+      limitPriceSource === "mstockLow" ||
+      limitPriceSource === "mstockOpen" ||
+      limitPriceSource === "mstockClose");
   const usingDynamicLimitPrice = orderType === "LIMIT" && limitPriceSource !== "fixed";
   const derivativeSegmentSelected = isDerivativeSegment(segment);
   const optionSegmentSelected = segment === "OPT";
@@ -1011,7 +1042,10 @@ export default function StrategyPage() {
     editOrderType === "LIMIT" && editLimitPriceSource === "trigger";
   const editUsingMStockLimitPrice =
     editOrderType === "LIMIT" &&
-    (editLimitPriceSource === "mstockHigh" || editLimitPriceSource === "mstockLow");
+    (editLimitPriceSource === "mstockHigh" ||
+      editLimitPriceSource === "mstockLow" ||
+      editLimitPriceSource === "mstockOpen" ||
+      editLimitPriceSource === "mstockClose");
   const editUsingDynamicLimitPrice =
     editOrderType === "LIMIT" && editLimitPriceSource !== "fixed";
   const editExchangeOptions = getExchangeOptions(editSegment);
@@ -1112,10 +1146,11 @@ export default function StrategyPage() {
     htmlFor: string,
     label: string,
     infoKey: string,
-    showInfo = true
+    showInfo = true,
+    labelClassName?: string
   ) => (
     <div className="label-row">
-      <label className="label" htmlFor={htmlFor}>
+      <label className={labelClassName ? `label ${labelClassName}` : "label"} htmlFor={htmlFor}>
         {label}
       </label>
       {renderInfoButton(infoKey, "inline", showInfo)}
@@ -1157,11 +1192,19 @@ export default function StrategyPage() {
     </label>
   );
 
-  const renderAddLabelWithInfo = (htmlFor: string, label: string, infoKey: string) =>
-    renderLabelWithInfo(htmlFor, label, infoKey, showAddInfoButtons);
+  const renderAddLabelWithInfo = (
+    htmlFor: string,
+    label: string,
+    infoKey: string,
+    labelClassName?: string
+  ) => renderLabelWithInfo(htmlFor, label, infoKey, showAddInfoButtons, labelClassName);
 
-  const renderEditLabelWithInfo = (htmlFor: string, label: string, infoKey: string) =>
-    renderLabelWithInfo(htmlFor, label, infoKey, showEditInfoButtons);
+  const renderEditLabelWithInfo = (
+    htmlFor: string,
+    label: string,
+    infoKey: string,
+    labelClassName?: string
+  ) => renderLabelWithInfo(htmlFor, label, infoKey, showEditInfoButtons, labelClassName);
 
   const renderAddTitleWithInfo = (title: string, infoKey: string, style?: React.CSSProperties) =>
     renderTitleWithInfo(title, infoKey, style, showAddInfoButtons);
@@ -3071,7 +3114,11 @@ export default function StrategyPage() {
                             const next = event.target.value as LimitPriceSourceOption;
                             if (next === "mstockCandle") {
                               setLimitPriceSource((current) =>
-                                current === "mstockLow" ? "mstockLow" : "mstockHigh"
+                                current === "mstockLow" ||
+                                current === "mstockOpen" ||
+                                current === "mstockClose"
+                                  ? current
+                                  : "mstockHigh"
                               );
                               return;
                             }
@@ -3124,8 +3171,10 @@ export default function StrategyPage() {
                               )
                             }
                           >
+                            <option value="open">Open</option>
                             <option value="high">High</option>
                             <option value="low">Low</option>
+                            <option value="close">Close</option>
                           </select>
                         </div>
                         <div className="input-group">
@@ -3281,7 +3330,8 @@ export default function StrategyPage() {
                       </div>
                       <div className="helper">
                         Example: `Candle level = High` and `Candle timeframe = day` means order
-                        price will use the daily candle high. `Low + day` means daily candle low.
+                        price will use the daily candle high. `Open + day`, `Low + day`, and
+                        `Close + day` work the same way.
                       </div>
                     </>
                   ) : null}
@@ -3423,9 +3473,14 @@ export default function StrategyPage() {
               {!exitFallbackSelected ? (
                 <>
                   <div className="input-group">
-                    {renderAddLabelWithInfo("market-use-target", "Target", "targetToggle")}
+                    {renderAddLabelWithInfo(
+                      "market-use-target",
+                      "Target",
+                      "targetToggle",
+                      "risk-label-target"
+                    )}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span>Enable target</span>
+                      <span className="risk-note risk-note-target">Enable target</span>
                       <input
                         id="market-use-target"
                         type="checkbox"
@@ -3445,7 +3500,12 @@ export default function StrategyPage() {
                   {useTarget ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderAddLabelWithInfo("market-target-by", "Target by", "targetBy")}
+                        {renderAddLabelWithInfo(
+                          "market-target-by",
+                          "Target by",
+                          "targetBy",
+                          "risk-label-target"
+                        )}
                         <select
                           className="select"
                           id="market-target-by"
@@ -3461,7 +3521,12 @@ export default function StrategyPage() {
                         </select>
                       </div>
                       <div className="input-group">
-                        {renderAddLabelWithInfo("market-target", "Target", "targetValue")}
+                        {renderAddLabelWithInfo(
+                          "market-target",
+                          "Target",
+                          "targetValue",
+                          "risk-label-target"
+                        )}
                         <input
                           className="input"
                           id="market-target"
@@ -3470,7 +3535,7 @@ export default function StrategyPage() {
                           placeholder={targetPlaceholder}
                         />
                         {isRatioTarget ? (
-                          <div className="helper">
+                          <div className="helper risk-helper-target">
                             {!activeSl.trim()
                               ? "Enable stop loss (or provide SL via webhook) to use ratio."
                               : ratioComputed
@@ -3483,9 +3548,14 @@ export default function StrategyPage() {
                   ) : null}
 
                   <div className="input-group">
-                    {renderAddLabelWithInfo("market-use-sl", "Stop loss", "stopLossToggle")}
+                    {renderAddLabelWithInfo(
+                      "market-use-sl",
+                      "Stop loss",
+                      "stopLossToggle",
+                      "risk-label-stop"
+                    )}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span>Enable stop loss</span>
+                      <span className="risk-note risk-note-stop">Enable stop loss</span>
                       <input
                         id="market-use-sl"
                         type="checkbox"
@@ -3505,7 +3575,12 @@ export default function StrategyPage() {
                   {useStopLoss ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderAddLabelWithInfo("market-sl-by", "Stop loss by", "stopLossBy")}
+                        {renderAddLabelWithInfo(
+                          "market-sl-by",
+                          "Stop loss by",
+                          "stopLossBy",
+                          "risk-label-stop"
+                        )}
                         <select
                           className="select"
                           id="market-sl-by"
@@ -3520,7 +3595,12 @@ export default function StrategyPage() {
                         </select>
                       </div>
                       <div className="input-group">
-                        {renderAddLabelWithInfo("market-sl", "Stop loss", "stopLossValue")}
+                        {renderAddLabelWithInfo(
+                          "market-sl",
+                          "Stop loss",
+                          "stopLossValue",
+                          "risk-label-stop"
+                        )}
                         <input
                           className="input"
                           id="market-sl"
@@ -3533,9 +3613,14 @@ export default function StrategyPage() {
                   ) : null}
 
                   <div className="input-group">
-                    {renderAddLabelWithInfo("market-trail-sl", "Trail SL", "trailSl")}
+                    {renderAddLabelWithInfo(
+                      "market-trail-sl",
+                      "Trail SL",
+                      "trailSl",
+                      "risk-label-stop"
+                    )}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span>Enable trailing stop loss</span>
+                      <span className="risk-note risk-note-stop">Enable trailing stop loss</span>
                       <input
                         id="market-trail-sl"
                         type="checkbox"
@@ -3555,7 +3640,12 @@ export default function StrategyPage() {
                   {trailSl ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderAddLabelWithInfo("market-sl-move", "SL move", "slMove")}
+                        {renderAddLabelWithInfo(
+                          "market-sl-move",
+                          "SL move",
+                          "slMove",
+                          "risk-label-stop"
+                        )}
                         <input
                           className="input"
                           id="market-sl-move"
@@ -3565,7 +3655,12 @@ export default function StrategyPage() {
                         />
                       </div>
                       <div className="input-group">
-                        {renderAddLabelWithInfo("market-profit-move", "Profit move", "profitMove")}
+                        {renderAddLabelWithInfo(
+                          "market-profit-move",
+                          "Profit move",
+                          "profitMove",
+                          "risk-label-stop"
+                        )}
                         <input
                           className="input"
                           id="market-profit-move"
@@ -4103,7 +4198,11 @@ export default function StrategyPage() {
                             const next = event.target.value as LimitPriceSourceOption;
                             if (next === "mstockCandle") {
                               setEditLimitPriceSource((current) =>
-                                current === "mstockLow" ? "mstockLow" : "mstockHigh"
+                                current === "mstockLow" ||
+                                current === "mstockOpen" ||
+                                current === "mstockClose"
+                                  ? current
+                                  : "mstockHigh"
                               );
                               return;
                             }
@@ -4156,8 +4255,10 @@ export default function StrategyPage() {
                               )
                             }
                           >
+                            <option value="open">Open</option>
                             <option value="high">High</option>
                             <option value="low">Low</option>
+                            <option value="close">Close</option>
                           </select>
                         </div>
                         <div className="input-group">
@@ -4315,7 +4416,8 @@ export default function StrategyPage() {
                       </div>
                       <div className="helper">
                         Example: `Candle level = High` and `Candle timeframe = day` means order
-                        price will use the daily candle high. `Low + day` means daily candle low.
+                        price will use the daily candle high. `Open + day`, `Low + day`, and
+                        `Close + day` work the same way.
                       </div>
                     </>
                   ) : null}
@@ -4469,9 +4571,14 @@ export default function StrategyPage() {
               {!editExitFallbackSelected ? (
                 <>
                   <div className="input-group">
-                    {renderEditLabelWithInfo("edit-market-use-target", "Target", "targetToggle")}
+                    {renderEditLabelWithInfo(
+                      "edit-market-use-target",
+                      "Target",
+                      "targetToggle",
+                      "risk-label-target"
+                    )}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span>Enable target</span>
+                      <span className="risk-note risk-note-target">Enable target</span>
                       <input
                         id="edit-market-use-target"
                         type="checkbox"
@@ -4491,7 +4598,12 @@ export default function StrategyPage() {
                   {editUseTarget ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderEditLabelWithInfo("edit-market-target-by", "Target by", "targetBy")}
+                        {renderEditLabelWithInfo(
+                          "edit-market-target-by",
+                          "Target by",
+                          "targetBy",
+                          "risk-label-target"
+                        )}
                         <select
                           className="select"
                           id="edit-market-target-by"
@@ -4507,7 +4619,12 @@ export default function StrategyPage() {
                         </select>
                       </div>
                       <div className="input-group">
-                        {renderEditLabelWithInfo("edit-market-target", "Target", "targetValue")}
+                        {renderEditLabelWithInfo(
+                          "edit-market-target",
+                          "Target",
+                          "targetValue",
+                          "risk-label-target"
+                        )}
                         <input
                           className="input"
                           id="edit-market-target"
@@ -4516,7 +4633,7 @@ export default function StrategyPage() {
                           placeholder={editTargetPlaceholder}
                         />
                         {isEditRatioTarget ? (
-                          <div className="helper">
+                          <div className="helper risk-helper-target">
                             {!activeEditSl.trim()
                               ? "Enable stop loss (or provide SL via webhook) to use ratio."
                               : editRatioComputed
@@ -4529,9 +4646,14 @@ export default function StrategyPage() {
                   ) : null}
 
                   <div className="input-group">
-                    {renderEditLabelWithInfo("edit-market-use-sl", "Stop loss", "stopLossToggle")}
+                    {renderEditLabelWithInfo(
+                      "edit-market-use-sl",
+                      "Stop loss",
+                      "stopLossToggle",
+                      "risk-label-stop"
+                    )}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span>Enable stop loss</span>
+                      <span className="risk-note risk-note-stop">Enable stop loss</span>
                       <input
                         id="edit-market-use-sl"
                         type="checkbox"
@@ -4551,7 +4673,12 @@ export default function StrategyPage() {
                   {editUseStopLoss ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderEditLabelWithInfo("edit-market-sl-by", "Stop loss by", "stopLossBy")}
+                        {renderEditLabelWithInfo(
+                          "edit-market-sl-by",
+                          "Stop loss by",
+                          "stopLossBy",
+                          "risk-label-stop"
+                        )}
                         <select
                           className="select"
                           id="edit-market-sl-by"
@@ -4566,7 +4693,12 @@ export default function StrategyPage() {
                         </select>
                       </div>
                       <div className="input-group">
-                        {renderEditLabelWithInfo("edit-market-sl", "Stop loss", "stopLossValue")}
+                        {renderEditLabelWithInfo(
+                          "edit-market-sl",
+                          "Stop loss",
+                          "stopLossValue",
+                          "risk-label-stop"
+                        )}
                         <input
                           className="input"
                           id="edit-market-sl"
@@ -4579,9 +4711,14 @@ export default function StrategyPage() {
                   ) : null}
 
                   <div className="input-group">
-                    {renderEditLabelWithInfo("edit-market-trail-sl", "Trail SL", "trailSl")}
+                    {renderEditLabelWithInfo(
+                      "edit-market-trail-sl",
+                      "Trail SL",
+                      "trailSl",
+                      "risk-label-stop"
+                    )}
                     <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span>Enable trailing stop loss</span>
+                      <span className="risk-note risk-note-stop">Enable trailing stop loss</span>
                       <input
                         id="edit-market-trail-sl"
                         type="checkbox"
@@ -4601,7 +4738,12 @@ export default function StrategyPage() {
                   {editTrailSl ? (
                     <div className="grid-2">
                       <div className="input-group">
-                        {renderEditLabelWithInfo("edit-market-sl-move", "SL move", "slMove")}
+                        {renderEditLabelWithInfo(
+                          "edit-market-sl-move",
+                          "SL move",
+                          "slMove",
+                          "risk-label-stop"
+                        )}
                         <input
                           className="input"
                           id="edit-market-sl-move"
@@ -4611,7 +4753,12 @@ export default function StrategyPage() {
                         />
                       </div>
                       <div className="input-group">
-                        {renderEditLabelWithInfo("edit-market-profit-move", "Profit move", "profitMove")}
+                        {renderEditLabelWithInfo(
+                          "edit-market-profit-move",
+                          "Profit move",
+                          "profitMove",
+                          "risk-label-stop"
+                        )}
                         <input
                           className="input"
                           id="edit-market-profit-move"
