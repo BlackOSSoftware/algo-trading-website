@@ -86,6 +86,7 @@ type InfoContent = {
 };
 
 type LimitPriceSource = "fixed" | "trigger" | "mstockHigh" | "mstockLow";
+type LimitPriceSourceOption = LimitPriceSource | "mstockCandle";
 type WebhookProvider = "chartink" | "tradingview";
 
 type InfoButtonVariant = "inline" | "chip";
@@ -427,6 +428,14 @@ const INFO_CONTENT: Record<string, InfoContent> = {
       "The selected candle high/low becomes the dynamic limit price.",
     ],
   },
+  mStockPriceField: {
+    title: "Candle Level",
+    description: "Choose whether the order price should use the selected candle high or candle low.",
+    points: [
+      "If timeframe is `day` and level is `High`, order price uses the daily candle high.",
+      "If timeframe is `day` and level is `Low`, order price uses the daily candle low.",
+    ],
+  },
   mStockCandleOffset: {
     title: "mStock Candle Offset",
     description: "Choose which candle from the latest series should be used.",
@@ -664,6 +673,19 @@ function resolveLimitPriceSource(value: unknown, limitPriceValue?: unknown): Lim
   }
   if (raw === "fixed" || raw === "manual" || raw === "limit") return "fixed";
   return String(limitPriceValue || "").trim() ? "fixed" : "trigger";
+}
+
+function getLimitPriceSourceOptionValue(source: LimitPriceSource): LimitPriceSourceOption {
+  if (source === "mstockHigh" || source === "mstockLow") return "mstockCandle";
+  return source;
+}
+
+function getMStockPriceField(source: LimitPriceSource) {
+  return source === "mstockLow" ? "low" : "high";
+}
+
+function getLimitPriceSourceFromMStockField(field: string): LimitPriceSource {
+  return field === "low" ? "mstockLow" : "mstockHigh";
 }
 
 function parseTestPayloadObject(payloadText: string) {
@@ -3044,15 +3066,21 @@ export default function StrategyPage() {
                         <select
                           className="select"
                           id="market-limit-price-source"
-                          value={limitPriceSource}
-                          onChange={(event) =>
-                            setLimitPriceSource(event.target.value as LimitPriceSource)
-                          }
+                          value={getLimitPriceSourceOptionValue(limitPriceSource)}
+                          onChange={(event) => {
+                            const next = event.target.value as LimitPriceSourceOption;
+                            if (next === "mstockCandle") {
+                              setLimitPriceSource((current) =>
+                                current === "mstockLow" ? "mstockLow" : "mstockHigh"
+                              );
+                              return;
+                            }
+                            setLimitPriceSource(next);
+                          }}
                         >
                           <option value="fixed">Fixed limit price</option>
                           <option value="trigger">Chartink trigger price</option>
-                          <option value="mstockHigh">mStock candle high</option>
-                          <option value="mstockLow">mStock candle low</option>
+                          <option value="mstockCandle">mStock candle price</option>
                         </select>
                       </div>
                       {usingFixedLimitPrice ? (
@@ -3080,6 +3108,26 @@ export default function StrategyPage() {
                   {usingMStockLimitPrice ? (
                     <>
                       <div className="grid-2">
+                        <div className="input-group">
+                          {renderAddLabelWithInfo(
+                            "market-mstock-price-field",
+                            "Candle level",
+                            "mStockPriceField"
+                          )}
+                          <select
+                            className="select"
+                            id="market-mstock-price-field"
+                            value={getMStockPriceField(limitPriceSource)}
+                            onChange={(event) =>
+                              setLimitPriceSource(
+                                getLimitPriceSourceFromMStockField(event.target.value)
+                              )
+                            }
+                          >
+                            <option value="high">High</option>
+                            <option value="low">Low</option>
+                          </select>
+                        </div>
                         <div className="input-group">
                           {renderAddLabelWithInfo(
                             "market-mstock-api-type",
@@ -3192,7 +3240,7 @@ export default function StrategyPage() {
                         <div className="input-group">
                           {renderAddLabelWithInfo(
                             "market-mstock-interval",
-                            "mStock candle interval",
+                            "Candle timeframe",
                             "mStockInterval"
                           )}
                           <select
@@ -3230,6 +3278,10 @@ export default function StrategyPage() {
                           Leave API key/token blank here if you want to use server env defaults.
                           `1` = latest returned candle, `2` = previous candle.
                         </div>
+                      </div>
+                      <div className="helper">
+                        Example: `Candle level = High` and `Candle timeframe = day` means order
+                        price will use the daily candle high. `Low + day` means daily candle low.
                       </div>
                     </>
                   ) : null}
@@ -4046,15 +4098,21 @@ export default function StrategyPage() {
                         <select
                           className="select"
                           id="edit-market-limit-price-source"
-                          value={editLimitPriceSource}
-                          onChange={(event) =>
-                            setEditLimitPriceSource(event.target.value as LimitPriceSource)
-                          }
+                          value={getLimitPriceSourceOptionValue(editLimitPriceSource)}
+                          onChange={(event) => {
+                            const next = event.target.value as LimitPriceSourceOption;
+                            if (next === "mstockCandle") {
+                              setEditLimitPriceSource((current) =>
+                                current === "mstockLow" ? "mstockLow" : "mstockHigh"
+                              );
+                              return;
+                            }
+                            setEditLimitPriceSource(next);
+                          }}
                         >
                           <option value="fixed">Fixed limit price</option>
                           <option value="trigger">Chartink trigger price</option>
-                          <option value="mstockHigh">mStock candle high</option>
-                          <option value="mstockLow">mStock candle low</option>
+                          <option value="mstockCandle">mStock candle price</option>
                         </select>
                       </div>
                       {editUsingFixedLimitPrice ? (
@@ -4082,6 +4140,26 @@ export default function StrategyPage() {
                   {editUsingMStockLimitPrice ? (
                     <>
                       <div className="grid-2">
+                        <div className="input-group">
+                          {renderEditLabelWithInfo(
+                            "edit-market-mstock-price-field",
+                            "Candle level",
+                            "mStockPriceField"
+                          )}
+                          <select
+                            className="select"
+                            id="edit-market-mstock-price-field"
+                            value={getMStockPriceField(editLimitPriceSource)}
+                            onChange={(event) =>
+                              setEditLimitPriceSource(
+                                getLimitPriceSourceFromMStockField(event.target.value)
+                              )
+                            }
+                          >
+                            <option value="high">High</option>
+                            <option value="low">Low</option>
+                          </select>
+                        </div>
                         <div className="input-group">
                           {renderEditLabelWithInfo(
                             "edit-market-mstock-api-type",
@@ -4196,7 +4274,7 @@ export default function StrategyPage() {
                         <div className="input-group">
                           {renderEditLabelWithInfo(
                             "edit-market-mstock-interval",
-                            "mStock candle interval",
+                            "Candle timeframe",
                             "mStockInterval"
                           )}
                           <select
@@ -4234,6 +4312,10 @@ export default function StrategyPage() {
                           Leave API key/token blank here if you want to keep using server env defaults.
                           `1` = latest returned candle, `2` = previous candle.
                         </div>
+                      </div>
+                      <div className="helper">
+                        Example: `Candle level = High` and `Candle timeframe = day` means order
+                        price will use the daily candle high. `Low + day` means daily candle low.
                       </div>
                     </>
                   ) : null}
