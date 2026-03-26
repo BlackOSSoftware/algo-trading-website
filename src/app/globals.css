@@ -374,6 +374,17 @@ textarea {
   color: var(--ink-soft);
 }
 
+.btn-danger {
+  background: #fff1ef;
+  border-color: #f2c6c2;
+  color: #9b2c2c;
+}
+
+.btn-danger:hover {
+  background: #ffe3df;
+  border-color: #e6a8a0;
+}
+
 .section {
   margin-top: 60px;
 }
@@ -663,6 +674,85 @@ textarea {
 .helper {
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.risk-highlight {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+}
+
+.risk-highlight-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.risk-highlight-target {
+  background: linear-gradient(180deg, rgba(26, 127, 90, 0.1), rgba(26, 127, 90, 0.03));
+  border-color: rgba(26, 127, 90, 0.22);
+}
+
+.risk-highlight-stop {
+  background: linear-gradient(180deg, rgba(180, 35, 24, 0.09), rgba(180, 35, 24, 0.03));
+  border-color: rgba(180, 35, 24, 0.2);
+}
+
+.risk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.risk-pill-target {
+  background: rgba(26, 127, 90, 0.14);
+  color: #1a7f5a;
+}
+
+.risk-pill-stop {
+  background: rgba(180, 35, 24, 0.12);
+  color: #b42318;
+}
+
+.risk-note {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.risk-note-target {
+  color: #1a7f5a;
+}
+
+.risk-note-stop {
+  color: #b42318;
+}
+
+.risk-label-target {
+  color: #1a7f5a;
+  font-weight: 700;
+}
+
+.risk-label-stop {
+  color: #b42318;
+  font-weight: 700;
+}
+
+.risk-helper-target {
+  color: #1a7f5a;
+}
+
+.risk-helper-stop {
+  color: #b42318;
 }
 
 .app-shell {

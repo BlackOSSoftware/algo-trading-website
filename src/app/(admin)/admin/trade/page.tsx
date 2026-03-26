@@ -3,8 +3,13 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { getAdminToken } from "@/lib/auth";
-
-type MarketMayaResponse = unknown;
+import {
+  type MarketMayaResponse,
+  formatMarketMayaResponse,
+  getExchangeOptions,
+  getExpiryOptions,
+  pickExchangeForSegment,
+} from "@/lib/marketMaya";
 
 type AdminUser = {
   _id: string;
@@ -12,14 +17,6 @@ type AdminUser = {
   email: string;
   role?: string;
 };
-
-function pretty(value: unknown) {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
 
 function parseRatioMultiplier(value: string) {
   const raw = value.trim();
@@ -47,6 +44,24 @@ function computeRatioTarget(slValue: string, ratioValue: string) {
   return String(Number(target.toFixed(6)));
 }
 
+const CALL_TYPE_OPTIONS = [
+  "BUY",
+  "SELL",
+  "BUY EXIT",
+  "SELL EXIT",
+  "BUY ADD",
+  "SELL ADD",
+  "PARTIAL BUY EXIT",
+  "PARTIAL SELL EXIT",
+];
+
+const EXIT_CALL_TYPES = new Set([
+  "BUY EXIT",
+  "SELL EXIT",
+  "PARTIAL BUY EXIT",
+  "PARTIAL SELL EXIT",
+]);
+
 export default function AdminTradePage() {
   const [tokenInput, setTokenInput] = useState("");
   const [showTokenModal, setShowTokenModal] = useState(true);
@@ -66,6 +81,8 @@ export default function AdminTradePage() {
   const [atm, setAtm] = useState("0");
   const [strikePrice, setStrikePrice] = useState("");
   const [callType, setCallType] = useState("BUY");
+  const [orderType, setOrderType] = useState("MARKET");
+  const [price, setPrice] = useState("");
 
   const [qtyDistribution, setQtyDistribution] = useState("");
   const [qtyValue, setQtyValue] = useState("");
@@ -111,6 +128,11 @@ export default function AdminTradePage() {
   const isRatioTarget = targetBy === "Ratio";
   const ratioComputed = isRatioTarget ? computeRatioTarget(sl, target) : null;
   const targetPlaceholder = isRatioTarget ? "e.g. 1:2" : "e.g. 50";
+  const exchangeOptions = getExchangeOptions(normalizedSegment);
+  const expiryOptions = getExpiryOptions(normalizedSegment);
+  const isExitTrade = EXIT_CALL_TYPES.has(callType);
+  const showLimitPrice = !isExitTrade && orderType === "LIMIT";
+  const responseView = formatMarketMayaResponse(result);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -122,6 +144,16 @@ export default function AdminTradePage() {
       setShowTokenModal(true);
     }
   }, []);
+
+  useEffect(() => {
+    setExchange((current) => pickExchangeForSegment(current, normalizedSegment));
+  }, [normalizedSegment]);
+
+  useEffect(() => {
+    if (normalizedSegment === "FUT" && expiry !== "MONTHLY") {
+      setExpiry("MONTHLY");
+    }
+  }, [normalizedSegment, expiry]);
 
   const handleSaveToken = () => {
     const trimmed = tokenInput.trim();
@@ -154,6 +186,8 @@ export default function AdminTradePage() {
     setSymbolCode("");
     setSymbol("ONGC");
     setCallType("BUY");
+    setOrderType("MARKET");
+    setPrice("");
     setQtyDistribution("Fix");
     setQtyValue("1");
     setTargetBy("");
@@ -187,6 +221,10 @@ export default function AdminTradePage() {
         setError("Symbol is required (or use Symbol code).");
         return;
       }
+      if (!isExitTrade && orderType === "LIMIT" && !price.trim()) {
+        setError("Price is required for LIMIT order.");
+        return;
+      }
 
       if (!usingSymbolCode && (normalizedSegment === "FUT" || normalizedSegment === "OPT")) {
         if (!expiryDate.trim() && (!contract.trim() || !expiry.trim())) {
@@ -207,13 +245,16 @@ export default function AdminTradePage() {
       }
 
       const token = getAdminToken();
+      const resolvedExchange = pickExchangeForSegment(exchange, normalizedSegment);
 
       const payload: Record<string, unknown> = {
         token: tokenTrimmed || undefined,
         execute,
         notifyUserId: notifyUserId || undefined,
-        exchange,
+        exchange: resolvedExchange,
         call_type: callType,
+        order_type: !isExitTrade ? orderType : undefined,
+        price: showLimitPrice ? price || undefined : undefined,
         qty_distribution: qtyDistribution || undefined,
         qty_value: qtyValue || undefined,
         target_by: targetBy || undefined,
@@ -376,12 +417,11 @@ export default function AdminTradePage() {
                 value={exchange}
                 onChange={(event) => setExchange(event.target.value)}
               >
-                <option value="NSE">NSE</option>
-                <option value="BSE">BSE</option>
-                <option value="NFO">NFO</option>
-                <option value="BFO">BFO</option>
-                <option value="CDS">CDS</option>
-                <option value="MCX">MCX</option>
+                {exchangeOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -452,20 +492,37 @@ export default function AdminTradePage() {
                 value={callType}
                 onChange={(event) => setCallType(event.target.value)}
               >
-                <option value="BUY">BUY</option>
-                <option value="SELL">SELL</option>
-                <option value="BUY EXIT">BUY EXIT</option>
-                <option value="SELL EXIT">SELL EXIT</option>
-                <option value="BUY ADD">BUY ADD</option>
-                <option value="SELL ADD">SELL ADD</option>
-                <option value="PARTIAL BUY EXIT">PARTIAL BUY EXIT</option>
-                <option value="PARTIAL SELL EXIT">PARTIAL SELL EXIT</option>
-                <option value="CANCEL">CANCEL</option>
-                <option value="RESET">RESET</option>
-                <option value="MODIFY">MODIFY</option>
+                {CALL_TYPE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
               </select>
             </div>
 
+            <div className="input-group">
+              <label className="label" htmlFor="mm-order-type">
+                Order type
+              </label>
+              <select
+                className="select"
+                id="mm-order-type"
+                value={orderType}
+                onChange={(event) => setOrderType(event.target.value)}
+                disabled={isExitTrade}
+              >
+                <option value="MARKET">MARKET</option>
+                <option value="LIMIT">LIMIT</option>
+              </select>
+              <div className="helper">
+                {isExitTrade
+                  ? "Order type is ignored for exit trades."
+                  : "MARKET is used by default unless you need a LIMIT order."}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid-2">
             <div className="input-group">
               <label className="label" htmlFor="mm-execute">
                 Execute
@@ -480,6 +537,27 @@ export default function AdminTradePage() {
                 />
               </div>
               <div className="helper">Keep this OFF to preview.</div>
+            </div>
+
+            <div className="input-group">
+              <label className="label" htmlFor="mm-price">
+                Price
+              </label>
+              <input
+                className="input"
+                id="mm-price"
+                value={price}
+                onChange={(event) => setPrice(event.target.value)}
+                placeholder="e.g. 2500.50"
+                disabled={!showLimitPrice}
+              />
+              <div className="helper">
+                {isExitTrade
+                  ? "Price is ignored for exit trades."
+                  : showLimitPrice
+                    ? "Required only for LIMIT orders."
+                    : "Switch Order type to LIMIT to send a fixed price."}
+              </div>
             </div>
           </div>
 
@@ -512,8 +590,11 @@ export default function AdminTradePage() {
                     value={expiry}
                     onChange={(event) => setExpiry(event.target.value)}
                   >
-                    <option value="WEEKLY">WEEKLY</option>
-                    <option value="MONTHLY">MONTHLY</option>
+                    {expiryOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -617,119 +698,131 @@ export default function AdminTradePage() {
             </div>
           </div>
 
-          <div className="grid-2">
-            <div className="input-group">
-              <label className="label" htmlFor="mm-target-by">
-                Target by
-              </label>
-              <select
-                className="select"
-                id="mm-target-by"
-                value={targetBy}
-                onChange={(event) => setTargetBy(event.target.value)}
-              >
-                <option value="">Select target type</option>
-                <option value="Money">Money</option>
-                <option value="Point">Point</option>
-                <option value="Percentage">Percentage</option>
-                <option value="Price">Price</option>
-                <option value="Ratio">Ratio</option>
-              </select>
+          <div className="risk-highlight risk-highlight-target">
+            <div className="risk-highlight-head">
+              <span className="risk-pill risk-pill-target">Target</span>
+              <span className="risk-note risk-note-target">Profit booking zone</span>
             </div>
-            <div className="input-group">
-              <label className="label" htmlFor="mm-target">
-                Target
-              </label>
-              <input
-                className="input"
-                id="mm-target"
-                value={target}
-                onChange={(event) => setTarget(event.target.value)}
-                placeholder={targetPlaceholder}
-              />
-              {isRatioTarget ? (
-                <div className="helper">
-                  {!sl.trim()
-                    ? "Set SL to use ratio."
-                    : ratioComputed
-                      ? `Computed target: ${ratioComputed}`
-                      : "Enter ratio like 1:2 or 2"}
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="grid-2">
-            <div className="input-group">
-              <label className="label" htmlFor="mm-sl-by">
-                SL by
-              </label>
-              <select
-                className="select"
-                id="mm-sl-by"
-                value={slBy}
-                onChange={(event) => setSlBy(event.target.value)}
-              >
-                <option value="">Select SL type</option>
-                <option value="Money">Money</option>
-                <option value="Point">Point</option>
-                <option value="Percentage">Percentage</option>
-                <option value="Price">Price</option>
-              </select>
-            </div>
-            <div className="input-group">
-              <label className="label" htmlFor="mm-sl">
-                SL
-              </label>
-              <input
-                className="input"
-                id="mm-sl"
-                value={sl}
-                onChange={(event) => setSl(event.target.value)}
-                placeholder="e.g. 25"
-              />
+            <div className="grid-2">
+              <div className="input-group">
+                <label className="label risk-label-target" htmlFor="mm-target-by">
+                  Target by
+                </label>
+                <select
+                  className="select"
+                  id="mm-target-by"
+                  value={targetBy}
+                  onChange={(event) => setTargetBy(event.target.value)}
+                >
+                  <option value="">Select target type</option>
+                  <option value="Money">Money</option>
+                  <option value="Point">Point</option>
+                  <option value="Percentage">Percentage</option>
+                  <option value="Price">Price</option>
+                  <option value="Ratio">Ratio</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="label risk-label-target" htmlFor="mm-target">
+                  Target
+                </label>
+                <input
+                  className="input"
+                  id="mm-target"
+                  value={target}
+                  onChange={(event) => setTarget(event.target.value)}
+                  placeholder={targetPlaceholder}
+                />
+                {isRatioTarget ? (
+                  <div className="helper risk-helper-target">
+                    {!sl.trim()
+                      ? "Set SL to use ratio."
+                      : ratioComputed
+                        ? `Computed target: ${ratioComputed}`
+                        : "Enter ratio like 1:2 or 2"}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
-          <div className="input-group">
-            <label className="label" htmlFor="mm-trail">
-              Trail SL
-            </label>
-            <div className="list-item" style={{ justifyContent: "space-between" }}>
-              <span>Enable trail SL</span>
-              <input
-                id="mm-trail"
-                type="checkbox"
-                checked={trailSl}
-                onChange={(event) => setTrailSl(event.target.checked)}
-              />
+          <div className="risk-highlight risk-highlight-stop">
+            <div className="risk-highlight-head">
+              <span className="risk-pill risk-pill-stop">Stop Loss</span>
+              <span className="risk-note risk-note-stop">Risk protection zone</span>
             </div>
-          </div>
+            <div className="grid-2">
+              <div className="input-group">
+                <label className="label risk-label-stop" htmlFor="mm-sl-by">
+                  SL by
+                </label>
+                <select
+                  className="select"
+                  id="mm-sl-by"
+                  value={slBy}
+                  onChange={(event) => setSlBy(event.target.value)}
+                >
+                  <option value="">Select SL type</option>
+                  <option value="Money">Money</option>
+                  <option value="Point">Point</option>
+                  <option value="Percentage">Percentage</option>
+                  <option value="Price">Price</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="label risk-label-stop" htmlFor="mm-sl">
+                  SL
+                </label>
+                <input
+                  className="input"
+                  id="mm-sl"
+                  value={sl}
+                  onChange={(event) => setSl(event.target.value)}
+                  placeholder="e.g. 25"
+                />
+              </div>
+            </div>
 
-          <div className="grid-2">
             <div className="input-group">
-              <label className="label" htmlFor="mm-sl-move">
-                SL move
+              <label className="label risk-label-stop" htmlFor="mm-trail">
+                Trail SL
               </label>
-              <input
-                className="input"
-                id="mm-sl-move"
-                value={slMove}
-                onChange={(event) => setSlMove(event.target.value)}
-                placeholder="e.g. 10"
-              />
+              <div className="list-item" style={{ justifyContent: "space-between" }}>
+                <span className="risk-note risk-note-stop">Enable trail SL</span>
+                <input
+                  id="mm-trail"
+                  type="checkbox"
+                  checked={trailSl}
+                  onChange={(event) => setTrailSl(event.target.checked)}
+                />
+              </div>
             </div>
-            <div className="input-group">
-              <label className="label" htmlFor="mm-profit-move">
-                Profit move
-              </label>
-              <input
-                className="input"
-                id="mm-profit-move"
-                value={profitMove}
-                onChange={(event) => setProfitMove(event.target.value)}
-                placeholder="e.g. 20"
-              />
+
+            <div className="grid-2">
+              <div className="input-group">
+                <label className="label risk-label-stop" htmlFor="mm-sl-move">
+                  SL move
+                </label>
+                <input
+                  className="input"
+                  id="mm-sl-move"
+                  value={slMove}
+                  onChange={(event) => setSlMove(event.target.value)}
+                  placeholder="e.g. 10"
+                />
+              </div>
+              <div className="input-group">
+                <label className="label risk-label-stop" htmlFor="mm-profit-move">
+                  Profit move
+                </label>
+                <input
+                  className="input"
+                  id="mm-profit-move"
+                  value={profitMove}
+                  onChange={(event) => setProfitMove(event.target.value)}
+                  placeholder="e.g. 20"
+                />
+              </div>
             </div>
           </div>
 
@@ -750,9 +843,38 @@ export default function AdminTradePage() {
       {result ? (
         <div className="card">
           <div className="page-title">Response</div>
-          <pre className="mono" style={{ marginTop: "12px", whiteSpace: "pre-wrap" }}>
-            {pretty(result)}
-          </pre>
+          {responseView ? (
+            <>
+              <div style={{ marginTop: "12px" }}>
+                <span className={`status-chip ${responseView.tone}`}>{responseView.status}</span>
+              </div>
+              <div className="helper" style={{ marginTop: "10px" }}>
+                {responseView.message}
+              </div>
+              {responseView.details.length ? (
+                <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
+                  {responseView.details.map((item) => (
+                    <div
+                      className="list-item"
+                      key={`${item.label}-${item.value}`}
+                      style={{ justifyContent: "space-between", gap: "12px" }}
+                    >
+                      <strong>{item.label}</strong>
+                      <span>{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <details style={{ marginTop: "12px" }}>
+                <summary className="helper" style={{ cursor: "pointer" }}>
+                  Technical details
+                </summary>
+                <pre className="mono" style={{ marginTop: "12px", whiteSpace: "pre-wrap" }}>
+                  {responseView.raw}
+                </pre>
+              </details>
+            </>
+          ) : null}
         </div>
       ) : null}
 

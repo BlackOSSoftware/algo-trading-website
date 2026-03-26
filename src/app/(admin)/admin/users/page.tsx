@@ -21,6 +21,17 @@ type Plan = {
   price: number;
 };
 
+type DeleteUserResponse = {
+  deleted?: {
+    user?: {
+      name?: string;
+      email?: string;
+    };
+    linkedRecordsDeleted?: number;
+    totalDeleted?: number;
+  };
+};
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -30,6 +41,7 @@ export default function AdminUsersPage() {
   const [showModal, setShowModal] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string>("");
 
   const loadUsers = async () => {
     try {
@@ -92,6 +104,47 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleDeleteUser = async (user: AdminUser) => {
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(
+            `Delete ${user.name || user.email} permanently?\n\nThis will remove the user and all linked database records.`
+          );
+    if (!confirmed) return;
+
+    setError(null);
+    setMessage(null);
+    setDeletingUserId(user._id);
+
+    try {
+      const token = getAdminToken();
+      const data = (await apiPost(
+        "/api/v1/admin/users/delete",
+        { userId: user._id },
+        token
+      )) as DeleteUserResponse;
+
+      if (selectedUser === user._id) {
+        setSelectedUser("");
+        setShowModal(false);
+      }
+
+      const deletedName = data.deleted?.user?.name || user.name || user.email || "User";
+      const linked = Number(data.deleted?.linkedRecordsDeleted || 0);
+      const total = Number(data.deleted?.totalDeleted || 0);
+      setMessage(
+        `${deletedName} deleted permanently. Removed ${linked} linked record${linked === 1 ? "" : "s"} (${total} total deleted).`
+      );
+      await loadUsers();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete user";
+      setError(msg);
+    } finally {
+      setDeletingUserId("");
+    }
+  };
+
   const getDaysLeftLabel = (planExpiresAt?: string | null) => {
     if (!planExpiresAt) return "-";
     const expiresAt = new Date(planExpiresAt).getTime();
@@ -146,6 +199,7 @@ export default function AdminUsersPage() {
                       className="btn btn-secondary"
                       type="button"
                       onClick={() => openModal(user._id)}
+                      disabled={deletingUserId === user._id}
                     >
                       Update plan
                     </button>
@@ -155,6 +209,14 @@ export default function AdminUsersPage() {
                     >
                       View signals
                     </Link>
+                    <button
+                      className="btn btn-danger"
+                      type="button"
+                      onClick={() => handleDeleteUser(user)}
+                      disabled={deletingUserId === user._id}
+                    >
+                      {deletingUserId === user._id ? "Deleting..." : "Delete user"}
+                    </button>
                   </div>
                 </div>
               </div>
