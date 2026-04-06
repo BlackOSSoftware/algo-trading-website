@@ -80,6 +80,7 @@ export default function UserShell({
   const [user, setUser] = useState<SessionUser | null>(null);
   const [ready, setReady] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [isMobileNav, setIsMobileNav] = useState(false);
   const [showLoginWelcome, setShowLoginWelcome] = useState(false);
 
   useEffect(() => {
@@ -115,6 +116,23 @@ export default function UserShell({
   }, [pathname]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+
+    const mediaQuery = window.matchMedia("(max-width: 960px)");
+    const syncNavMode = () => {
+      const mobile = mediaQuery.matches;
+      setIsMobileNav(mobile);
+      if (!mobile) {
+        setNavOpen(false);
+      }
+    };
+
+    syncNavMode();
+    mediaQuery.addEventListener("change", syncNavMode);
+    return () => mediaQuery.removeEventListener("change", syncNavMode);
+  }, []);
+
+  useEffect(() => {
     if (!ready || pathname !== "/dashboard") return;
     if (consumeLoginWelcomePending()) {
       setShowLoginWelcome(true);
@@ -137,10 +155,12 @@ export default function UserShell({
   return (
     <div className="app-shell">
       <div
-        className={`sidebar-overlay${navOpen ? " open" : ""}`}
-        onClick={() => setNavOpen(false)}
+        className={`sidebar-overlay${isMobileNav && navOpen ? " open" : ""}`}
+        onClick={() => {
+          if (isMobileNav) setNavOpen(false);
+        }}
       />
-      <aside className={`sidebar${navOpen ? " open" : ""}`}>
+      <aside className={`sidebar${isMobileNav && navOpen ? " open" : ""}`}>
         <div className="sidebar-top">
           <div className="brand">
             <BrandLogo />
@@ -193,7 +213,9 @@ export default function UserShell({
             <button
               className="icon-btn nav-toggle"
               type="button"
-              onClick={() => setNavOpen(true)}
+              onClick={() => {
+                if (isMobileNav) setNavOpen(true);
+              }}
               aria-label="Open navigation"
             >
               <svg viewBox="0 0 24 24" fill="none" strokeWidth="2">

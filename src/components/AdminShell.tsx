@@ -14,6 +14,7 @@ export default function AdminShell({
   const [user, setUser] = useState<SessionUser | null>(null);
   const [ready, setReady] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [isMobileNav, setIsMobileNav] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -47,6 +48,23 @@ export default function AdminShell({
     setNavOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+
+    const mediaQuery = window.matchMedia("(max-width: 960px)");
+    const syncNavMode = () => {
+      const mobile = mediaQuery.matches;
+      setIsMobileNav(mobile);
+      if (!mobile) {
+        setNavOpen(false);
+      }
+    };
+
+    syncNavMode();
+    mediaQuery.addEventListener("change", syncNavMode);
+    return () => mediaQuery.removeEventListener("change", syncNavMode);
+  }, []);
+
   const handleLogout = () => {
     clearAdminToken();
     router.replace("/admin/login");
@@ -63,10 +81,12 @@ export default function AdminShell({
   return (
     <div className="app-shell">
       <div
-        className={`sidebar-overlay${navOpen ? " open" : ""}`}
-        onClick={() => setNavOpen(false)}
+        className={`sidebar-overlay${isMobileNav && navOpen ? " open" : ""}`}
+        onClick={() => {
+          if (isMobileNav) setNavOpen(false);
+        }}
       />
-      <aside className={`sidebar${navOpen ? " open" : ""}`}>
+      <aside className={`sidebar${isMobileNav && navOpen ? " open" : ""}`}>
         <div className="sidebar-top">
           <div className="brand">
             <div className="brand-mark">AD</div>
@@ -139,6 +159,19 @@ export default function AdminShell({
             Signals
           </Link>
           <Link
+            className={`nav-link${pathname === "/admin/mstock" ? " active" : ""}`}
+            href="/admin/mstock"
+          >
+            <span className="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" strokeWidth="2">
+                <path d="M5 6h14" />
+                <path d="M5 12h14" />
+                <path d="M5 18h9" />
+              </svg>
+            </span>
+            mStock Access
+          </Link>
+          <Link
             className={`nav-link${pathname === "/admin/trade" ? " active" : ""}`}
             href="/admin/trade"
           >
@@ -187,7 +220,9 @@ export default function AdminShell({
             <button
               className="icon-btn nav-toggle"
               type="button"
-              onClick={() => setNavOpen(true)}
+              onClick={() => {
+                if (isMobileNav) setNavOpen(true);
+              }}
               aria-label="Open navigation"
             >
               <svg viewBox="0 0 24 24" fill="none" strokeWidth="2">

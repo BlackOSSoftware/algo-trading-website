@@ -661,6 +661,37 @@ function toExpiryDateInputValue(value: string) {
   return `${marketMayaMatch[3]}-${marketMayaMatch[2]}-${marketMayaMatch[1]}`;
 }
 
+function isPrivateWebhookHost(hostname: string) {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) return false;
+  if (
+    normalized === "localhost" ||
+    normalized === "0.0.0.0" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized.endsWith(".local")
+  ) {
+    return true;
+  }
+  if (normalized.startsWith("10.") || normalized.startsWith("192.168.")) {
+    return true;
+  }
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+function getWebhookReachabilityWarning(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (!isPrivateWebhookHost(parsed.hostname)) return "";
+    return `Webhook base is ${parsed.origin}. Chartink and TradingView cannot reach localhost/private network URLs. Use a public domain or tunnel before expecting Telegram alerts.`;
+  } catch {
+    return "";
+  }
+}
+
 function toMarketMayaExpiryDate(value: string) {
   const raw = value.trim();
   if (!raw) return "";
@@ -989,6 +1020,10 @@ export default function StrategyPage() {
       process.env.NEXT_PUBLIC_WEBHOOK_URL || API_BASE_URL;
     return `${base}/api/v1/webhooks`;
   }, []);
+  const webhookReachabilityWarning = useMemo(
+    () => getWebhookReachabilityWarning(webhookBaseUrl),
+    [webhookBaseUrl]
+  );
 
   const testPayloadObject = useMemo(() => parseTestPayloadObject(testPayload), [testPayload]);
 
@@ -1472,9 +1507,6 @@ export default function StrategyPage() {
       const trimmedLimitPrice = limitPrice.trim();
       const trimmedBufferBy = bufferBy.trim();
       const trimmedBufferPoints = bufferPoints.trim();
-      const trimmedMStockApiKey = mStockApiKey.trim();
-      const trimmedMStockAuthToken = mStockAuthToken.trim();
-      const trimmedMStockInstrumentToken = mStockInstrumentToken.trim();
       const trimmedMStockCandleOffset = mStockCandleOffset.trim();
       const trimmedDailyTradeLimit = dailyTradeLimit.trim();
       const normalizedExpiryDate = toMarketMayaExpiryDate(expiryDate);
@@ -1628,17 +1660,8 @@ export default function StrategyPage() {
           ? { limitPrice: trimmedLimitPrice }
           : {}),
         ...(!exitFallbackSelected && usingMStockLimitPrice ? { mStockApiType } : {}),
-        ...(!exitFallbackSelected && usingMStockLimitPrice && trimmedMStockApiKey
-          ? { mStockApiKey: trimmedMStockApiKey }
-          : {}),
-        ...(!exitFallbackSelected && usingMStockLimitPrice && trimmedMStockAuthToken
-          ? { mStockAuthToken: trimmedMStockAuthToken }
-          : {}),
         ...(!exitFallbackSelected && usingMStockLimitPrice && mStockExchange.trim()
           ? { mStockExchange: mStockExchange.trim().toUpperCase() }
-          : {}),
-        ...(!exitFallbackSelected && usingMStockLimitPrice && trimmedMStockInstrumentToken
-          ? { mStockInstrumentToken: trimmedMStockInstrumentToken }
           : {}),
         ...(!exitFallbackSelected && usingMStockLimitPrice && mStockInterval.trim()
           ? { mStockInterval: mStockInterval.trim() }
@@ -1954,9 +1977,6 @@ export default function StrategyPage() {
       const trimmedEditLimitPrice = editLimitPrice.trim();
       const trimmedBufferBy = editBufferBy.trim();
       const trimmedBufferPoints = editBufferPoints.trim();
-      const trimmedEditMStockApiKey = editMStockApiKey.trim();
-      const trimmedEditMStockAuthToken = editMStockAuthToken.trim();
-      const trimmedEditMStockInstrumentToken = editMStockInstrumentToken.trim();
       const trimmedEditMStockCandleOffset = editMStockCandleOffset.trim();
       const trimmedDailyTradeLimit = editDailyTradeLimit.trim();
       const normalizedEditExpiryDate = toMarketMayaExpiryDate(editExpiryDate);
@@ -2103,17 +2123,11 @@ export default function StrategyPage() {
         marketMayaClear.add("mStockInterval");
         marketMayaClear.add("mStockCandleOffset");
       } else {
-        if (!trimmedEditMStockApiKey) {
-          marketMayaClear.add("mStockApiKey");
-        }
-        if (!trimmedEditMStockAuthToken) {
-          marketMayaClear.add("mStockAuthToken");
-        }
+        marketMayaClear.add("mStockApiKey");
+        marketMayaClear.add("mStockAuthToken");
+        marketMayaClear.add("mStockInstrumentToken");
         if (!editMStockExchange.trim()) {
           marketMayaClear.add("mStockExchange");
-        }
-        if (!trimmedEditMStockInstrumentToken) {
-          marketMayaClear.add("mStockInstrumentToken");
         }
         if (!editMStockInterval.trim()) {
           marketMayaClear.add("mStockInterval");
@@ -2222,17 +2236,8 @@ export default function StrategyPage() {
         ...(!editExitFallbackSelected && editUsingMStockLimitPrice
           ? { mStockApiType: editMStockApiType }
           : {}),
-        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && trimmedEditMStockApiKey
-          ? { mStockApiKey: trimmedEditMStockApiKey }
-          : {}),
-        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && trimmedEditMStockAuthToken
-          ? { mStockAuthToken: trimmedEditMStockAuthToken }
-          : {}),
         ...(!editExitFallbackSelected && editUsingMStockLimitPrice && editMStockExchange.trim()
           ? { mStockExchange: editMStockExchange.trim().toUpperCase() }
-          : {}),
-        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && trimmedEditMStockInstrumentToken
-          ? { mStockInstrumentToken: trimmedEditMStockInstrumentToken }
           : {}),
         ...(!editExitFallbackSelected && editUsingMStockLimitPrice && editMStockInterval.trim()
           ? { mStockInterval: editMStockInterval.trim() }
@@ -2468,6 +2473,11 @@ export default function StrategyPage() {
             Use these URLs in Chartink or TradingView for{" "}
             {recentStrategyName ? `"${recentStrategyName}"` : "your strategy"}.
           </div>
+          {webhookReachabilityWarning ? (
+            <div className="alert alert-error" style={{ marginTop: "12px" }}>
+              {webhookReachabilityWarning}
+            </div>
+          ) : null}
           <div className="list" style={{ marginTop: "12px" }}>
             <div className="list-item" style={{ justifyContent: "space-between" }}>
               <div>
@@ -2581,6 +2591,11 @@ export default function StrategyPage() {
 
       <div className="card">
         {renderTitleWithInfo("Saved strategies", "savedStrategies")}
+        {webhookReachabilityWarning ? (
+          <div className="alert alert-error" style={{ marginTop: "12px", marginBottom: "12px" }}>
+            {webhookReachabilityWarning}
+          </div>
+        ) : null}
         {strategies.length === 0 ? (
           <div className="helper">No strategies saved yet.</div>
         ) : (
@@ -3215,79 +3230,6 @@ export default function StrategyPage() {
                       <div className="grid-2">
                         <div className="input-group">
                           {renderAddLabelWithInfo(
-                            "market-mstock-api-key",
-                            "mStock API key",
-                            "mStockApiKey"
-                          )}
-                          <div className="token-field">
-                            <input
-                              className="input"
-                              id="market-mstock-api-key"
-                              type={showMStockApiKey ? "text" : "password"}
-                              value={mStockApiKey}
-                              onChange={(event) => setMStockApiKey(event.target.value)}
-                              placeholder="Leave blank to use server env"
-                            />
-                            <button
-                              className="token-visibility-btn"
-                              type="button"
-                              aria-label={showMStockApiKey ? "Hide mStock API key" : "Show mStock API key"}
-                              aria-pressed={showMStockApiKey}
-                              onClick={() => setShowMStockApiKey((current) => !current)}
-                            >
-                              {renderVisibilityIcon(showMStockApiKey)}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="input-group">
-                          {renderAddLabelWithInfo(
-                            "market-mstock-auth-token",
-                            "mStock access / JWT token",
-                            "mStockAuthToken"
-                          )}
-                          <div className="token-field">
-                            <input
-                              className="input"
-                              id="market-mstock-auth-token"
-                              type={showMStockAuthToken ? "text" : "password"}
-                              value={mStockAuthToken}
-                              onChange={(event) => setMStockAuthToken(event.target.value)}
-                              placeholder="Leave blank to use server env"
-                            />
-                            <button
-                              className="token-visibility-btn"
-                              type="button"
-                              aria-label={
-                                showMStockAuthToken
-                                  ? "Hide mStock access / JWT token"
-                                  : "Show mStock access / JWT token"
-                              }
-                              aria-pressed={showMStockAuthToken}
-                              onClick={() => setShowMStockAuthToken((current) => !current)}
-                            >
-                              {renderVisibilityIcon(showMStockAuthToken)}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid-2">
-                        <div className="input-group">
-                          {renderAddLabelWithInfo(
-                            "market-mstock-token",
-                            "mStock instrument token",
-                            "mStockInstrumentToken"
-                          )}
-                          <input
-                            className="input"
-                            id="market-mstock-token"
-                            value={mStockInstrumentToken}
-                            onChange={(event) => setMStockInstrumentToken(event.target.value)}
-                            placeholder="Type A: instrument_token, Type B: symboltoken"
-                          />
-                        </div>
-                        <div className="input-group">
-                          {renderAddLabelWithInfo(
                             "market-mstock-interval",
                             "Candle timeframe",
                             "mStockInterval"
@@ -3304,6 +3246,13 @@ export default function StrategyPage() {
                               </option>
                             ))}
                           </select>
+                        </div>
+                        <div className="input-group">
+                          <label className="label">mStock defaults</label>
+                          <div className="helper">
+                            API key and JWT token admin page se auto-use honge. Type B cash-equity
+                            me symboltoken symbol se auto-resolve ho sakta hai.
+                          </div>
                         </div>
                       </div>
 
@@ -3324,8 +3273,8 @@ export default function StrategyPage() {
                           placeholder="1"
                         />
                         <div className="helper">
-                          Leave API key/token blank here if you want to use server env defaults.
-                          `1` = latest returned candle, `2` = previous candle.
+                          Admin-saved mStock auth and defaults will be used automatically. `1` =
+                          latest returned candle, `2` = previous candle.
                         </div>
                       </div>
                       <div className="helper">
@@ -4299,81 +4248,6 @@ export default function StrategyPage() {
                       <div className="grid-2">
                         <div className="input-group">
                           {renderEditLabelWithInfo(
-                            "edit-market-mstock-api-key",
-                            "mStock API key",
-                            "mStockApiKey"
-                          )}
-                          <div className="token-field">
-                            <input
-                              className="input"
-                              id="edit-market-mstock-api-key"
-                              type={showEditMStockApiKey ? "text" : "password"}
-                              value={editMStockApiKey}
-                              onChange={(event) => setEditMStockApiKey(event.target.value)}
-                              placeholder="Leave blank to keep server env"
-                            />
-                            <button
-                              className="token-visibility-btn"
-                              type="button"
-                              aria-label={
-                                showEditMStockApiKey ? "Hide mStock API key" : "Show mStock API key"
-                              }
-                              aria-pressed={showEditMStockApiKey}
-                              onClick={() => setShowEditMStockApiKey((current) => !current)}
-                            >
-                              {renderVisibilityIcon(showEditMStockApiKey)}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="input-group">
-                          {renderEditLabelWithInfo(
-                            "edit-market-mstock-auth-token",
-                            "mStock access / JWT token",
-                            "mStockAuthToken"
-                          )}
-                          <div className="token-field">
-                            <input
-                              className="input"
-                              id="edit-market-mstock-auth-token"
-                              type={showEditMStockAuthToken ? "text" : "password"}
-                              value={editMStockAuthToken}
-                              onChange={(event) => setEditMStockAuthToken(event.target.value)}
-                              placeholder="Leave blank to keep server env"
-                            />
-                            <button
-                              className="token-visibility-btn"
-                              type="button"
-                              aria-label={
-                                showEditMStockAuthToken
-                                  ? "Hide mStock access / JWT token"
-                                  : "Show mStock access / JWT token"
-                              }
-                              aria-pressed={showEditMStockAuthToken}
-                              onClick={() => setShowEditMStockAuthToken((current) => !current)}
-                            >
-                              {renderVisibilityIcon(showEditMStockAuthToken)}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid-2">
-                        <div className="input-group">
-                          {renderEditLabelWithInfo(
-                            "edit-market-mstock-token",
-                            "mStock instrument token",
-                            "mStockInstrumentToken"
-                          )}
-                          <input
-                            className="input"
-                            id="edit-market-mstock-token"
-                            value={editMStockInstrumentToken}
-                            onChange={(event) => setEditMStockInstrumentToken(event.target.value)}
-                            placeholder="Type A: instrument_token, Type B: symboltoken"
-                          />
-                        </div>
-                        <div className="input-group">
-                          {renderEditLabelWithInfo(
                             "edit-market-mstock-interval",
                             "Candle timeframe",
                             "mStockInterval"
@@ -4390,6 +4264,13 @@ export default function StrategyPage() {
                               </option>
                             ))}
                           </select>
+                        </div>
+                        <div className="input-group">
+                          <label className="label">mStock defaults</label>
+                          <div className="helper">
+                            API key and JWT token admin page se auto-use honge. Type B cash-equity
+                            me symboltoken symbol se auto-resolve ho sakta hai.
+                          </div>
                         </div>
                       </div>
 
@@ -4410,8 +4291,8 @@ export default function StrategyPage() {
                           placeholder="1"
                         />
                         <div className="helper">
-                          Leave API key/token blank here if you want to keep using server env defaults.
-                          `1` = latest returned candle, `2` = previous candle.
+                          Admin-saved mStock auth and defaults will be used automatically. `1` =
+                          latest returned candle, `2` = previous candle.
                         </div>
                       </div>
                       <div className="helper">
