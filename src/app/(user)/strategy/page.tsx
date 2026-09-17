@@ -294,8 +294,8 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     title: "Sharekhan Redirect URL",
     description: "Copy this URL into Sharekhan Create App → Redirect URL field.",
     points: [
-      "Local testing: use the 127.0.0.1 URL.",
-      "Live: use your HTTPS app URL.",
+      "Use the exact URL shown here for the current site.",
+      "Sharekhan app redirect must match this value.",
       "After login Sharekhan redirects here with request token.",
     ],
   },
@@ -797,18 +797,17 @@ function saveSharekhanSavedCredentials(patch: Partial<SharekhanSavedCredentials>
 
 function getSharekhanRedirectUrls() {
   const configured = String(process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
-  const origin =
+  const browserOrigin =
     typeof window !== "undefined" && window.location?.origin
       ? window.location.origin.replace(/\/$/, "")
-      : configured || "http://127.0.0.1:3000";
+      : "";
   const path = "/sharekhan/callback";
 
-  const toLoopback = (value: string) => {
+  const normalizeOrigin = (value: string) => {
     try {
       const parsed = new URL(value);
       if (parsed.hostname === "localhost") {
         parsed.hostname = "127.0.0.1";
-        return parsed.origin;
       }
       return parsed.origin;
     } catch {
@@ -816,18 +815,31 @@ function getSharekhanRedirectUrls() {
     }
   };
 
-  const primaryBase = toLoopback(configured || origin);
-  const primary = `${primaryBase}${path}`;
-  let local = `http://127.0.0.1:3000${path}`;
-  try {
-    const parsed = new URL(primaryBase);
-    if (parsed.hostname === "127.0.0.1") {
-      local = `http://127.0.0.1:${parsed.port || "3000"}${path}`;
+  const isLoopbackHost = (value: string) => {
+    try {
+      const host = new URL(value).hostname;
+      return host === "127.0.0.1" || host === "localhost";
+    } catch {
+      return /127\.0\.0\.1|localhost/i.test(value);
     }
-  } catch {
-    // keep default local
-  }
-  return { primary, local };
+  };
+
+  // Prefer the live browser origin so production never falls back to localhost.
+  const preferredBase = normalizeOrigin(browserOrigin || configured || "http://127.0.0.1:3000");
+  const isLocalDev = isLoopbackHost(preferredBase);
+  const primary = `${preferredBase}${path}`;
+  const local = isLocalDev
+    ? (() => {
+        try {
+          const parsed = new URL(preferredBase);
+          return `http://127.0.0.1:${parsed.port || "3000"}${path}`;
+        } catch {
+          return `http://127.0.0.1:3000${path}`;
+        }
+      })()
+    : "";
+
+  return { primary, local, showLocal: isLocalDev && Boolean(local) && local !== primary };
 }
 
 function pickExchangeForSegment(exchange: string, segment: string) {
@@ -1333,8 +1345,9 @@ export default function StrategyPage() {
   const [showSharekhanAccessToken, setShowSharekhanAccessToken] = useState(false);
   const [showSharekhanSecureKey, setShowSharekhanSecureKey] = useState(false);
   const [sharekhanRedirectUrls, setSharekhanRedirectUrls] = useState(() => ({
-    primary: "http://127.0.0.1:3000/sharekhan/callback",
-    local: "http://127.0.0.1:3000/sharekhan/callback",
+    primary: "https://www.emotionlesstraders.com/sharekhan/callback",
+    local: "",
+    showLocal: false,
   }));
   const [exchange, setExchange] = useState(DEFAULT_EQ_EXCHANGE);
   const [segment, setSegment] = useState(DEFAULT_SEGMENT);
@@ -4231,16 +4244,18 @@ export default function StrategyPage() {
                         Copy
                       </button>
                     </div>
-                    <div className="token-field">
-                      <input className="input" readOnly value={sharekhanRedirectUrls.local} />
-                      <button
-                        className="btn btn-secondary"
-                        type="button"
-                        onClick={() => copyToClipboard(sharekhanRedirectUrls.local)}
-                      >
-                        Copy
-                      </button>
-                    </div>
+                    {sharekhanRedirectUrls.showLocal ? (
+                      <div className="token-field">
+                        <input className="input" readOnly value={sharekhanRedirectUrls.local} />
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          onClick={() => copyToClipboard(sharekhanRedirectUrls.local)}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="input-group">
@@ -5551,16 +5566,18 @@ export default function StrategyPage() {
                         Copy
                       </button>
                     </div>
-                    <div className="token-field">
-                      <input className="input" readOnly value={sharekhanRedirectUrls.local} />
-                      <button
-                        className="btn btn-secondary"
-                        type="button"
-                        onClick={() => copyToClipboard(sharekhanRedirectUrls.local)}
-                      >
-                        Copy
-                      </button>
-                    </div>
+                    {sharekhanRedirectUrls.showLocal ? (
+                      <div className="token-field">
+                        <input className="input" readOnly value={sharekhanRedirectUrls.local} />
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          onClick={() => copyToClipboard(sharekhanRedirectUrls.local)}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="input-group">
