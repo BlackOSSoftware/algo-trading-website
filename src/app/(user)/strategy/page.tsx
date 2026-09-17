@@ -1344,6 +1344,14 @@ export default function StrategyPage() {
   const [showSharekhanApiKey, setShowSharekhanApiKey] = useState(false);
   const [showSharekhanAccessToken, setShowSharekhanAccessToken] = useState(false);
   const [showSharekhanSecureKey, setShowSharekhanSecureKey] = useState(false);
+  const [sharekhanSessionStatus, setSharekhanSessionStatus] = useState<
+    "unknown" | "checking" | "live" | "expired" | "missing"
+  >("unknown");
+  const [sharekhanSessionMessage, setSharekhanSessionMessage] = useState("");
+  const [editSharekhanSessionStatus, setEditSharekhanSessionStatus] = useState<
+    "unknown" | "checking" | "live" | "expired" | "missing"
+  >("unknown");
+  const [editSharekhanSessionMessage, setEditSharekhanSessionMessage] = useState("");
   const [sharekhanRedirectUrls, setSharekhanRedirectUrls] = useState(() => ({
     primary: "https://www.emotionlesstraders.com/sharekhan/callback",
     local: "",
@@ -1415,6 +1423,9 @@ export default function StrategyPage() {
   const [testWebhookUrl, setTestWebhookUrl] = useState("");
   const [testPayload, setTestPayload] = useState(DEFAULT_WEBHOOK_TEST_PAYLOAD);
   const [testStockInput, setTestStockInput] = useState("");
+  const [testStockSuggestions, setTestStockSuggestions] = useState<InstrumentHit[]>([]);
+  const [testStockSearching, setTestStockSearching] = useState(false);
+  const [showTestStockSuggestions, setShowTestStockSuggestions] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -1566,6 +1577,71 @@ export default function StrategyPage() {
       flashMessage("Copy failed. Please copy manually.");
     }
   };
+
+  const verifySharekhanSessionStatus = useCallback(
+    async (mode: "add" | "edit") => {
+      const apiKey = (mode === "add" ? sharekhanApiKey : editSharekhanApiKey).trim();
+      const accessToken = (mode === "add" ? sharekhanAccessToken : editSharekhanAccessToken).trim();
+      const customerId = (mode === "add" ? sharekhanCustomerId : editSharekhanCustomerId).trim();
+      const channelUser = (mode === "add" ? sharekhanChannelUser : editSharekhanChannelUser).trim();
+      const setStatus = mode === "add" ? setSharekhanSessionStatus : setEditSharekhanSessionStatus;
+      const setMessage = mode === "add" ? setSharekhanSessionMessage : setEditSharekhanSessionMessage;
+
+      if (!apiKey || !accessToken || !customerId) {
+        setStatus("missing");
+        setMessage("Sharekhan credentials incomplete. Login again.");
+        return false;
+      }
+
+      const token = getToken();
+      if (!token) {
+        setStatus("missing");
+        setMessage("Please sign in again.");
+        return false;
+      }
+
+      setStatus("checking");
+      setMessage("Checking Sharekhan session...");
+      try {
+        const data = (await apiPost(
+          "/api/v1/sharekhan/session-status",
+          { apiKey, accessToken, customerId, channelUser },
+          token
+        )) as { connected?: boolean; expired?: boolean; missing?: boolean; error?: string };
+        if (data.connected) {
+          setStatus("live");
+          setMessage(
+            `Sharekhan session is live${channelUser ? ` · ${channelUser}` : ""}. You can save the strategy.`
+          );
+          return true;
+        }
+        if (data.expired) {
+          setStatus("expired");
+          setMessage(data.error || "Sharekhan access token is expired. Reconnect to continue.");
+          return false;
+        }
+        setStatus(data.missing ? "missing" : "expired");
+        setMessage(data.error || "Sharekhan session is not valid. Reconnect.");
+        return false;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Sharekhan session check failed";
+        const expired = /expir|unauthor|invalid.*token|token.*invalid/i.test(msg);
+        setStatus(expired ? "expired" : "missing");
+        setMessage(msg);
+        return false;
+      }
+    },
+    [
+      sharekhanApiKey,
+      sharekhanAccessToken,
+      sharekhanCustomerId,
+      sharekhanChannelUser,
+      editSharekhanApiKey,
+      editSharekhanAccessToken,
+      editSharekhanCustomerId,
+      editSharekhanChannelUser,
+    ]
+  );
 
   const startSharekhanLogin = async (mode: "add" | "edit") => {
     const apiKey = (mode === "add" ? sharekhanApiKey : editSharekhanApiKey).trim();
@@ -2327,6 +2403,36 @@ export default function StrategyPage() {
   }, []);
 
   useEffect(() => {
+    if (!sharekhanDirect || !sharekhanAccessToken.trim()) {
+      setSharekhanSessionStatus("unknown");
+      setSharekhanSessionMessage("");
+      return;
+    }
+    verifySharekhanSessionStatus("add");
+  }, [
+    sharekhanDirect,
+    sharekhanAccessToken,
+    sharekhanApiKey,
+    sharekhanCustomerId,
+    verifySharekhanSessionStatus,
+  ]);
+
+  useEffect(() => {
+    if (!editSharekhanDirect || !editSharekhanAccessToken.trim()) {
+      setEditSharekhanSessionStatus("unknown");
+      setEditSharekhanSessionMessage("");
+      return;
+    }
+    verifySharekhanSessionStatus("edit");
+  }, [
+    editSharekhanDirect,
+    editSharekhanAccessToken,
+    editSharekhanApiKey,
+    editSharekhanCustomerId,
+    verifySharekhanSessionStatus,
+  ]);
+
+  useEffect(() => {
     if (!sharekhanDirect) return;
     const saved = readSharekhanSavedCredentials();
     if (!saved) return;
@@ -2691,6 +2797,8 @@ export default function StrategyPage() {
     setTestWebhookUrl(url);
     setTestPayload(payloadText);
     setTestStockInput("");
+    setTestStockSuggestions([]);
+    setShowTestStockSuggestions(false);
     setTestError(null);
     setTestResult(null);
     setShowWebhookTestModal(true);
@@ -2700,6 +2808,8 @@ export default function StrategyPage() {
     setShowWebhookTestModal(false);
     setTestLoading(false);
     setTestStockInput("");
+    setTestStockSuggestions([]);
+    setShowTestStockSuggestions(false);
   };
 
   const syncTestPayloadStocks = useCallback(
@@ -2719,14 +2829,66 @@ export default function StrategyPage() {
     [testPayload]
   );
 
+  useEffect(() => {
+    const query = testStockInput.trim();
+    if (!showWebhookTestModal || query.length < 2) {
+      setTestStockSuggestions([]);
+      setTestStockSearching(false);
+      return;
+    }
+
+    const token = getToken();
+    if (!token) return;
+
+    let cancelled = false;
+    setTestStockSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const params = buildInstrumentSearchParams(query, "NSE", "EQ");
+        const data = (await apiGet(
+          `/api/v1/mstock/instruments/search?${params.toString()}`,
+          token
+        )) as { instruments?: InstrumentHit[] };
+        if (cancelled) return;
+        setTestStockSuggestions(Array.isArray(data?.instruments) ? data.instruments : []);
+        setShowTestStockSuggestions(true);
+      } catch {
+        if (!cancelled) setTestStockSuggestions([]);
+      } finally {
+        if (!cancelled) setTestStockSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [testStockInput, showWebhookTestModal]);
+
   const handleAddTestStock = useCallback(() => {
     const nextStock = testStockInput.trim().toUpperCase();
     if (!nextStock) return;
     const nextStocks = Array.from(new Set([...testPayloadStocks, nextStock]));
     if (syncTestPayloadStocks(nextStocks)) {
       setTestStockInput("");
+      setTestStockSuggestions([]);
+      setShowTestStockSuggestions(false);
     }
   }, [syncTestPayloadStocks, testPayloadStocks, testStockInput]);
+
+  const handleSelectTestStock = useCallback(
+    (hit: InstrumentHit) => {
+      const nextStock = String(hit.symbol || "").trim().toUpperCase();
+      if (!nextStock) return;
+      const nextStocks = Array.from(new Set([...testPayloadStocks, nextStock]));
+      if (syncTestPayloadStocks(nextStocks)) {
+        setTestStockInput("");
+        setTestStockSuggestions([]);
+        setShowTestStockSuggestions(false);
+      }
+    },
+    [syncTestPayloadStocks, testPayloadStocks]
+  );
 
   const handleRemoveTestStock = useCallback(
     (stock: string) => {
@@ -4223,8 +4385,25 @@ export default function StrategyPage() {
                   })}
 
                   {sharekhanAccessToken.trim() ? (
-                    <div className="alert alert-success">
-                      Connected to Sharekhan. You can continue filling the form and save the strategy.
+                    <div
+                      className={`alert ${
+                        sharekhanSessionStatus === "live"
+                          ? "alert-success"
+                          : sharekhanSessionStatus === "checking" || sharekhanSessionStatus === "unknown"
+                            ? "alert"
+                            : "alert-error"
+                      }`}
+                    >
+                      {sharekhanSessionStatus === "checking"
+                        ? "Checking Sharekhan session..."
+                        : sharekhanSessionStatus === "live"
+                          ? sharekhanSessionMessage ||
+                            "Sharekhan session is live. You can continue filling the form and save the strategy."
+                          : sharekhanSessionStatus === "expired"
+                            ? sharekhanSessionMessage ||
+                              "Sharekhan access token is expired. Click Reconnect Sharekhan."
+                            : sharekhanSessionMessage ||
+                              "Sharekhan token saved, but session is not verified. Reconnect if needed."}
                     </div>
                   ) : null}
 
@@ -5546,8 +5725,26 @@ export default function StrategyPage() {
                     tone: "broker",
                   })}
                   {editSharekhanAccessToken.trim() ? (
-                    <div className="alert alert-success">
-                      Connected to Sharekhan. You can continue and save changes.
+                    <div
+                      className={`alert ${
+                        editSharekhanSessionStatus === "live"
+                          ? "alert-success"
+                          : editSharekhanSessionStatus === "checking" ||
+                              editSharekhanSessionStatus === "unknown"
+                            ? "alert"
+                            : "alert-error"
+                      }`}
+                    >
+                      {editSharekhanSessionStatus === "checking"
+                        ? "Checking Sharekhan session..."
+                        : editSharekhanSessionStatus === "live"
+                          ? editSharekhanSessionMessage ||
+                            "Sharekhan session is live. You can continue and save changes."
+                          : editSharekhanSessionStatus === "expired"
+                            ? editSharekhanSessionMessage ||
+                              "Sharekhan access token is expired. Click Reconnect Sharekhan."
+                            : editSharekhanSessionMessage ||
+                              "Sharekhan token saved, but session is not verified. Reconnect if needed."}
                     </div>
                   ) : null}
                   <div className="input-group">
@@ -6834,20 +7031,65 @@ export default function StrategyPage() {
                   Stocks
                 </label>
                 <div className="token-field">
-                  <input
-                    className="input"
-                    id="test-stock-input"
-                    value={testStockInput}
-                    onChange={(event) => setTestStockInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        handleAddTestStock();
-                      }
-                    }}
-                    placeholder="RELIANCE"
-                    disabled={!testPayloadObject}
-                  />
+                  <div className="stock-suggest-wrap">
+                    <input
+                      className="input"
+                      id="test-stock-input"
+                      value={testStockInput}
+                      onChange={(event) => {
+                        setTestStockInput(event.target.value);
+                        setShowTestStockSuggestions(true);
+                      }}
+                      onFocus={() => {
+                        if (testStockSuggestions.length > 0) {
+                          setShowTestStockSuggestions(true);
+                        }
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => setShowTestStockSuggestions(false), 150);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          if (testStockSuggestions[0]) {
+                            handleSelectTestStock(testStockSuggestions[0]);
+                          } else {
+                            handleAddTestStock();
+                          }
+                        }
+                      }}
+                      placeholder="Search stock like RELIANCE"
+                      disabled={!testPayloadObject}
+                      autoComplete="off"
+                    />
+                    {showTestStockSuggestions &&
+                    (testStockSearching || testStockSuggestions.length > 0) ? (
+                      <div className="stock-suggest-menu" role="listbox">
+                        {testStockSearching && testStockSuggestions.length === 0 ? (
+                          <div className="stock-suggest-empty">Searching...</div>
+                        ) : null}
+                        {testStockSuggestions.map((hit) => (
+                          <button
+                            key={`${hit.exchange || "X"}:${hit.token || hit.symbol}`}
+                            type="button"
+                            className="stock-suggest-item"
+                            role="option"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSelectTestStock(hit)}
+                          >
+                            <span>
+                              <span className="stock-suggest-symbol">
+                                {formatInstrumentSuggestion(hit)}
+                              </span>
+                              {hit.name ? (
+                                <span className="stock-suggest-meta">{hit.name}</span>
+                              ) : null}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <button
                     className="btn btn-secondary"
                     type="button"
@@ -6875,7 +7117,9 @@ export default function StrategyPage() {
                       </span>
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <div className="helper">Type 2+ letters to search and add stocks.</div>
+                )}
               </div>
 
               <div className="input-group webhook-test-payload-group">
