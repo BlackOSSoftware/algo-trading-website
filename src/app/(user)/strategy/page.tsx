@@ -1,8 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, API_BASE_URL } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { getToken, setToken } from "@/lib/auth";
+
+type InstrumentHit = {
+  token?: string;
+  symbol: string;
+  name?: string;
+  exchange?: string;
+  instrumentType?: string;
+};
 
 type Strategy = {
   _id: string;
@@ -13,6 +21,7 @@ type Strategy = {
   marketMayaUrl?: string;
   marketMaya?: {
     token?: string;
+    tokenConfigured?: boolean;
     exchange?: string;
     segment?: string;
     symbolMode?: string;
@@ -27,6 +36,15 @@ type Strategy = {
     fixed_stocks?: string[] | string;
     maxSymbols?: number | string;
     callTypeFallback?: string;
+    sharekhanDirect?: boolean;
+    marketMayaEnabled?: boolean;
+    sharekhanProductType?: string;
+    sharekhanApiKey?: string;
+    sharekhanAccessToken?: string;
+    sharekhanSecureKey?: string;
+    sharekhanCustomerId?: string;
+    sharekhanChannelUser?: string;
+    sharekhanConfigured?: boolean;
     contract?: string;
     expiry?: string;
     expiryDate?: string;
@@ -104,6 +122,9 @@ const DEFAULT_WEBHOOK_TEST_PAYLOAD = JSON.stringify(
     scan_name: "Chartink Scanner",
     stocks: "RELIANCE",
     trigger_price: 300,
+    high: 302.5,
+    low: 298.25,
+    candle_time: "2026-05-26T09:20:00+05:30",
   },
   null,
   2
@@ -115,6 +136,9 @@ const DEFAULT_TRADINGVIEW_TEST_PAYLOAD = JSON.stringify(
     symbol: "RELIANCE",
     stocks: "RELIANCE",
     trigger_price: 300,
+    high: 302.5,
+    low: 298.25,
+    candle_time: "2026-05-26T09:20:00+05:30",
     call_type: "BUY",
     triggered_at: "09:20:00",
   },
@@ -123,6 +147,7 @@ const DEFAULT_TRADINGVIEW_TEST_PAYLOAD = JSON.stringify(
 );
 const DEFAULT_TRADE_WINDOW_START = "09:15";
 const DEFAULT_TRADE_WINDOW_END = "15:30";
+const DEFAULT_MCX_TRADE_WINDOW_END = "23:30";
 const STRATEGY_CALL_TYPE_OPTIONS = [
   "BUY",
   "SELL",
@@ -137,7 +162,17 @@ const EXIT_CALL_TYPES = new Set([
   "PARTIAL BUY EXIT",
   "PARTIAL SELL EXIT",
 ]);
-const MARKET_SEGMENT_OPTIONS = ["EQ", "FUT", "OPT"];
+const MARKET_SEGMENT_OPTIONS = [
+  { value: "EQ", label: "Equity (EQ)" },
+  { value: "FUT", label: "Futures (FUT)" },
+  { value: "OPT", label: "Options (OPT)" },
+];
+const INSTRUMENT_KIND_OPTIONS = [
+  { value: "equity", label: "Equity", segment: "EQ", exchange: "NSE" },
+  { value: "futures", label: "Index / Stock Futures", segment: "FUT", exchange: "NFO" },
+  { value: "options", label: "Options", segment: "OPT", exchange: "NFO" },
+  { value: "commodity", label: "Commodity (MCX)", segment: "FUT", exchange: "MCX" },
+];
 const MARKET_EXCHANGE_OPTIONS: Record<string, string[]> = {
   EQ: ["NSE", "BSE"],
   FUT: ["NFO", "BFO", "CDS", "MCX"],
@@ -202,10 +237,11 @@ const INFO_CONTENT: Record<string, InfoContent> = {
   },
   marketMayaEnable: {
     title: "Enable Market Maya",
-    description: "This toggle controls whether a webhook signal should send an auto-trade request to Market Maya.",
+    description:
+      "Controls Market Maya orders only. Strategy Enable/Disable is separate and controls whether webhook auto-trading runs at all.",
     points: [
-      "When off, the strategy can still store alerts, but auto trading will not run.",
-      "When on, a trade request is generated using the strategy configuration.",
+      "When Market Maya is off, Sharekhan (if enabled) can still place orders.",
+      "Use Strategy Enable/Disable on the list (or Enable strategy in the form) to pause the whole strategy.",
     ],
   },
   marketMayaToken: {
@@ -214,6 +250,62 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     points: [
       "If left blank, the server default token will be used.",
       "A valid token is required for live trading.",
+    ],
+  },
+  sharekhanDirect: {
+    title: "Sharekhan direct",
+    description:
+      "Place the same signal as a live order on YOUR Sharekhan account via ShareConnect API.",
+    points: [
+      "Uses credentials you paste on this strategy (not Admin mStock).",
+      "Required: API Key, Access Token, Customer ID, and Login ID (channelUser).",
+      "Can run together with Market Maya.",
+    ],
+  },
+  sharekhanApiKey: {
+    title: "Sharekhan API Key",
+    description: "API Key from your Sharekhan Trading API app (Self App).",
+    points: ["Create it on Sharekhan API developer portal.", "This is your key, not the admin mStock key."],
+  },
+  sharekhanAccessToken: {
+    title: "Sharekhan Access Token",
+    description: "Session access token generated after Sharekhan API login.",
+    points: ["Required for placing live orders.", "Regenerate when the session expires."],
+  },
+  sharekhanSecureKey: {
+    title: "Sharekhan Secure Key",
+    description: "Secure/secret key from your Sharekhan API app (optional to store).",
+    points: ["Used when generating access token from request token.", "Keep it private."],
+  },
+  sharekhanCustomerId: {
+    title: "Sharekhan Customer ID",
+    description: "Numeric client ID (e.g. 1464067). Sent as customerId in the order API.",
+    points: ["Must match the account that owns the API session."],
+  },
+  sharekhanChannelUser: {
+    title: "Sharekhan Login ID",
+    description: "Sharekhan login / channelUser (e.g. pandurangs22).",
+    points: [
+      "Different from Customer ID.",
+      "Must match the login used to generate the access token.",
+    ],
+  },
+  sharekhanRedirectUrl: {
+    title: "Sharekhan Redirect URL",
+    description: "Copy this URL into Sharekhan Create App → Redirect URL field.",
+    points: [
+      "Local testing: use the 127.0.0.1 URL.",
+      "Live: use your HTTPS app URL.",
+      "After login Sharekhan redirects here with request token.",
+    ],
+  },
+  sharekhanProductType: {
+    title: "Sharekhan product",
+    description: "Product type sent to Sharekhan for direct orders.",
+    points: [
+      "INVESTMENT = delivery / carry.",
+      "BIGTRADE = intraday style.",
+      "Auto uses INVESTMENT when blank.",
     ],
   },
   symbolSource: {
@@ -360,11 +452,12 @@ const INFO_CONTENT: Record<string, InfoContent> = {
   },
   orderType: {
     title: "Order Type",
-    description: "This decides whether the auto trade should be sent as a MARKET or LIMIT order.",
+    description:
+      "Market Maya REST API no longer accepts MARKET/LIMIT order_type. Live broker orders are placed from call type + symbol only.",
     points: [
-      "MARKET creates an immediate market execution request.",
-      "LIMIT uses a price and an optional buffer.",
-      "This field does not apply in exit mode.",
+      "Do not send order_type or price in the custom-trade URL.",
+      "Sending MARKET previously caused pseudo/paper fills instead of live orders.",
+      "Qty, target, and stop loss still work as documented additional variables.",
     ],
   },
   limitPrice: {
@@ -645,10 +738,129 @@ function getExpiryOptions(segment: string) {
   return segment === "FUT" ? FUT_EXPIRY_OPTIONS : OPT_EXPIRY_OPTIONS;
 }
 
+const SHAREKHAN_LOGIN_DRAFT_KEY = "wt_sharekhan_login_draft";
+const SHAREKHAN_ACCESS_RESULT_KEY = "wt_sharekhan_access_result";
+const SHAREKHAN_CREDENTIALS_KEY = "wt_sharekhan_credentials";
+
+type SharekhanFormDraft = Record<string, unknown>;
+type SharekhanSavedCredentials = {
+  apiKey: string;
+  secureKey: string;
+  customerId: string;
+  channelUser: string;
+  accessToken: string;
+  productType: string;
+  connectedAt?: number;
+};
+
+function readSharekhanSavedCredentials(): SharekhanSavedCredentials | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(SHAREKHAN_CREDENTIALS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SharekhanSavedCredentials> | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      apiKey: String(parsed.apiKey || ""),
+      secureKey: String(parsed.secureKey || ""),
+      customerId: String(parsed.customerId || ""),
+      channelUser: String(parsed.channelUser || ""),
+      accessToken: String(parsed.accessToken || ""),
+      productType: String(parsed.productType || ""),
+      connectedAt: Number(parsed.connectedAt || 0) || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveSharekhanSavedCredentials(patch: Partial<SharekhanSavedCredentials>) {
+  if (typeof window === "undefined") return;
+  const current = readSharekhanSavedCredentials() || {
+    apiKey: "",
+    secureKey: "",
+    customerId: "",
+    channelUser: "",
+    accessToken: "",
+    productType: "",
+  };
+  const next = {
+    ...current,
+    ...patch,
+  };
+  try {
+    window.localStorage.setItem(SHAREKHAN_CREDENTIALS_KEY, JSON.stringify(next));
+  } catch {
+    // ignore local storage failures
+  }
+}
+
+function getSharekhanRedirectUrls() {
+  const configured = String(process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+  const origin =
+    typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin.replace(/\/$/, "")
+      : configured || "http://127.0.0.1:3000";
+  const path = "/sharekhan/callback";
+
+  const toLoopback = (value: string) => {
+    try {
+      const parsed = new URL(value);
+      if (parsed.hostname === "localhost") {
+        parsed.hostname = "127.0.0.1";
+        return parsed.origin;
+      }
+      return parsed.origin;
+    } catch {
+      return value.replace("://localhost", "://127.0.0.1");
+    }
+  };
+
+  const primaryBase = toLoopback(configured || origin);
+  const primary = `${primaryBase}${path}`;
+  let local = `http://127.0.0.1:3000${path}`;
+  try {
+    const parsed = new URL(primaryBase);
+    if (parsed.hostname === "127.0.0.1") {
+      local = `http://127.0.0.1:${parsed.port || "3000"}${path}`;
+    }
+  } catch {
+    // keep default local
+  }
+  return { primary, local };
+}
+
 function pickExchangeForSegment(exchange: string, segment: string) {
   const options = getExchangeOptions(segment);
   if (options.includes(exchange)) return exchange;
   return segment === "EQ" ? DEFAULT_EQ_EXCHANGE : DEFAULT_DERIVATIVE_EXCHANGE;
+}
+
+function buildInstrumentSearchParams(query: string, exchange: string, segment: string) {
+  const params = new URLSearchParams({
+    q: query.trim(),
+    limit: "15",
+  });
+
+  if (segment === "EQ") {
+    params.set("instrumentType", "EQ");
+    if (exchange) params.set("exchange", exchange);
+  } else if (exchange === "MCX") {
+    params.set("exchange", "MCX");
+  } else {
+    // Fixed-stock underlyings are usually cash symbols (NSE/BSE).
+    params.set("instrumentType", "EQ");
+    params.set("exchange", "NSE");
+  }
+
+  return params;
+}
+
+function formatInstrumentSuggestion(hit: InstrumentHit) {
+  const parts = [hit.symbol];
+  if (hit.exchange) parts.push(hit.exchange);
+  if (hit.instrumentType) parts.push(hit.instrumentType);
+  return parts.join(" · ");
 }
 
 function toExpiryDateInputValue(value: string) {
@@ -757,6 +969,37 @@ function parseTestPayloadObject(payloadText: string) {
   } catch {
     return null;
   }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function highlightJsonPayload(source: string) {
+  const escaped = escapeHtml(source);
+  return (
+    escaped.replace(
+      /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}\[\],]/g,
+      (match, stringLiteral?: string, keyColon?: string, boolLiteral?: string) => {
+        if (stringLiteral) {
+          if (keyColon) {
+            return `<span class="json-key">${stringLiteral}</span>${keyColon}`;
+          }
+          return `<span class="json-string">${stringLiteral}</span>`;
+        }
+        if (boolLiteral) {
+          return `<span class="json-bool">${boolLiteral}</span>`;
+        }
+        if (/^-?\d/.test(match)) {
+          return `<span class="json-number">${match}</span>`;
+        }
+        return `<span class="json-punct">${match}</span>`;
+      }
+    ) + "\n"
+  );
 }
 
 function normalizeWebhookStocks(value: unknown) {
@@ -883,11 +1126,216 @@ function renderVisibilityIcon(visible: boolean) {
   );
 }
 
+type StrategyUiIcon =
+  | "spark"
+  | "key"
+  | "tag"
+  | "layers"
+  | "clock"
+  | "shield"
+  | "bell"
+  | "broadcast"
+  | "broker"
+  | "target"
+  | "stop"
+  | "trail"
+  | "mail"
+  | "telegram"
+  | "info"
+  | "close"
+  | "limit"
+  | "copy"
+  | "play"
+  | "edit"
+  | "power"
+  | "trash";
+
+type StrategySectionTone = "teal" | "orange" | "slate" | "amber" | "risk" | "alert" | "broker";
+type StrategySwitchTone = "maya" | "broker" | "risk" | "target" | "alert" | "limit";
+
+function renderStrategyUiIcon(name: StrategyUiIcon) {
+  switch (name) {
+    case "spark":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 2.5 11.4 7.4 16.5 8.8 11.4 10.2 10 15.5 8.6 10.2 3.5 8.8 8.6 7.4 10 2.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      );
+    case "key":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="7.2" cy="10" r="3.2" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10.2 10h6.3v2.2h-2.1V14H12v-1.8h-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "tag":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M3.5 10.8V4.8A1.3 1.3 0 0 1 4.8 3.5h6l5.7 5.7a1.3 1.3 0 0 1 0 1.8l-4.5 4.5a1.3 1.3 0 0 1-1.8 0L3.5 10.8Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <circle cx="7.2" cy="7.2" r="1.1" fill="currentColor" />
+        </svg>
+      );
+    case "layers":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 3.2 16.5 7 10 10.8 3.5 7 10 3.2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M3.5 10.2 10 14l6.5-3.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M3.5 13.2 10 17l6.5-3.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "clock":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="10" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10 6.5V10l2.8 1.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 2.8 15.5 5v4.2c0 3.5-2.3 5.9-5.5 7-3.2-1.1-5.5-3.5-5.5-7V5L10 2.8Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M7.8 10.1 9.3 11.6 12.4 8.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "bell":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M5.2 13.5h9.6l-1.1-1.4V8.8a3.7 3.7 0 1 0-7.4 0v3.3L5.2 13.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M8.4 15.2a1.7 1.7 0 0 0 3.2 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "broadcast":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="10" cy="10" r="1.6" fill="currentColor" />
+          <path d="M6.6 6.6a4.8 4.8 0 0 0 0 6.8M13.4 6.6a4.8 4.8 0 0 1 0 6.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M4.4 4.4a7.9 7.9 0 0 0 0 11.2M15.6 4.4a7.9 7.9 0 0 1 0 11.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "broker":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M3.5 15.5h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M5 15.5V8.2L10 4.8l5 3.4v7.3" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M8 15.5V11h4v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      );
+    case "target":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="10" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+          <circle cx="10" cy="10" r="3.2" stroke="currentColor" strokeWidth="1.5" />
+          <circle cx="10" cy="10" r="1" fill="currentColor" />
+        </svg>
+      );
+    case "stop":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 3.2 16.8 16.5H3.2L10 3.2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M10 8.2v3.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="10" cy="13.6" r="0.8" fill="currentColor" />
+        </svg>
+      );
+    case "trail":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M3.5 13.5c2.2-4 4.3-6 6.5-6s4.3 2 6.5 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M13.2 8.8 16.5 7.5 15.2 10.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "mail":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <rect x="3.2" y="5" width="13.6" height="10" rx="1.6" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M3.8 6.2 10 10.4l6.2-4.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "telegram":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M3.4 9.6 16.4 4.4l-2.2 11.2-4.1-2.4-2.1 2.1-.1-3.6 7-5.1-8.7 4.4-2.8-1.4Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+        </svg>
+      );
+    case "info":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10 9v4.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="10" cy="6.8" r="0.9" fill="currentColor" />
+        </svg>
+      );
+    case "close":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M5.5 5.5 14.5 14.5M14.5 5.5 5.5 14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case "limit":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M4 15.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M6.2 15.5V8.5M10 15.5V5.2M13.8 15.5v-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "copy":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <rect x="7" y="7" width="9" height="9" rx="1.6" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M5 13V4.8A1.8 1.8 0 0 1 6.8 3H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "play":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M7.2 5.2 14.5 10 7.2 14.8V5.2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      );
+    case "edit":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M4 13.8V16h2.2L14.8 7.4 12.6 5.2 4 13.8Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M11.4 6.4 13.6 8.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "power":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M10 3.5v6.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M6.2 5.8a5.8 5.8 0 1 0 7.6 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "trash":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M4.5 6h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M8 3.8h4M7 6l.6 9.2h4.8L13 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 export default function StrategyPage() {
   const [name, setName] = useState("");
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+  const [marketMayaEnabled, setMarketMayaEnabled] = useState(false);
   const [marketMayaToken, setMarketMayaToken] = useState("");
   const [showMarketMayaToken, setShowMarketMayaToken] = useState(false);
+  const [sharekhanDirect, setSharekhanDirect] = useState(false);
+  const [sharekhanProductType, setSharekhanProductType] = useState("");
+  const [sharekhanApiKey, setSharekhanApiKey] = useState("");
+  const [sharekhanAccessToken, setSharekhanAccessToken] = useState("");
+  const [sharekhanSecureKey, setSharekhanSecureKey] = useState("");
+  const [sharekhanCustomerId, setSharekhanCustomerId] = useState("");
+  const [sharekhanChannelUser, setSharekhanChannelUser] = useState("");
+  const [showSharekhanApiKey, setShowSharekhanApiKey] = useState(false);
+  const [showSharekhanAccessToken, setShowSharekhanAccessToken] = useState(false);
+  const [showSharekhanSecureKey, setShowSharekhanSecureKey] = useState(false);
+  const [sharekhanRedirectUrls, setSharekhanRedirectUrls] = useState(() => ({
+    primary: "http://127.0.0.1:3000/sharekhan/callback",
+    local: "http://127.0.0.1:3000/sharekhan/callback",
+  }));
   const [exchange, setExchange] = useState(DEFAULT_EQ_EXCHANGE);
   const [segment, setSegment] = useState(DEFAULT_SEGMENT);
   const [expiryMode, setExpiryMode] = useState<"contract" | "date">("contract");
@@ -903,6 +1351,9 @@ export default function StrategyPage() {
   const [maxSymbols, setMaxSymbols] = useState("");
   const [manualSymbols, setManualSymbols] = useState<string[]>([]);
   const [manualSymbolInput, setManualSymbolInput] = useState("");
+  const [manualSymbolSuggestions, setManualSymbolSuggestions] = useState<InstrumentHit[]>([]);
+  const [manualSymbolSearching, setManualSymbolSearching] = useState(false);
+  const [showManualSymbolSuggestions, setShowManualSymbolSuggestions] = useState(false);
   const [callTypeFallback, setCallTypeFallback] = useState("");
   const [orderType, setOrderType] = useState("MARKET");
   const [limitPriceSource, setLimitPriceSource] =
@@ -958,9 +1409,20 @@ export default function StrategyPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Strategy | null>(null);
   const [editName, setEditName] = useState("");
-  const [editEnabled, setEditEnabled] = useState(false);
+  const [editEnabled, setEditEnabled] = useState(true);
+  const [editMarketMayaEnabled, setEditMarketMayaEnabled] = useState(false);
   const [editMarketMayaToken, setEditMarketMayaToken] = useState("");
   const [showEditMarketMayaToken, setShowEditMarketMayaToken] = useState(false);
+  const [editSharekhanDirect, setEditSharekhanDirect] = useState(false);
+  const [editSharekhanProductType, setEditSharekhanProductType] = useState("");
+  const [editSharekhanApiKey, setEditSharekhanApiKey] = useState("");
+  const [editSharekhanAccessToken, setEditSharekhanAccessToken] = useState("");
+  const [editSharekhanSecureKey, setEditSharekhanSecureKey] = useState("");
+  const [editSharekhanCustomerId, setEditSharekhanCustomerId] = useState("");
+  const [editSharekhanChannelUser, setEditSharekhanChannelUser] = useState("");
+  const [showEditSharekhanApiKey, setShowEditSharekhanApiKey] = useState(false);
+  const [showEditSharekhanAccessToken, setShowEditSharekhanAccessToken] = useState(false);
+  const [showEditSharekhanSecureKey, setShowEditSharekhanSecureKey] = useState(false);
   const [editExchange, setEditExchange] = useState(DEFAULT_EQ_EXCHANGE);
   const [editSegment, setEditSegment] = useState(DEFAULT_SEGMENT);
   const [editExpiryMode, setEditExpiryMode] = useState<"contract" | "date">("contract");
@@ -976,6 +1438,9 @@ export default function StrategyPage() {
   const [editMaxSymbols, setEditMaxSymbols] = useState("");
   const [editManualSymbols, setEditManualSymbols] = useState<string[]>([]);
   const [editManualSymbolInput, setEditManualSymbolInput] = useState("");
+  const [editManualSymbolSuggestions, setEditManualSymbolSuggestions] = useState<InstrumentHit[]>([]);
+  const [editManualSymbolSearching, setEditManualSymbolSearching] = useState(false);
+  const [showEditManualSymbolSuggestions, setShowEditManualSymbolSuggestions] = useState(false);
   const [editCallTypeFallback, setEditCallTypeFallback] = useState("");
   const [editOrderType, setEditOrderType] = useState("MARKET");
   const [editLimitPriceSource, setEditLimitPriceSource] =
@@ -1011,8 +1476,8 @@ export default function StrategyPage() {
   const [editTradeWindowEnd, setEditTradeWindowEnd] = useState(DEFAULT_TRADE_WINDOW_END);
   const [editEmailEnabled, setEditEmailEnabled] = useState(true);
   const [editTelegramEnabled, setEditTelegramEnabled] = useState(false);
-  const [showAddInfoButtons, setShowAddInfoButtons] = useState(true);
-  const [showEditInfoButtons, setShowEditInfoButtons] = useState(true);
+  const [showAddInfoButtons, setShowAddInfoButtons] = useState(false);
+  const [showEditInfoButtons, setShowEditInfoButtons] = useState(false);
   const [activeInfoKey, setActiveInfoKey] = useState<string | null>(null);
 
   const webhookBaseUrl = useMemo(() => {
@@ -1057,32 +1522,20 @@ export default function StrategyPage() {
   const emailAlertTarget = profileEmail || "your registered email";
   const exitFallbackSelected = isExitTradeAction(callTypeFallback);
   const editExitFallbackSelected = isExitTradeAction(editCallTypeFallback);
-  const usingFixedLimitPrice = orderType === "LIMIT" && limitPriceSource === "fixed";
-  const usingTriggerLimitPrice = orderType === "LIMIT" && limitPriceSource === "trigger";
-  const usingMStockLimitPrice =
-    orderType === "LIMIT" &&
-    (limitPriceSource === "mstockHigh" ||
-      limitPriceSource === "mstockLow" ||
-      limitPriceSource === "mstockOpen" ||
-      limitPriceSource === "mstockClose");
-  const usingDynamicLimitPrice = orderType === "LIMIT" && limitPriceSource !== "fixed";
+  const usingFixedLimitPrice = false;
+  const usingTriggerLimitPrice = false;
+  const usingMStockLimitPrice = false;
+  const usingDynamicLimitPrice = false;
   const derivativeSegmentSelected = isDerivativeSegment(segment);
   const optionSegmentSelected = segment === "OPT";
   const exchangeOptions = getExchangeOptions(segment);
   const expiryOptions = getExpiryOptions(segment);
   const editDerivativeSegmentSelected = isDerivativeSegment(editSegment);
   const editOptionSegmentSelected = editSegment === "OPT";
-  const editUsingFixedLimitPrice = editOrderType === "LIMIT" && editLimitPriceSource === "fixed";
-  const editUsingTriggerLimitPrice =
-    editOrderType === "LIMIT" && editLimitPriceSource === "trigger";
-  const editUsingMStockLimitPrice =
-    editOrderType === "LIMIT" &&
-    (editLimitPriceSource === "mstockHigh" ||
-      editLimitPriceSource === "mstockLow" ||
-      editLimitPriceSource === "mstockOpen" ||
-      editLimitPriceSource === "mstockClose");
-  const editUsingDynamicLimitPrice =
-    editOrderType === "LIMIT" && editLimitPriceSource !== "fixed";
+  const editUsingFixedLimitPrice = false;
+  const editUsingTriggerLimitPrice = false;
+  const editUsingMStockLimitPrice = false;
+  const editUsingDynamicLimitPrice = false;
   const editExchangeOptions = getExchangeOptions(editSegment);
   const editExpiryOptions = getExpiryOptions(editSegment);
   const activeInfo = activeInfoKey ? INFO_CONTENT[activeInfoKey] || null : null;
@@ -1099,6 +1552,349 @@ export default function StrategyPage() {
     } catch {
       flashMessage("Copy failed. Please copy manually.");
     }
+  };
+
+  const startSharekhanLogin = async (mode: "add" | "edit") => {
+    const apiKey = (mode === "add" ? sharekhanApiKey : editSharekhanApiKey).trim();
+    const secureKey = (mode === "add" ? sharekhanSecureKey : editSharekhanSecureKey).trim();
+    const customerId = (mode === "add" ? sharekhanCustomerId : editSharekhanCustomerId).trim();
+    const channelUser = (mode === "add" ? sharekhanChannelUser : editSharekhanChannelUser).trim();
+    const productType = (mode === "add" ? sharekhanProductType : editSharekhanProductType).trim();
+    if (!apiKey) {
+      setError("Sharekhan API Key is required before login.");
+      return;
+    }
+    if (!secureKey) {
+      setError("Sharekhan Secure Key is required before login.");
+      return;
+    }
+    saveSharekhanSavedCredentials({
+      apiKey,
+      secureKey,
+      customerId,
+      channelUser,
+      productType,
+      accessToken: mode === "add" ? sharekhanAccessToken.trim() : editSharekhanAccessToken.trim(),
+    });
+
+    const formDraft: SharekhanFormDraft =
+      mode === "add"
+        ? {
+            name,
+            enabled,
+            marketMayaEnabled,
+            marketMayaToken,
+            sharekhanDirect: true,
+            sharekhanProductType,
+            sharekhanApiKey: apiKey,
+            sharekhanSecureKey: secureKey,
+            sharekhanCustomerId: customerId,
+            sharekhanChannelUser: channelUser,
+            sharekhanAccessToken,
+            exchange,
+            segment,
+            expiryMode,
+            contract,
+            expiry,
+            expiryDate,
+            optionType,
+            strikeMode,
+            atm,
+            strikePrice,
+            symbolMode,
+            symbolKey,
+            maxSymbols,
+            manualSymbols,
+            callTypeFallback,
+            orderType,
+            limitPriceSource,
+            limitPrice,
+            mStockApiType,
+            mStockApiKey,
+            mStockAuthToken,
+            mStockExchange,
+            mStockInstrumentToken,
+            mStockInterval,
+            mStockCandleOffset,
+            bufferBy,
+            bufferPoints,
+            capitalAmount,
+            qtyDistribution,
+            qtyValue,
+            useTarget,
+            targetBy,
+            target,
+            useStopLoss,
+            slBy,
+            sl,
+            trailSl,
+            slMove,
+            profitMove,
+            dailyTradeLimit,
+            useDailyTradeLimit,
+            tradeWindowStart,
+            tradeWindowEnd,
+            emailEnabled,
+            telegramEnabled,
+          }
+        : {
+            name: editName,
+            enabled: editEnabled,
+            marketMayaEnabled: editMarketMayaEnabled,
+            marketMayaToken: editMarketMayaToken,
+            sharekhanDirect: true,
+            sharekhanProductType: editSharekhanProductType,
+            sharekhanApiKey: apiKey,
+            sharekhanSecureKey: secureKey,
+            sharekhanCustomerId: customerId,
+            sharekhanChannelUser: channelUser,
+            sharekhanAccessToken: editSharekhanAccessToken,
+            exchange: editExchange,
+            segment: editSegment,
+            expiryMode: editExpiryMode,
+            contract: editContract,
+            expiry: editExpiry,
+            expiryDate: editExpiryDate,
+            optionType: editOptionType,
+            strikeMode: editStrikeMode,
+            atm: editAtm,
+            strikePrice: editStrikePrice,
+            symbolMode: editSymbolMode,
+            symbolKey: editSymbolKey,
+            maxSymbols: editMaxSymbols,
+            manualSymbols: editManualSymbols,
+            callTypeFallback: editCallTypeFallback,
+            orderType: editOrderType,
+            limitPriceSource: editLimitPriceSource,
+            limitPrice: editLimitPrice,
+            mStockApiType: editMStockApiType,
+            mStockApiKey: editMStockApiKey,
+            mStockAuthToken: editMStockAuthToken,
+            mStockExchange: editMStockExchange,
+            mStockInstrumentToken: editMStockInstrumentToken,
+            mStockInterval: editMStockInterval,
+            mStockCandleOffset: editMStockCandleOffset,
+            bufferBy: editBufferBy,
+            bufferPoints: editBufferPoints,
+            capitalAmount: editCapitalAmount,
+            qtyDistribution: editQtyDistribution,
+            qtyValue: editQtyValue,
+            useTarget: editUseTarget,
+            targetBy: editTargetBy,
+            target: editTarget,
+            useStopLoss: editUseStopLoss,
+            slBy: editSlBy,
+            sl: editSl,
+            trailSl: editTrailSl,
+            slMove: editSlMove,
+            profitMove: editProfitMove,
+            dailyTradeLimit: editDailyTradeLimit,
+            useDailyTradeLimit: editUseDailyTradeLimit,
+            tradeWindowStart: editTradeWindowStart,
+            tradeWindowEnd: editTradeWindowEnd,
+            emailEnabled: editEmailEnabled,
+            telegramEnabled: editTelegramEnabled,
+          };
+
+    try {
+      const token = getToken();
+      await apiPost(
+        "/api/v1/sharekhan/login-prep",
+        {
+          apiKey,
+          secureKey,
+          customerId,
+          channelUser,
+          productType,
+          accessToken: mode === "add" ? sharekhanAccessToken.trim() : editSharekhanAccessToken.trim(),
+          mode,
+          strategyId: mode === "edit" ? editing?._id || "" : "",
+          returnTo: "/strategy",
+          formDraft,
+        },
+        token
+      );
+
+      // Keep a local backup too (same-origin cases).
+      try {
+        sessionStorage.setItem(
+          SHAREKHAN_LOGIN_DRAFT_KEY,
+          JSON.stringify({
+            apiKey,
+            secureKey,
+            customerId,
+            channelUser,
+            mode,
+            formDraft,
+            returnTo: "/strategy",
+          })
+        );
+      } catch {
+        // ignore storage failures
+      }
+
+      const data = (await apiPost(
+        "/api/v1/sharekhan/login-url",
+        { apiKey, state: "12345" },
+        token
+      )) as { loginUrl?: string };
+      const loginUrl = String(data.loginUrl || "").trim();
+      if (!loginUrl) {
+        throw new Error("Sharekhan login URL missing");
+      }
+
+      // Sharekhan redirect uses 127.0.0.1. Keep auth+flow on the same origin.
+      if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+        const port = window.location.port || "3000";
+        const bounce = new URL(`http://127.0.0.1:${port}/strategy`);
+        bounce.searchParams.set("sk_continue", "1");
+        bounce.searchParams.set("sk_mode", mode);
+        if (token) bounce.searchParams.set("sk_auth", token);
+        window.location.href = bounce.toString();
+        return;
+      }
+
+      window.location.href = loginUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to open Sharekhan login");
+    }
+  };
+
+  const applySharekhanFormDraft = (mode: "add" | "edit", draft: SharekhanFormDraft, accessToken: string) => {
+    const text = (key: string, fallback = "") => String(draft[key] ?? fallback);
+    const bool = (key: string, fallback = false) => Boolean(draft[key] ?? fallback);
+    const list = (key: string) =>
+      Array.isArray(draft[key]) ? (draft[key] as string[]).map((item) => String(item)) : [];
+    const resolvedAccessToken = accessToken || text("sharekhanAccessToken");
+    saveSharekhanSavedCredentials({
+      apiKey: text("sharekhanApiKey"),
+      secureKey: text("sharekhanSecureKey"),
+      customerId: text("sharekhanCustomerId"),
+      channelUser: text("sharekhanChannelUser"),
+      accessToken: resolvedAccessToken,
+      productType: text("sharekhanProductType"),
+      ...(resolvedAccessToken ? { connectedAt: Date.now() } : {}),
+    });
+
+    if (mode === "add") {
+      setName(text("name"));
+      setEnabled(bool("enabled", true));
+      setMarketMayaEnabled(bool("marketMayaEnabled"));
+      setMarketMayaToken(text("marketMayaToken"));
+      setSharekhanDirect(true);
+      setSharekhanProductType(text("sharekhanProductType"));
+      setSharekhanApiKey(text("sharekhanApiKey"));
+      setSharekhanSecureKey(text("sharekhanSecureKey"));
+      setSharekhanCustomerId(text("sharekhanCustomerId"));
+      setSharekhanChannelUser(text("sharekhanChannelUser"));
+      setSharekhanAccessToken(resolvedAccessToken);
+      setExchange(text("exchange", DEFAULT_EQ_EXCHANGE));
+      setSegment(text("segment", DEFAULT_SEGMENT));
+      setExpiryMode(text("expiryMode", "contract") === "date" ? "date" : "contract");
+      setContract(text("contract", DEFAULT_CONTRACT));
+      setExpiry(text("expiry", DEFAULT_EXPIRY));
+      setExpiryDate(text("expiryDate"));
+      setOptionType(text("optionType", DEFAULT_OPTION_TYPE));
+      setStrikeMode(text("strikeMode", "atm") === "strike" ? "strike" : "atm");
+      setAtm(text("atm", DEFAULT_ATM));
+      setStrikePrice(text("strikePrice"));
+      setSymbolMode(text("symbolMode", "stocksFirst"));
+      setSymbolKey(text("symbolKey", "symbol"));
+      setMaxSymbols(text("maxSymbols"));
+      setManualSymbols(list("manualSymbols"));
+      setCallTypeFallback(text("callTypeFallback"));
+      setOrderType(text("orderType", "MARKET"));
+      setLimitPriceSource((text("limitPriceSource", DEFAULT_LIMIT_PRICE_SOURCE) as LimitPriceSource) || DEFAULT_LIMIT_PRICE_SOURCE);
+      setLimitPrice(text("limitPrice"));
+      setMStockApiType(text("mStockApiType", DEFAULT_MSTOCK_API_TYPE));
+      setMStockApiKey(text("mStockApiKey"));
+      setMStockAuthToken(text("mStockAuthToken"));
+      setMStockExchange(text("mStockExchange", DEFAULT_EQ_EXCHANGE));
+      setMStockInstrumentToken(text("mStockInstrumentToken"));
+      setMStockInterval(text("mStockInterval", DEFAULT_MSTOCK_INTERVAL));
+      setMStockCandleOffset(text("mStockCandleOffset", DEFAULT_MSTOCK_CANDLE_OFFSET));
+      setBufferBy(text("bufferBy"));
+      setBufferPoints(text("bufferPoints"));
+      setCapitalAmount(text("capitalAmount"));
+      setQtyDistribution(text("qtyDistribution"));
+      setQtyValue(text("qtyValue"));
+      setUseTarget(bool("useTarget"));
+      setTargetBy(text("targetBy"));
+      setTarget(text("target"));
+      setUseStopLoss(bool("useStopLoss"));
+      setSlBy(text("slBy"));
+      setSl(text("sl"));
+      setTrailSl(bool("trailSl"));
+      setSlMove(text("slMove"));
+      setProfitMove(text("profitMove"));
+      setDailyTradeLimit(text("dailyTradeLimit"));
+      setUseDailyTradeLimit(bool("useDailyTradeLimit"));
+      setTradeWindowStart(text("tradeWindowStart", DEFAULT_TRADE_WINDOW_START));
+      setTradeWindowEnd(text("tradeWindowEnd", DEFAULT_TRADE_WINDOW_END));
+      setEmailEnabled(bool("emailEnabled", true));
+      setTelegramEnabled(bool("telegramEnabled"));
+      setShowAddInfoButtons(false);
+      setShowModal(true);
+      return;
+    }
+
+    setEditSharekhanDirect(true);
+    setEditSharekhanProductType(text("sharekhanProductType"));
+    setEditSharekhanApiKey(text("sharekhanApiKey"));
+    setEditSharekhanSecureKey(text("sharekhanSecureKey"));
+    setEditSharekhanCustomerId(text("sharekhanCustomerId"));
+    setEditSharekhanChannelUser(text("sharekhanChannelUser"));
+    setEditSharekhanAccessToken(resolvedAccessToken);
+    setEditName(text("name"));
+    setEditEnabled(bool("enabled", true));
+    setEditMarketMayaEnabled(bool("marketMayaEnabled"));
+    setEditMarketMayaToken(text("marketMayaToken"));
+    setEditExchange(text("exchange", DEFAULT_EQ_EXCHANGE));
+    setEditSegment(text("segment", DEFAULT_SEGMENT));
+    setEditExpiryMode(text("expiryMode", "contract") === "date" ? "date" : "contract");
+    setEditContract(text("contract", DEFAULT_CONTRACT));
+    setEditExpiry(text("expiry", DEFAULT_EXPIRY));
+    setEditExpiryDate(text("expiryDate"));
+    setEditOptionType(text("optionType", DEFAULT_OPTION_TYPE));
+    setEditStrikeMode(text("strikeMode", "atm") === "strike" ? "strike" : "atm");
+    setEditAtm(text("atm", DEFAULT_ATM));
+    setEditStrikePrice(text("strikePrice"));
+    setEditSymbolMode(text("symbolMode", "stocksFirst"));
+    setEditSymbolKey(text("symbolKey", "symbol"));
+    setEditMaxSymbols(text("maxSymbols"));
+    setEditManualSymbols(list("manualSymbols"));
+    setEditCallTypeFallback(text("callTypeFallback"));
+    setEditOrderType(text("orderType", "MARKET"));
+    setEditLimitPriceSource((text("limitPriceSource", DEFAULT_LIMIT_PRICE_SOURCE) as LimitPriceSource) || DEFAULT_LIMIT_PRICE_SOURCE);
+    setEditLimitPrice(text("limitPrice"));
+    setEditMStockApiType(text("mStockApiType", DEFAULT_MSTOCK_API_TYPE));
+    setEditMStockApiKey(text("mStockApiKey"));
+    setEditMStockAuthToken(text("mStockAuthToken"));
+    setEditMStockExchange(text("mStockExchange", DEFAULT_EQ_EXCHANGE));
+    setEditMStockInstrumentToken(text("mStockInstrumentToken"));
+    setEditMStockInterval(text("mStockInterval", DEFAULT_MSTOCK_INTERVAL));
+    setEditMStockCandleOffset(text("mStockCandleOffset", DEFAULT_MSTOCK_CANDLE_OFFSET));
+    setEditBufferBy(text("bufferBy"));
+    setEditBufferPoints(text("bufferPoints"));
+    setEditCapitalAmount(text("capitalAmount"));
+    setEditQtyDistribution(text("qtyDistribution"));
+    setEditQtyValue(text("qtyValue"));
+    setEditUseTarget(bool("useTarget"));
+    setEditTargetBy(text("targetBy"));
+    setEditTarget(text("target"));
+    setEditUseStopLoss(bool("useStopLoss"));
+    setEditSlBy(text("slBy"));
+    setEditSl(text("sl"));
+    setEditTrailSl(bool("trailSl"));
+    setEditSlMove(text("slMove"));
+    setEditProfitMove(text("profitMove"));
+    setEditDailyTradeLimit(text("dailyTradeLimit"));
+    setEditUseDailyTradeLimit(bool("useDailyTradeLimit"));
+    setEditTradeWindowStart(text("tradeWindowStart", DEFAULT_TRADE_WINDOW_START));
+    setEditTradeWindowEnd(text("tradeWindowEnd", DEFAULT_TRADE_WINDOW_END));
+    setEditEmailEnabled(bool("emailEnabled", true));
+    setEditTelegramEnabled(bool("telegramEnabled"));
+    setShowEditInfoButtons(false);
   };
 
   const handleSegmentChange = (nextSegment: string) => {
@@ -1123,6 +1919,55 @@ export default function StrategyPage() {
       setStrikePrice("");
     }
   };
+
+  const applyInstrumentKind = (kind: string, isEdit = false) => {
+    const preset = INSTRUMENT_KIND_OPTIONS.find((item) => item.value === kind);
+    if (!preset) return;
+    if (isEdit) {
+      handleEditSegmentChange(preset.segment);
+      setEditExchange(preset.exchange);
+      if (preset.exchange === "MCX") {
+        setEditTradeWindowEnd(DEFAULT_MCX_TRADE_WINDOW_END);
+        setEditContract(DEFAULT_CONTRACT);
+        setEditExpiry(DEFAULT_EXPIRY);
+      }
+      if (preset.segment === "OPT") {
+        setEditOptionType(DEFAULT_OPTION_TYPE);
+        setEditStrikeMode("atm");
+        setEditAtm(DEFAULT_ATM);
+      }
+      return;
+    }
+    handleSegmentChange(preset.segment);
+    setExchange(preset.exchange);
+    if (preset.exchange === "MCX") {
+      setTradeWindowEnd(DEFAULT_MCX_TRADE_WINDOW_END);
+      setContract(DEFAULT_CONTRACT);
+      setExpiry(DEFAULT_EXPIRY);
+    }
+    if (preset.segment === "OPT") {
+      setOptionType(DEFAULT_OPTION_TYPE);
+      setStrikeMode("atm");
+      setAtm(DEFAULT_ATM);
+    }
+  };
+
+  const currentInstrumentKind =
+    exchange === "MCX"
+      ? "commodity"
+      : segment === "OPT"
+        ? "options"
+        : segment === "FUT"
+          ? "futures"
+          : "equity";
+  const editInstrumentKind =
+    editExchange === "MCX"
+      ? "commodity"
+      : editSegment === "OPT"
+        ? "options"
+        : editSegment === "FUT"
+          ? "futures"
+          : "equity";
 
   const handleEditSegmentChange = (nextSegment: string) => {
     setEditSegment(nextSegment);
@@ -1199,8 +2044,35 @@ export default function StrategyPage() {
     showInfo = true
   ) => (
     <div className="section-title-row" style={style}>
-      <div className="page-title">{title}</div>
+      <div className="section-title">{title}</div>
       {renderInfoButton(infoKey, "chip", showInfo)}
+    </div>
+  );
+
+  const renderFormSectionHeader = ({
+    title,
+    icon,
+    infoKey,
+    showInfo = true,
+  }: {
+    title: string;
+    description?: string;
+    icon: StrategyUiIcon;
+    tone: StrategySectionTone;
+    infoKey?: string;
+    showInfo?: boolean;
+  }) => (
+    <div className="form-section-header">
+      <span className="section-icon" aria-hidden="true">
+        {renderStrategyUiIcon(icon)}
+      </span>
+      <div className="form-section-heading-copy">
+        {infoKey ? (
+          renderTitleWithInfo(title, infoKey, undefined, showInfo)
+        ) : (
+          <div className="section-title">{title}</div>
+        )}
+      </div>
     </div>
   );
 
@@ -1226,6 +2098,51 @@ export default function StrategyPage() {
       />
     </label>
   );
+
+  const renderFeatureSwitch = (
+    id: string,
+    checked: boolean,
+    onChange: (checked: boolean) => void,
+    title: string,
+    description?: string,
+    titleClassName?: string,
+    options?: {
+      tone?: StrategySwitchTone;
+      icon?: StrategyUiIcon;
+    }
+  ) => {
+    const tone = options?.tone || "maya";
+    const icon = options?.icon;
+    return (
+      <div className={`switch-row tone-${tone}${checked ? " is-on" : ""}`}>
+        <div className="switch-row-main">
+          {icon ? (
+            <span className="switch-mini-icon" aria-hidden="true">
+              {renderStrategyUiIcon(icon)}
+            </span>
+          ) : null}
+          <div className="switch-row-copy">
+            <span className={titleClassName ? `switch-row-title ${titleClassName}` : "switch-row-title"}>
+              {title}
+            </span>
+          </div>
+        </div>
+        <label className="info-toggle" htmlFor={id}>
+          <span className={`info-switch${checked ? " on" : ""}`}>
+            <span className="info-switch-thumb" />
+          </span>
+          <input
+            id={id}
+            type="checkbox"
+            role="switch"
+            aria-label={title}
+            checked={checked}
+            onChange={(event) => onChange(event.target.checked)}
+          />
+        </label>
+      </div>
+    );
+  };
 
   const renderAddLabelWithInfo = (
     htmlFor: string,
@@ -1276,7 +2193,7 @@ export default function StrategyPage() {
   );
 
   const openAdd = () => {
-    setShowAddInfoButtons(true);
+    setShowAddInfoButtons(false);
     setShowMarketMayaToken(false);
     setShowMStockApiKey(false);
     setShowMStockAuthToken(false);
@@ -1286,7 +2203,7 @@ export default function StrategyPage() {
 
   const closeAdd = () => {
     setActiveInfoKey(null);
-    setShowAddInfoButtons(true);
+    setShowAddInfoButtons(false);
     setShowMarketMayaToken(false);
     setShowMStockApiKey(false);
     setShowMStockAuthToken(false);
@@ -1340,6 +2257,419 @@ export default function StrategyPage() {
     loadTokens();
     loadProfile();
   }, [loadProfile, loadStrategies, loadTokens]);
+
+  useEffect(() => {
+    setSharekhanRedirectUrls(getSharekhanRedirectUrls());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSavedSharekhanCredentials() {
+      try {
+        const token = getToken();
+        if (!token) return;
+        const data = (await apiGet("/api/v1/sharekhan/login-prep", token)) as {
+          prep?: {
+            apiKey?: string;
+            secureKey?: string;
+            customerId?: string;
+            accessToken?: string;
+            productType?: string;
+            connected?: boolean;
+          } | null;
+        };
+        if (cancelled || !data.prep) return;
+        const saved = {
+          apiKey: String(data.prep.apiKey || ""),
+          secureKey: String(data.prep.secureKey || ""),
+          customerId: String(data.prep.customerId || ""),
+          channelUser: String((data.prep as { channelUser?: string }).channelUser || ""),
+          accessToken: String(data.prep.accessToken || ""),
+          productType: String(data.prep.productType || ""),
+        };
+        if (!saved.apiKey && !saved.secureKey && !saved.customerId && !saved.accessToken) return;
+        saveSharekhanSavedCredentials({
+          ...saved,
+          ...(saved.accessToken ? { connectedAt: Date.now() } : {}),
+        });
+        if (!sharekhanDirect) setSharekhanDirect(true);
+        if (!sharekhanApiKey.trim() && saved.apiKey) setSharekhanApiKey(saved.apiKey);
+        if (!sharekhanSecureKey.trim() && saved.secureKey) setSharekhanSecureKey(saved.secureKey);
+        if (!sharekhanCustomerId.trim() && saved.customerId) setSharekhanCustomerId(saved.customerId);
+        if (!sharekhanChannelUser.trim() && saved.channelUser) setSharekhanChannelUser(saved.channelUser);
+        if (!sharekhanAccessToken.trim() && saved.accessToken) setSharekhanAccessToken(saved.accessToken);
+        if (!sharekhanProductType.trim() && saved.productType) setSharekhanProductType(saved.productType);
+      } catch {
+        // Saved Sharekhan credentials are optional.
+      }
+    }
+
+    loadSavedSharekhanCredentials();
+    return () => {
+      cancelled = true;
+    };
+    // Run once; this only hydrates empty fields from the DB.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!sharekhanDirect) return;
+    const saved = readSharekhanSavedCredentials();
+    if (!saved) return;
+    if (!sharekhanApiKey.trim() && saved.apiKey) setSharekhanApiKey(saved.apiKey);
+    if (!sharekhanSecureKey.trim() && saved.secureKey) setSharekhanSecureKey(saved.secureKey);
+    if (!sharekhanCustomerId.trim() && saved.customerId) setSharekhanCustomerId(saved.customerId);
+    if (!sharekhanChannelUser.trim() && saved.channelUser) setSharekhanChannelUser(saved.channelUser);
+    if (!sharekhanAccessToken.trim() && saved.accessToken) setSharekhanAccessToken(saved.accessToken);
+    if (!sharekhanProductType.trim() && saved.productType) setSharekhanProductType(saved.productType);
+  }, [
+    sharekhanDirect,
+    sharekhanApiKey,
+    sharekhanSecureKey,
+    sharekhanCustomerId,
+    sharekhanChannelUser,
+    sharekhanAccessToken,
+    sharekhanProductType,
+  ]);
+
+  useEffect(() => {
+    if (!editSharekhanDirect) return;
+    const saved = readSharekhanSavedCredentials();
+    if (!saved) return;
+    if (!editSharekhanApiKey.trim() && saved.apiKey) setEditSharekhanApiKey(saved.apiKey);
+    if (!editSharekhanSecureKey.trim() && saved.secureKey) setEditSharekhanSecureKey(saved.secureKey);
+    if (!editSharekhanCustomerId.trim() && saved.customerId) setEditSharekhanCustomerId(saved.customerId);
+    if (!editSharekhanChannelUser.trim() && saved.channelUser) {
+      setEditSharekhanChannelUser(saved.channelUser);
+    }
+    if (!editSharekhanAccessToken.trim() && saved.accessToken) setEditSharekhanAccessToken(saved.accessToken);
+    if (!editSharekhanProductType.trim() && saved.productType) setEditSharekhanProductType(saved.productType);
+  }, [
+    editSharekhanDirect,
+    editSharekhanApiKey,
+    editSharekhanSecureKey,
+    editSharekhanCustomerId,
+    editSharekhanChannelUser,
+    editSharekhanAccessToken,
+    editSharekhanProductType,
+  ]);
+
+  useEffect(() => {
+    if (!sharekhanDirect) return;
+    if (
+      !sharekhanApiKey.trim() &&
+      !sharekhanSecureKey.trim() &&
+      !sharekhanCustomerId.trim() &&
+      !sharekhanChannelUser.trim() &&
+      !sharekhanAccessToken.trim()
+    ) {
+      return;
+    }
+    saveSharekhanSavedCredentials({
+      apiKey: sharekhanApiKey.trim(),
+      secureKey: sharekhanSecureKey.trim(),
+      customerId: sharekhanCustomerId.trim(),
+      channelUser: sharekhanChannelUser.trim(),
+      accessToken: sharekhanAccessToken.trim(),
+      productType: sharekhanProductType.trim(),
+      ...(sharekhanAccessToken.trim() ? { connectedAt: Date.now() } : {}),
+    });
+  }, [
+    sharekhanDirect,
+    sharekhanApiKey,
+    sharekhanSecureKey,
+    sharekhanCustomerId,
+    sharekhanChannelUser,
+    sharekhanAccessToken,
+    sharekhanProductType,
+  ]);
+
+  useEffect(() => {
+    if (!editSharekhanDirect) return;
+    if (
+      !editSharekhanApiKey.trim() &&
+      !editSharekhanSecureKey.trim() &&
+      !editSharekhanCustomerId.trim() &&
+      !editSharekhanChannelUser.trim() &&
+      !editSharekhanAccessToken.trim()
+    ) {
+      return;
+    }
+    saveSharekhanSavedCredentials({
+      apiKey: editSharekhanApiKey.trim(),
+      secureKey: editSharekhanSecureKey.trim(),
+      customerId: editSharekhanCustomerId.trim(),
+      channelUser: editSharekhanChannelUser.trim(),
+      accessToken: editSharekhanAccessToken.trim(),
+      productType: editSharekhanProductType.trim(),
+      ...(editSharekhanAccessToken.trim() ? { connectedAt: Date.now() } : {}),
+    });
+  }, [
+    editSharekhanDirect,
+    editSharekhanApiKey,
+    editSharekhanSecureKey,
+    editSharekhanCustomerId,
+    editSharekhanChannelUser,
+    editSharekhanAccessToken,
+    editSharekhanProductType,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const continueLogin = url.searchParams.get("sk_continue") === "1";
+    if (!continueLogin) return;
+
+    const handoffAuth = String(url.searchParams.get("sk_auth") || "").trim();
+    if (handoffAuth) setToken(handoffAuth);
+
+    url.searchParams.delete("sk_continue");
+    url.searchParams.delete("sk_auth");
+    url.searchParams.delete("sk_mode");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = handoffAuth || getToken();
+        if (!token) {
+          setError("Please sign in again, then connect Sharekhan.");
+          return;
+        }
+
+        const prepData = (await apiGet("/api/v1/sharekhan/login-prep", token)) as {
+          prep?: {
+            apiKey?: string;
+            secureKey?: string;
+            customerId?: string;
+            mode?: string;
+            strategyId?: string;
+            returnTo?: string;
+            formDraft?: SharekhanFormDraft | null;
+            hasSecureKey?: boolean;
+            hasFormDraft?: boolean;
+          } | null;
+        };
+        const apiKey = String(prepData.prep?.apiKey || "").trim();
+        if (!apiKey) {
+          setError("Sharekhan login session missing. Enter API Key and try again.");
+          return;
+        }
+
+        // Mirror draft onto this origin (127.0.0.1) so callback can resend keys if needed.
+        try {
+          sessionStorage.setItem(
+            SHAREKHAN_LOGIN_DRAFT_KEY,
+            JSON.stringify({
+              apiKey,
+              secureKey: prepData.prep?.secureKey || "",
+              customerId: prepData.prep?.customerId || "",
+              mode: prepData.prep?.mode || "add",
+              strategyId: prepData.prep?.strategyId || "",
+              returnTo: prepData.prep?.returnTo || "/strategy",
+              formDraft: prepData.prep?.formDraft || null,
+            })
+          );
+        } catch {
+          // ignore
+        }
+
+        const data = (await apiPost(
+          "/api/v1/sharekhan/login-url",
+          { apiKey, state: "12345" },
+          token
+        )) as { loginUrl?: string };
+        const loginUrl = String(data.loginUrl || "").trim();
+        if (!loginUrl || cancelled) return;
+        window.location.href = loginUrl;
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to continue Sharekhan login");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function restoreSharekhanLogin() {
+      try {
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href);
+          if (url.searchParams.get("sk_continue") === "1") return;
+        }
+        const token = getToken();
+        if (!token) return;
+        const data = (await apiGet("/api/v1/sharekhan/login-result", token)) as {
+          result?: {
+            ok?: boolean;
+            accessToken?: string;
+            apiKey?: string;
+            secureKey?: string;
+            customerId?: string;
+            channelUser?: string;
+            mode?: string;
+            strategyId?: string;
+            formDraft?: SharekhanFormDraft | null;
+            error?: string;
+            connected?: boolean;
+          } | null;
+        };
+
+        const result = data.result;
+        if (cancelled || !result) return;
+
+        const accessToken = String(result.accessToken || "").trim();
+        const hasDraft = Boolean(result.formDraft && typeof result.formDraft === "object");
+        if (!accessToken && !hasDraft && !result.apiKey) return;
+
+        const mode = result.mode === "edit" ? "edit" : "add";
+        const draft: SharekhanFormDraft = {
+          ...(result.formDraft && typeof result.formDraft === "object" ? result.formDraft : {}),
+          sharekhanApiKey: result.apiKey || "",
+          sharekhanSecureKey: result.secureKey || "",
+          sharekhanCustomerId: result.customerId || "",
+          sharekhanChannelUser: result.channelUser || "",
+          sharekhanDirect: true,
+        };
+
+        applySharekhanFormDraft(mode, draft, accessToken);
+
+        if (mode === "edit") {
+          const strategyId = String(result.strategyId || "").trim();
+          if (strategyId) {
+            const found = strategies.find((item) => item._id === strategyId);
+            setEditing(
+              found ||
+                ({
+                  _id: strategyId,
+                  name: String(draft.name || "Strategy"),
+                } as Strategy)
+            );
+          }
+        }
+
+        if (accessToken) {
+          flashMessage("Sharekhan connected. Your form was restored.");
+        } else {
+          const errMsg =
+            String(result.error || "").trim() ||
+            (typeof window !== "undefined"
+              ? new URL(window.location.href).searchParams.get("sk_msg") || ""
+              : "") ||
+            "Sharekhan login failed. Form restored — recheck Secure Key and try again.";
+          setError(errMsg);
+        }
+
+        try {
+          sessionStorage.removeItem(SHAREKHAN_LOGIN_DRAFT_KEY);
+          sessionStorage.removeItem(SHAREKHAN_ACCESS_RESULT_KEY);
+        } catch {
+          // ignore
+        }
+        if (typeof window !== "undefined") {
+          const nextUrl = new URL(window.location.href);
+          let dirty = false;
+          for (const key of ["sharekhan", "sk_msg"]) {
+            if (nextUrl.searchParams.has(key)) {
+              nextUrl.searchParams.delete(key);
+              dirty = true;
+            }
+          }
+          if (dirty) {
+            window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}`);
+          }
+        }
+      } catch {
+        // ignore restore failures
+      }
+    }
+
+    restoreSharekhanLogin();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
+  useEffect(() => {
+    const query = manualSymbolInput.trim();
+    if (symbolMode !== "manualList" || query.length < 2) {
+      setManualSymbolSuggestions([]);
+      setManualSymbolSearching(false);
+      return;
+    }
+
+    const token = getToken();
+    if (!token) return;
+
+    let cancelled = false;
+    setManualSymbolSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const params = buildInstrumentSearchParams(query, exchange, segment);
+        const data = (await apiGet(
+          `/api/v1/mstock/instruments/search?${params.toString()}`,
+          token
+        )) as { instruments?: InstrumentHit[] };
+        if (cancelled) return;
+        setManualSymbolSuggestions(Array.isArray(data?.instruments) ? data.instruments : []);
+        setShowManualSymbolSuggestions(true);
+      } catch {
+        if (!cancelled) setManualSymbolSuggestions([]);
+      } finally {
+        if (!cancelled) setManualSymbolSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [manualSymbolInput, symbolMode, exchange, segment]);
+
+  useEffect(() => {
+    const query = editManualSymbolInput.trim();
+    if (editSymbolMode !== "manualList" || query.length < 2) {
+      setEditManualSymbolSuggestions([]);
+      setEditManualSymbolSearching(false);
+      return;
+    }
+
+    const token = getToken();
+    if (!token) return;
+
+    let cancelled = false;
+    setEditManualSymbolSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const params = buildInstrumentSearchParams(query, editExchange, editSegment);
+        const data = (await apiGet(
+          `/api/v1/mstock/instruments/search?${params.toString()}`,
+          token
+        )) as { instruments?: InstrumentHit[] };
+        if (cancelled) return;
+        setEditManualSymbolSuggestions(Array.isArray(data?.instruments) ? data.instruments : []);
+        setShowEditManualSymbolSuggestions(true);
+      } catch {
+        if (!cancelled) setEditManualSymbolSuggestions([]);
+      } finally {
+        if (!cancelled) setEditManualSymbolSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [editManualSymbolInput, editSymbolMode, editExchange, editSegment]);
 
   const openWebhookTester = (
     url: string,
@@ -1397,7 +2727,18 @@ export default function StrategyPage() {
     if (!nextSymbol) return;
     setManualSymbols((current) => Array.from(new Set([...current, nextSymbol])));
     setManualSymbolInput("");
+    setManualSymbolSuggestions([]);
+    setShowManualSymbolSuggestions(false);
   }, [manualSymbolInput]);
+
+  const handleSelectManualSymbol = useCallback((hit: InstrumentHit) => {
+    const nextSymbol = String(hit.symbol || "").trim().toUpperCase();
+    if (!nextSymbol) return;
+    setManualSymbols((current) => Array.from(new Set([...current, nextSymbol])));
+    setManualSymbolInput("");
+    setManualSymbolSuggestions([]);
+    setShowManualSymbolSuggestions(false);
+  }, []);
 
   const handleRemoveManualSymbol = useCallback((stock: string) => {
     setManualSymbols((current) => current.filter((item) => item !== stock));
@@ -1408,7 +2749,18 @@ export default function StrategyPage() {
     if (!nextSymbol) return;
     setEditManualSymbols((current) => Array.from(new Set([...current, nextSymbol])));
     setEditManualSymbolInput("");
+    setEditManualSymbolSuggestions([]);
+    setShowEditManualSymbolSuggestions(false);
   }, [editManualSymbolInput]);
+
+  const handleSelectEditManualSymbol = useCallback((hit: InstrumentHit) => {
+    const nextSymbol = String(hit.symbol || "").trim().toUpperCase();
+    if (!nextSymbol) return;
+    setEditManualSymbols((current) => Array.from(new Set([...current, nextSymbol])));
+    setEditManualSymbolInput("");
+    setEditManualSymbolSuggestions([]);
+    setShowEditManualSymbolSuggestions(false);
+  }, []);
 
   const handleRemoveEditManualSymbol = useCallback((stock: string) => {
     setEditManualSymbols((current) => current.filter((item) => item !== stock));
@@ -1567,6 +2919,14 @@ export default function StrategyPage() {
         setError("Daily trade limit is required when enabled.");
         return;
       }
+      if (sharekhanDirect) {
+        if (!sharekhanApiKey.trim() || !sharekhanAccessToken.trim() || !sharekhanCustomerId.trim() || !sharekhanChannelUser.trim()) {
+          setError(
+            "Sharekhan API Key, Access Token, Customer ID, and Login ID are required when Sharekhan direct is ON."
+          );
+          return;
+        }
+      }
 
       const qtyNumber = trimmedQtyValue ? Number(trimmedQtyValue) : NaN;
       if (
@@ -1630,6 +2990,7 @@ export default function StrategyPage() {
 
       const token = getToken();
       const marketMaya: Record<string, unknown> = {
+        marketMayaEnabled: Boolean(marketMayaEnabled),
         exchange,
         segment,
         symbolMode,
@@ -1654,27 +3015,6 @@ export default function StrategyPage() {
           ? { maxSymbols: maxSymbols.trim() }
           : {}),
         ...(callTypeFallback ? { callTypeFallback } : {}),
-        ...(!exitFallbackSelected ? { orderType } : {}),
-        ...(!exitFallbackSelected && orderType === "LIMIT" ? { limitPriceSource } : {}),
-        ...(!exitFallbackSelected && usingFixedLimitPrice && trimmedLimitPrice
-          ? { limitPrice: trimmedLimitPrice }
-          : {}),
-        ...(!exitFallbackSelected && usingMStockLimitPrice ? { mStockApiType } : {}),
-        ...(!exitFallbackSelected && usingMStockLimitPrice && mStockExchange.trim()
-          ? { mStockExchange: mStockExchange.trim().toUpperCase() }
-          : {}),
-        ...(!exitFallbackSelected && usingMStockLimitPrice && mStockInterval.trim()
-          ? { mStockInterval: mStockInterval.trim() }
-          : {}),
-        ...(!exitFallbackSelected && usingMStockLimitPrice && trimmedMStockCandleOffset
-          ? { mStockCandleOffset: Math.floor(mStockCandleOffsetNumber) }
-          : {}),
-        ...(!exitFallbackSelected && usingDynamicLimitPrice && trimmedBufferBy
-          ? { bufferBy: trimmedBufferBy }
-          : {}),
-        ...(!exitFallbackSelected && usingDynamicLimitPrice && trimmedBufferPoints
-          ? { bufferValue: bufferPointsNumber }
-          : {}),
         ...(!exitFallbackSelected && trimmedCapitalAmount
           ? { capitalAmount: capitalAmountNumber }
           : {}),
@@ -1700,6 +3040,25 @@ export default function StrategyPage() {
           ? { tradeWindowStart: tradeWindowStart.trim() }
           : {}),
         ...(tradeWindowEnd.trim() ? { tradeWindowEnd: tradeWindowEnd.trim() } : {}),
+        sharekhanDirect: Boolean(sharekhanDirect),
+        ...(sharekhanDirect && sharekhanApiKey.trim()
+          ? { sharekhanApiKey: sharekhanApiKey.trim() }
+          : {}),
+        ...(sharekhanDirect && sharekhanAccessToken.trim()
+          ? { sharekhanAccessToken: sharekhanAccessToken.trim() }
+          : {}),
+        ...(sharekhanDirect && sharekhanSecureKey.trim()
+          ? { sharekhanSecureKey: sharekhanSecureKey.trim() }
+          : {}),
+        ...(sharekhanDirect && sharekhanCustomerId.trim()
+          ? { sharekhanCustomerId: sharekhanCustomerId.trim() }
+          : {}),
+        ...(sharekhanDirect && sharekhanChannelUser.trim()
+          ? { sharekhanChannelUser: sharekhanChannelUser.trim() }
+          : {}),
+        ...(sharekhanDirect && sharekhanProductType.trim()
+          ? { sharekhanProductType: sharekhanProductType.trim().toUpperCase() }
+          : {}),
       };
       const payload: Record<string, unknown> = {
         name,
@@ -1709,7 +3068,7 @@ export default function StrategyPage() {
         telegramEnabled,
         marketMaya,
       };
-      if (enabled && marketMayaToken.trim()) {
+      if (marketMayaEnabled && marketMayaToken.trim()) {
         payload.marketMayaToken = marketMayaToken;
       }
       const data = await apiPost(
@@ -1726,7 +3085,15 @@ export default function StrategyPage() {
         setRecentStrategyName(null);
       }
       setName("");
+      setMarketMayaEnabled(false);
       setMarketMayaToken("");
+      setSharekhanDirect(false);
+      setSharekhanProductType("");
+      setSharekhanApiKey("");
+      setSharekhanAccessToken("");
+      setSharekhanSecureKey("");
+      setSharekhanCustomerId("");
+      setSharekhanChannelUser("");
       setExchange(DEFAULT_EQ_EXCHANGE);
       setSegment(DEFAULT_SEGMENT);
       setExpiryMode("contract");
@@ -1773,7 +3140,8 @@ export default function StrategyPage() {
       setUseDailyTradeLimit(false);
       setTradeWindowStart(DEFAULT_TRADE_WINDOW_START);
       setTradeWindowEnd(DEFAULT_TRADE_WINDOW_END);
-      setEnabled(false);
+      setEnabled(true);
+      setMarketMayaEnabled(false);
       setEmailEnabled(true);
       setTelegramEnabled(false);
       setMessage("Strategy saved. Webhook URL is ready to copy.");
@@ -1790,14 +3158,27 @@ export default function StrategyPage() {
   const openEdit = (item: Strategy) => {
     setError(null);
     setMessage(null);
-    setShowEditInfoButtons(true);
+    setShowEditInfoButtons(false);
     setActiveInfoKey(null);
     setEditing({ ...item, _id: normalizeId(item._id) });
     setEditName(item.name || "");
     setEditEnabled(Boolean(item.enabled));
     const mm = item.marketMaya || {};
+    const hasMarketMayaToken = Boolean(mm.tokenConfigured || mm.token);
+    setEditMarketMayaEnabled(
+      mm.marketMayaEnabled !== undefined && mm.marketMayaEnabled !== null
+        ? Boolean(mm.marketMayaEnabled)
+        : hasMarketMayaToken
+    );
     setShowEditMarketMayaToken(Boolean(mm.token));
     setEditMarketMayaToken(mm.token || "");
+    setEditSharekhanDirect(Boolean(mm.sharekhanDirect));
+    setEditSharekhanProductType(mm.sharekhanProductType || "");
+    setEditSharekhanApiKey(mm.sharekhanApiKey || "");
+    setEditSharekhanAccessToken(mm.sharekhanAccessToken || "");
+    setEditSharekhanSecureKey(mm.sharekhanSecureKey || "");
+    setEditSharekhanCustomerId(mm.sharekhanCustomerId || "");
+    setEditSharekhanChannelUser(mm.sharekhanChannelUser || "");
     const nextEditSegment = mm.segment || DEFAULT_SEGMENT;
     setEditSegment(nextEditSegment);
     setEditExchange(pickExchangeForSegment(mm.exchange || "", nextEditSegment));
@@ -1886,12 +3267,19 @@ export default function StrategyPage() {
 
   const closeEdit = () => {
     setActiveInfoKey(null);
-    setShowEditInfoButtons(true);
+    setShowEditInfoButtons(false);
     setShowEditMarketMayaToken(false);
     setEditing(null);
     setEditName("");
-    setEditEnabled(false);
+    setEditEnabled(true);
+    setEditMarketMayaEnabled(false);
     setEditMarketMayaToken("");
+    setEditSharekhanDirect(false);
+    setEditSharekhanProductType("");
+    setEditSharekhanApiKey("");
+    setEditSharekhanAccessToken("");
+    setEditSharekhanSecureKey("");
+    setEditSharekhanCustomerId("");
     setShowEditMStockApiKey(false);
     setShowEditMStockAuthToken(false);
     setEditExchange(DEFAULT_EQ_EXCHANGE);
@@ -2084,6 +3472,24 @@ export default function StrategyPage() {
         setError("Daily trade limit must be a positive number.");
         return;
       }
+      if (editSharekhanDirect) {
+        const hasApiKey = Boolean(editSharekhanApiKey.trim() || editing?.marketMaya?.sharekhanApiKey);
+        const hasAccess = Boolean(
+          editSharekhanAccessToken.trim() || editing?.marketMaya?.sharekhanAccessToken
+        );
+        const hasCustomer = Boolean(
+          editSharekhanCustomerId.trim() || editing?.marketMaya?.sharekhanCustomerId
+        );
+        const hasChannelUser = Boolean(
+          editSharekhanChannelUser.trim() || editing?.marketMaya?.sharekhanChannelUser
+        );
+        if (!hasApiKey || !hasAccess || !hasCustomer || !hasChannelUser) {
+          setError(
+            "Sharekhan API Key, Access Token, Customer ID, and Login ID are required when Sharekhan direct is ON."
+          );
+          return;
+        }
+      }
 
       const normalizedEditManualSymbols =
         editSymbolMode === "manualList"
@@ -2108,13 +3514,13 @@ export default function StrategyPage() {
       ) {
         marketMayaClear.add("maxSymbols");
       }
-      if (editExitFallbackSelected || editOrderType !== "LIMIT") {
+      if (true) {
+        marketMayaClear.add("orderType");
         marketMayaClear.add("limitPriceSource");
         marketMayaClear.add("limitPrice");
-      } else if (editLimitPriceSource === "trigger") {
-        marketMayaClear.add("limitPrice");
-      }
-      if (!editUsingMStockLimitPrice) {
+        marketMayaClear.add("bufferBy");
+        marketMayaClear.add("bufferValue");
+        marketMayaClear.add("bufferPoints");
         marketMayaClear.add("mStockApiType");
         marketMayaClear.add("mStockApiKey");
         marketMayaClear.add("mStockAuthToken");
@@ -2122,30 +3528,6 @@ export default function StrategyPage() {
         marketMayaClear.add("mStockInstrumentToken");
         marketMayaClear.add("mStockInterval");
         marketMayaClear.add("mStockCandleOffset");
-      } else {
-        marketMayaClear.add("mStockApiKey");
-        marketMayaClear.add("mStockAuthToken");
-        marketMayaClear.add("mStockInstrumentToken");
-        if (!editMStockExchange.trim()) {
-          marketMayaClear.add("mStockExchange");
-        }
-        if (!editMStockInterval.trim()) {
-          marketMayaClear.add("mStockInterval");
-        }
-        if (!trimmedEditMStockCandleOffset) {
-          marketMayaClear.add("mStockCandleOffset");
-        }
-      }
-      if (
-        editExitFallbackSelected ||
-        editOrderType !== "LIMIT" ||
-        editLimitPriceSource === "fixed" ||
-        !trimmedBufferBy ||
-        !trimmedBufferPoints
-      ) {
-        marketMayaClear.add("bufferBy");
-        marketMayaClear.add("bufferValue");
-        marketMayaClear.add("bufferPoints");
       }
       if (editExitFallbackSelected || !trimmedQtyDistribution) {
         marketMayaClear.add("qtyDistribution");
@@ -2169,6 +3551,17 @@ export default function StrategyPage() {
       }
       if (!editUseDailyTradeLimit) {
         marketMayaClear.add("dailyTradeLimit");
+      }
+      if (!editSharekhanDirect) {
+        marketMayaClear.add("sharekhanProductType");
+        marketMayaClear.add("sharekhanApiKey");
+        marketMayaClear.add("sharekhanAccessToken");
+        marketMayaClear.add("sharekhanSecureKey");
+        marketMayaClear.add("sharekhanCustomerId");
+        marketMayaClear.add("sharekhanChannelUser");
+      }
+      if (!editMarketMayaEnabled) {
+        marketMayaClear.add("token");
       }
       if (!editDerivativeSegmentSelected) {
         marketMayaClear.add("contract");
@@ -2198,6 +3591,7 @@ export default function StrategyPage() {
 
       const token = getToken();
       const marketMaya: Record<string, unknown> = {
+        marketMayaEnabled: Boolean(editMarketMayaEnabled),
         exchange: editExchange,
         segment: editSegment,
         symbolMode: editSymbolMode,
@@ -2226,31 +3620,6 @@ export default function StrategyPage() {
           ? { maxSymbols: editMaxSymbols.trim() }
           : {}),
         ...(editCallTypeFallback ? { callTypeFallback: editCallTypeFallback } : {}),
-        ...(!editExitFallbackSelected ? { orderType: editOrderType } : {}),
-        ...(!editExitFallbackSelected && editOrderType === "LIMIT"
-          ? { limitPriceSource: editLimitPriceSource }
-          : {}),
-        ...(!editExitFallbackSelected && editUsingFixedLimitPrice && trimmedEditLimitPrice
-          ? { limitPrice: trimmedEditLimitPrice }
-          : {}),
-        ...(!editExitFallbackSelected && editUsingMStockLimitPrice
-          ? { mStockApiType: editMStockApiType }
-          : {}),
-        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && editMStockExchange.trim()
-          ? { mStockExchange: editMStockExchange.trim().toUpperCase() }
-          : {}),
-        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && editMStockInterval.trim()
-          ? { mStockInterval: editMStockInterval.trim() }
-          : {}),
-        ...(!editExitFallbackSelected && editUsingMStockLimitPrice && trimmedEditMStockCandleOffset
-          ? { mStockCandleOffset: Math.floor(editMStockCandleOffsetNumber) }
-          : {}),
-        ...(!editExitFallbackSelected && editUsingDynamicLimitPrice && trimmedBufferBy
-          ? { bufferBy: trimmedBufferBy }
-          : {}),
-        ...(!editExitFallbackSelected && editUsingDynamicLimitPrice && trimmedBufferPoints
-          ? { bufferValue: bufferPointsNumber }
-          : {}),
         ...(!editExitFallbackSelected && trimmedCapitalAmount
           ? { capitalAmount: capitalAmountNumber }
           : {}),
@@ -2286,6 +3655,25 @@ export default function StrategyPage() {
         ...(editTradeWindowEnd.trim()
           ? { tradeWindowEnd: editTradeWindowEnd.trim() }
           : {}),
+        sharekhanDirect: Boolean(editSharekhanDirect),
+        ...(editSharekhanDirect && editSharekhanApiKey.trim()
+          ? { sharekhanApiKey: editSharekhanApiKey.trim() }
+          : {}),
+        ...(editSharekhanDirect && editSharekhanAccessToken.trim()
+          ? { sharekhanAccessToken: editSharekhanAccessToken.trim() }
+          : {}),
+        ...(editSharekhanDirect && editSharekhanSecureKey.trim()
+          ? { sharekhanSecureKey: editSharekhanSecureKey.trim() }
+          : {}),
+        ...(editSharekhanDirect && editSharekhanCustomerId.trim()
+          ? { sharekhanCustomerId: editSharekhanCustomerId.trim() }
+          : {}),
+        ...(editSharekhanDirect && editSharekhanChannelUser.trim()
+          ? { sharekhanChannelUser: editSharekhanChannelUser.trim() }
+          : {}),
+        ...(editSharekhanDirect && editSharekhanProductType.trim()
+          ? { sharekhanProductType: editSharekhanProductType.trim().toUpperCase() }
+          : {}),
       };
       const payload: Record<string, unknown> = {
         strategyId,
@@ -2302,7 +3690,7 @@ export default function StrategyPage() {
       if (webhookKey) {
         payload.webhookKey = webhookKey;
       }
-      if (editEnabled && editMarketMayaToken.trim()) {
+      if (editMarketMayaEnabled && editMarketMayaToken.trim()) {
         payload.marketMayaToken = editMarketMayaToken;
       }
       const data = await apiPost(
@@ -2450,10 +3838,6 @@ export default function StrategyPage() {
       <div className="page-header">
         <div>
           <div className="page-title">Strategy</div>
-          <div className="helper">
-            Add your strategy name, copy the webhook, and enable Market Maya
-            when required.
-          </div>
         </div>
         <button
           className="btn btn-primary"
@@ -2589,7 +3973,7 @@ export default function StrategyPage() {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card strategy-list-card">
         {renderTitleWithInfo("Saved strategies", "savedStrategies")}
         {webhookReachabilityWarning ? (
           <div className="alert alert-error" style={{ marginTop: "12px", marginBottom: "12px" }}>
@@ -2599,164 +3983,417 @@ export default function StrategyPage() {
         {strategies.length === 0 ? (
           <div className="helper">No strategies saved yet.</div>
         ) : (
-          <div className="list">
-            {strategies.map((item) => (
-              <div className="list-item strategy-item" key={item._id}>
-                <div className="strategy-meta">
-                  <div className="strategy-title-row">
-                    <strong>{item.name}</strong>
+          <div className="strategy-card-list">
+            {strategies.map((item) => {
+              return (
+                <article
+                  className={`strategy-card${item.enabled ? " is-enabled" : " is-disabled"}`}
+                  key={item._id}
+                >
+                  <div className="strategy-card-main">
+                    <div className="strategy-card-identity">
+                      <span
+                        className={`strategy-card-avatar${item.enabled ? " on" : " off"}`}
+                        aria-hidden="true"
+                      >
+                        {renderStrategyUiIcon("spark")}
+                      </span>
+                      <div className="strategy-card-copy">
+                        <div className="strategy-card-heading">
+                          <strong className="strategy-card-name">{item.name}</strong>
+                          <span className={`strategy-live-pill${item.enabled ? " on" : " off"}`}>
+                            {item.enabled ? "Live" : "Paused"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="strategy-card-manage">
+                      <button
+                        className="btn btn-secondary strategy-action-btn"
+                        type="button"
+                        onClick={() => openEdit(item)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className={`btn strategy-action-btn${item.enabled ? " btn-ghost" : " btn-primary"}`}
+                        type="button"
+                        disabled={toggleLoadingId === item._id}
+                        onClick={() => handleToggleEnabled(item)}
+                      >
+                        {toggleLoadingId === item._id
+                          ? item.enabled
+                            ? "..."
+                            : "..."
+                          : item.enabled
+                            ? "Disable"
+                            : "Enable"}
+                      </button>
+                      <button
+                        className="btn btn-ghost strategy-action-btn strategy-action-btn--danger"
+                        type="button"
+                        disabled={deleteLoadingId === item._id}
+                        onClick={() => handleDelete(item)}
+                      >
+                        {deleteLoadingId === item._id ? "..." : "Delete"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="helper">
-                    {item.enabled ? "Market Maya enabled" : "Market Maya off"}
+
+                  <div className="strategy-card-toolbar" aria-label="Webhook actions">
+                    <button
+                      className="strategy-toolbar-btn"
+                      type="button"
+                      onClick={() => copyToClipboard(resolveWebhookUrl(item, "chartink"))}
+                    >
+                      Copy Chartink
+                    </button>
+                    <button
+                      className="strategy-toolbar-btn"
+                      type="button"
+                      onClick={() => copyToClipboard(resolveWebhookUrl(item, "tradingview"))}
+                    >
+                      Copy TV
+                    </button>
+                    <button
+                      className="strategy-toolbar-btn is-accent"
+                      type="button"
+                      onClick={() =>
+                        openWebhookTester(
+                          resolveWebhookUrl(item, "chartink"),
+                          DEFAULT_WEBHOOK_TEST_PAYLOAD
+                        )
+                      }
+                    >
+                      Test Chartink
+                    </button>
+                    <button
+                      className="strategy-toolbar-btn is-accent"
+                      type="button"
+                      onClick={() =>
+                        openWebhookTester(
+                          resolveWebhookUrl(item, "tradingview"),
+                          DEFAULT_TRADINGVIEW_TEST_PAYLOAD
+                        )
+                      }
+                    >
+                      Test TV
+                    </button>
                   </div>
-                  <div className="helper">
-                    {isEmailAlertEnabled(item) ? "Email alerts on" : "Email alerts off"}
-                  </div>
-                  <div className="helper">
-                    {item.telegramEnabled ? "Telegram alerts on" : "Telegram alerts off"}
-                  </div>
-                </div>
-                <div className="strategy-actions">
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    onClick={() => {
-                      copyToClipboard(resolveWebhookUrl(item, "chartink"));
-                    }}
-                  >
-                    Copy Chartink
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    onClick={() => {
-                      copyToClipboard(resolveWebhookUrl(item, "tradingview"));
-                    }}
-                  >
-                    Copy TV
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    type="button"
-                    onClick={() =>
-                      openWebhookTester(resolveWebhookUrl(item, "chartink"), DEFAULT_WEBHOOK_TEST_PAYLOAD)
-                    }
-                  >
-                    Test Chartink
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    type="button"
-                    onClick={() =>
-                      openWebhookTester(
-                        resolveWebhookUrl(item, "tradingview"),
-                        DEFAULT_TRADINGVIEW_TEST_PAYLOAD
-                      )
-                    }
-                  >
-                    Test TV
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    type="button"
-                    onClick={() => openEdit(item)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    type="button"
-                    disabled={toggleLoadingId === item._id}
-                    onClick={() => handleToggleEnabled(item)}
-                  >
-                    {toggleLoadingId === item._id
-                      ? item.enabled
-                        ? "Disabling..."
-                        : "Enabling..."
-                      : item.enabled
-                        ? "Disable"
-                        : "Enable"}
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    disabled={deleteLoadingId === item._id}
-                    onClick={() => handleDelete(item)}
-                  >
-                    {deleteLoadingId === item._id ? "Deleting..." : "Delete"}
-                  </button>
-                </div>
-              </div>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </div>
 
       {showModal ? (
-        <div className="modal-overlay" onClick={closeAdd}>
-          <div className="modal card" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header-row">
-              <div className="page-title">Add strategy</div>
-              {renderInfoToggle(showAddInfoButtons, setShowAddInfoButtons)}
-            </div>
-            <form className="form" onSubmit={handleSubmit} style={{ marginTop: "16px" }}>
-              <div className="input-group">
-                {renderAddLabelWithInfo("strategy-name", "Strategy name", "strategyName")}
-                <input
-                  className="input"
-                  id="strategy-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="e.g. Banknifty Breakout"
-                  required
-                />
+        <div className="modal-overlay strategy-modal-overlay" onClick={closeAdd}>
+          <div className="modal modal-form card" onClick={(event) => event.stopPropagation()}>
+            <div className="strategy-modal-header">
+              <div className="strategy-modal-heading">
+                <span className="section-icon form-section--teal" aria-hidden="true">
+                  {renderStrategyUiIcon("spark")}
+                </span>
+                <div className="strategy-modal-heading-copy">
+                  <div className="page-title">Add strategy</div>
+                </div>
               </div>
+              <div className="cta-row" style={{ gap: 10, alignItems: "center" }}>
+                {renderInfoToggle(showAddInfoButtons, setShowAddInfoButtons)}
+                <button
+                  className="btn btn-ghost strategy-modal-close"
+                  type="button"
+                  aria-label="Close add strategy"
+                  onClick={closeAdd}
+                >
+                  {renderStrategyUiIcon("close")}
+                </button>
+              </div>
+            </div>
+            <form className="form strategy-form" onSubmit={handleSubmit}>
+              <div className="strategy-modal-body">
+              <div className="form-section form-section--teal">
+                {renderFormSectionHeader({
+                  title: "Basics",
+                  description: "Name the strategy and choose where trades should go.",
+                  icon: "spark",
+                  tone: "teal",
+                })}
 
-              <div className="input-group">
-                {renderAddLabelWithInfo("market-enable", "Enable Market Maya", "marketMayaEnable")}
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Send alerts to Market Maya</span>
+                <div className="input-group">
+                  {renderAddLabelWithInfo("strategy-name", "Strategy name", "strategyName")}
                   <input
-                    id="market-enable"
-                    type="checkbox"
-                    checked={enabled}
-                    onChange={(event) => setEnabled(event.target.checked)}
+                    className="input"
+                    id="strategy-name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="e.g. Banknifty Breakout"
+                    required
                   />
+                </div>
+
+                <div className="input-group">
+                  {renderAddLabelWithInfo("strategy-enable", "Enable strategy", "marketMayaEnable")}
+                  {renderFeatureSwitch(
+                    "strategy-enable",
+                    enabled,
+                    setEnabled,
+                    "Run this strategy on webhook alerts",
+                    "Turn off to pause auto trading without deleting the strategy.",
+                    undefined,
+                    { tone: "maya", icon: "broadcast" }
+                  )}
+                </div>
+
+                <div className="input-group">
+                  {renderAddLabelWithInfo("market-enable", "Enable Market Maya", "marketMayaEnable")}
+                  {renderFeatureSwitch(
+                    "market-enable",
+                    marketMayaEnabled,
+                    setMarketMayaEnabled,
+                    "Send trades to Market Maya",
+                    "Turn on to place live orders via Market Maya.",
+                    undefined,
+                    { tone: "maya", icon: "broadcast" }
+                  )}
+                </div>
+
+                {marketMayaEnabled ? (
+                  <div className="form-reveal input-group">
+                    {renderAddLabelWithInfo("market-token", "Market Maya Token", "marketMayaToken")}
+                    <div className="token-field">
+                      <input
+                        className="input"
+                        id="market-token"
+                        type={showMarketMayaToken ? "text" : "password"}
+                        value={marketMayaToken}
+                        onChange={(event) => setMarketMayaToken(event.target.value)}
+                        placeholder="Paste token here"
+                      />
+                      <button
+                        className="token-visibility-btn"
+                        type="button"
+                        aria-label={showMarketMayaToken ? "Hide Market Maya token" : "Show Market Maya token"}
+                        aria-pressed={showMarketMayaToken}
+                        onClick={() => setShowMarketMayaToken((current) => !current)}
+                      >
+                        {renderVisibilityIcon(showMarketMayaToken)}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="input-group">
+                  {renderAddLabelWithInfo("sharekhan-direct", "Sharekhan", "sharekhanDirect")}
+                  {renderFeatureSwitch(
+                    "sharekhan-direct",
+                    sharekhanDirect,
+                    setSharekhanDirect,
+                    "Also place orders on Sharekhan",
+                    "Uses your own Sharekhan API keys for this strategy.",
+                    undefined,
+                    { tone: "broker", icon: "broker" }
+                  )}
                 </div>
               </div>
 
-              {enabled ? (
-                <div className="input-group">
-                  {renderAddLabelWithInfo("market-token", "Market Maya Token", "marketMayaToken")}
-                  <div className="token-field">
+              {sharekhanDirect ? (
+                <div className="form-section form-section--broker form-reveal">
+                  {renderFormSectionHeader({
+                    title: "Sharekhan login",
+                    description: sharekhanAccessToken.trim()
+                      ? "" : "",
+                    icon: "key",
+                    tone: "broker",
+                  })}
+
+                  {sharekhanAccessToken.trim() ? (
+                    <div className="alert alert-success">
+                      Connected to Sharekhan. You can continue filling the form and save the strategy.
+                    </div>
+                  ) : null}
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo(
+                      "sharekhan-redirect-url",
+                      "Redirect URL",
+                      "sharekhanRedirectUrl"
+                    )}
+                    <div className="token-field">
+                      <input className="input" readOnly value={sharekhanRedirectUrls.primary} />
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() => copyToClipboard(sharekhanRedirectUrls.primary)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <div className="token-field">
+                      <input className="input" readOnly value={sharekhanRedirectUrls.local} />
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() => copyToClipboard(sharekhanRedirectUrls.local)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo("sharekhan-api-key", "Sharekhan API Key", "sharekhanApiKey")}
+                    <div className="token-field">
+                      <input
+                        className="input"
+                        id="sharekhan-api-key"
+                        type={showSharekhanApiKey ? "text" : "password"}
+                        value={sharekhanApiKey}
+                        onChange={(event) => setSharekhanApiKey(event.target.value)}
+                        placeholder="Your Sharekhan API Key"
+                        autoComplete="off"
+                      />
+                      <button
+                        className="token-visibility-btn"
+                        type="button"
+                        aria-label={showSharekhanApiKey ? "Hide API key" : "Show API key"}
+                        onClick={() => setShowSharekhanApiKey((c) => !c)}
+                      >
+                        {renderVisibilityIcon(showSharekhanApiKey)}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo(
+                      "sharekhan-secure-key",
+                      "Sharekhan Secure Key",
+                      "sharekhanSecureKey"
+                    )}
+                    <div className="token-field">
+                      <input
+                        className="input"
+                        id="sharekhan-secure-key"
+                        type={showSharekhanSecureKey ? "text" : "password"}
+                        value={sharekhanSecureKey}
+                        onChange={(event) => setSharekhanSecureKey(event.target.value)}
+                        placeholder="Secure/secret key from Sharekhan app"
+                        autoComplete="off"
+                      />
+                      <button
+                        className="token-visibility-btn"
+                        type="button"
+                        aria-label={showSharekhanSecureKey ? "Hide secure key" : "Show secure key"}
+                        onClick={() => setShowSharekhanSecureKey((c) => !c)}
+                      >
+                        {renderVisibilityIcon(showSharekhanSecureKey)}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo(
+                      "sharekhan-customer-id",
+                      "Sharekhan Customer ID",
+                      "sharekhanCustomerId"
+                    )}
                     <input
                       className="input"
-                      id="market-token"
-                      type={showMarketMayaToken ? "text" : "password"}
-                      value={marketMayaToken}
-                      onChange={(event) => setMarketMayaToken(event.target.value)}
-                      placeholder="Paste token here"
+                      id="sharekhan-customer-id"
+                      value={sharekhanCustomerId}
+                      onChange={(event) => setSharekhanCustomerId(event.target.value)}
+                      placeholder="Numeric client ID e.g. 1464067"
+                      autoComplete="off"
                     />
+                  </div>
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo(
+                      "sharekhan-channel-user",
+                      "Sharekhan Login ID",
+                      "sharekhanChannelUser"
+                    )}
+                    <input
+                      className="input"
+                      id="sharekhan-channel-user"
+                      value={sharekhanChannelUser}
+                      onChange={(event) => setSharekhanChannelUser(event.target.value)}
+                      placeholder="Login / channelUser e.g. pandurangs22"
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="cta-row" style={{ gap: 8 }}>
                     <button
-                      className="token-visibility-btn"
+                      className="btn btn-secondary"
                       type="button"
-                      aria-label={showMarketMayaToken ? "Hide Market Maya token" : "Show Market Maya token"}
-                      aria-pressed={showMarketMayaToken}
-                      onClick={() => setShowMarketMayaToken((current) => !current)}
+                      onClick={() => startSharekhanLogin("add")}
                     >
-                      {renderVisibilityIcon(showMarketMayaToken)}
+                      {sharekhanAccessToken.trim() ? "Reconnect Sharekhan" : "Login with Sharekhan"}
                     </button>
                   </div>
-                  <div className="helper">
-                    Required for live trades. Leave blank to use server default.
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo(
+                      "sharekhan-access-token",
+                      "Sharekhan Access Token",
+                      "sharekhanAccessToken"
+                    )}
+                    <div className="token-field">
+                      <input
+                        className="input"
+                        id="sharekhan-access-token"
+                        type={showSharekhanAccessToken ? "text" : "password"}
+                        value={sharekhanAccessToken}
+                        onChange={(event) => setSharekhanAccessToken(event.target.value)}
+                        placeholder="Generated after Sharekhan login"
+                        autoComplete="off"
+                      />
+                      <button
+                        className="token-visibility-btn"
+                        type="button"
+                        aria-label={
+                          showSharekhanAccessToken ? "Hide access token" : "Show access token"
+                        }
+                        onClick={() => setShowSharekhanAccessToken((c) => !c)}
+                      >
+                        {renderVisibilityIcon(showSharekhanAccessToken)}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo(
+                      "sharekhan-product",
+                      "Sharekhan product",
+                      "sharekhanProductType"
+                    )}
+                    <select
+                      className="select"
+                      id="sharekhan-product"
+                      value={sharekhanProductType}
+                      onChange={(event) => setSharekhanProductType(event.target.value)}
+                    >
+                      <option value="">Auto (INVESTMENT)</option>
+                      <option value="INVESTMENT">INVESTMENT</option>
+                      <option value="BIGTRADE">BIGTRADE</option>
+                      <option value="BIGTRADEPLUS">BIGTRADEPLUS</option>
+                    </select>
                   </div>
                 </div>
               ) : null}
 
-              {renderAddTitleWithInfo("Symbol handling", "symbolSource", { marginTop: "10px" })}
-              <div className="helper">
-                Control how symbols are picked from webhook payloads.
-              </div>
+              <div className="form-section form-section--slate">
+                {renderFormSectionHeader({
+                  title: "Symbols",
+                  description: "Choose how stock symbols are read from the webhook.",
+                  icon: "tag",
+                  tone: "slate",
+                  infoKey: "symbolSource",
+                  showInfo: showAddInfoButtons,
+                })}
 
               <div className="grid-2">
                 <div className="input-group">
@@ -2786,9 +4423,6 @@ export default function StrategyPage() {
                     placeholder="5"
                     disabled={symbolMode === "stocksFirst" || symbolMode === "manualList"}
                   />
-                  <div className="helper">
-                    Up to 25. Used only when webhook sends multiple symbols.
-                  </div>
                 </div>
               </div>
 
@@ -2796,19 +4430,64 @@ export default function StrategyPage() {
                 <div className="input-group stock-builder-group">
                   {renderAddLabelWithInfo("fixed-stock-input", "Fixed stocks list", "fixedStocks")}
                   <div className="token-field">
-                    <input
-                      className="input"
-                      id="fixed-stock-input"
-                      value={manualSymbolInput}
-                      onChange={(event) => setManualSymbolInput(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          handleAddManualSymbol();
-                        }
-                      }}
-                      placeholder="Type stock name like RELIANCE"
-                    />
+                    <div className="stock-suggest-wrap">
+                      <input
+                        className="input"
+                        id="fixed-stock-input"
+                        value={manualSymbolInput}
+                        onChange={(event) => {
+                          setManualSymbolInput(event.target.value);
+                          setShowManualSymbolSuggestions(true);
+                        }}
+                        onFocus={() => {
+                          if (manualSymbolSuggestions.length > 0) {
+                            setShowManualSymbolSuggestions(true);
+                          }
+                        }}
+                        onBlur={() => {
+                          window.setTimeout(() => setShowManualSymbolSuggestions(false), 150);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            if (manualSymbolSuggestions[0]) {
+                              handleSelectManualSymbol(manualSymbolSuggestions[0]);
+                            } else {
+                              handleAddManualSymbol();
+                            }
+                          }
+                        }}
+                        placeholder="Search stock like RELIANCE"
+                        autoComplete="off"
+                      />
+                      {showManualSymbolSuggestions &&
+                      (manualSymbolSearching || manualSymbolSuggestions.length > 0) ? (
+                        <div className="stock-suggest-menu" role="listbox">
+                          {manualSymbolSearching && manualSymbolSuggestions.length === 0 ? (
+                            <div className="stock-suggest-empty">Searching...</div>
+                          ) : null}
+                          {manualSymbolSuggestions.map((hit) => (
+                            <button
+                              key={`${hit.exchange || "X"}:${hit.token || hit.symbol}`}
+                              type="button"
+                              className="stock-suggest-item"
+                              role="option"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => handleSelectManualSymbol(hit)}
+                            >
+                              <span>
+                                <span className="stock-suggest-symbol">
+                                  {formatInstrumentSuggestion(hit)}
+                                </span>
+                                {hit.name ? (
+                                  <span className="stock-suggest-meta">{hit.name}</span>
+                                ) : null}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                     <button
                       className="btn btn-secondary"
                       type="button"
@@ -2819,7 +4498,7 @@ export default function StrategyPage() {
                     </button>
                   </div>
                   <div className="helper">
-                    Added names are saved with this strategy and used from your side.
+                    Search and add stocks for the fixed list.
                   </div>
                   {manualSymbols.length > 0 ? (
                     <div className="stock-chip-list">
@@ -2853,13 +4532,47 @@ export default function StrategyPage() {
                     onChange={(event) => setSymbolKey(event.target.value)}
                     placeholder="symbol"
                   />
-                  <div className="helper">Webhook field name to read symbols from.</div>
+                  <div className="helper">Webhook field used for symbols.</div>
                 </div>
               ) : null}
+              </div>
 
-              {renderAddTitleWithInfo("Instrument setup", "instrumentSetup", { marginTop: "10px" })}
-              <div className="helper">
-                Select the segment first. EQ keeps the form simple, while FUT and OPT reveal only the derivative fields that matter.
+              <div className="form-section form-section--teal">
+                {renderFormSectionHeader({
+                  title: "Instrument",
+                  description: "Pick Equity, Futures, Options, or Commodity.",
+                  icon: "layers",
+                  tone: "teal",
+                  infoKey: "instrumentSetup",
+                  showInfo: showAddInfoButtons,
+                })}
+
+              <div className="input-group">
+                <label className="label" htmlFor="market-instrument-kind">
+                  Instrument type
+                </label>
+                <select
+                  className="select"
+                  id="market-instrument-kind"
+                  value={currentInstrumentKind}
+                  onChange={(event) => applyInstrumentKind(event.target.value)}
+                >
+                  {INSTRUMENT_KIND_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {currentInstrumentKind === "commodity" ? (
+                  <div className="helper">
+                    Examples: GOLD, SILVER, CRUDEOIL. MCX trade window ends at 23:30.
+                  </div>
+                ) : null}
+                {currentInstrumentKind === "options" ? (
+                  <div className="helper">
+                    Set CE/PE and strike. Use NFO/BFO for index or stock options.
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid-2">
@@ -2869,7 +4582,11 @@ export default function StrategyPage() {
                     className="select"
                     id="market-exchange"
                     value={exchange}
-                    onChange={(event) => setExchange(event.target.value)}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setExchange(next);
+                      if (next === "MCX") setTradeWindowEnd(DEFAULT_MCX_TRADE_WINDOW_END);
+                    }}
                   >
                     {exchangeOptions.map((option) => (
                       <option key={option} value={option}>
@@ -2887,8 +4604,8 @@ export default function StrategyPage() {
                     onChange={(event) => handleSegmentChange(event.target.value)}
                   >
                     {MARKET_SEGMENT_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -3033,11 +4750,17 @@ export default function StrategyPage() {
                   ) : null}
                 </>
               ) : null}
-
-              {renderAddTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
-              <div className="helper">
-                Payload `call_type` is used first. Fallback is used only when payload side is missing.
               </div>
+
+              <div className="form-section form-section--amber">
+                {renderFormSectionHeader({
+                  title: "Trade settings",
+                  description: "Set trade time, side, quantity, and daily limit.",
+                  icon: "clock",
+                  tone: "amber",
+                  infoKey: "tradeSideFallback",
+                  showInfo: showAddInfoButtons,
+                })}
 
               <div className="grid-2">
                 <div className="input-group">
@@ -3061,20 +4784,16 @@ export default function StrategyPage() {
                   />
                 </div>
                 </div>
-                <div className="helper">
-                  Default window is 09:15 to 15:30. `triggered_at` is used when Chartink sends it.
-                </div>
 
-              <div className="grid-2">
-                <div className="input-group">
-                  {renderAddLabelWithInfo("market-calltype", "Trade side fallback", "tradeSideFallback")}
+              <div className="input-group">
+                  {renderAddLabelWithInfo("market-calltype", "Trade side", "tradeSideFallback")}
                   <select
                     className="select"
                     id="market-calltype"
                     value={callTypeFallback}
                     onChange={(event) => setCallTypeFallback(event.target.value)}
                   >
-                    <option value="">Use payload `call_type`</option>
+                    <option value="">Use webhook side</option>
                     {STRATEGY_CALL_TYPE_OPTIONS.map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -3082,34 +4801,9 @@ export default function StrategyPage() {
                     ))}
                   </select>
                 </div>
-                {!exitFallbackSelected ? (
-                  <div className="input-group">
-                    {renderAddLabelWithInfo("market-ordertype", "Order type", "orderType")}
-                    <select
-                      className="select"
-                      id="market-ordertype"
-                      value={orderType}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        setOrderType(next);
-                        if (next !== "LIMIT") {
-                          setLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
-                          setLimitPrice("");
-                          setBufferBy("");
-                          setBufferPoints("");
-                        }
-                      }}
-                    >
-                      <option value="MARKET">MARKET</option>
-                      <option value="LIMIT">LIMIT</option>
-                    </select>
-                  </div>
-                ) : null}
-              </div>
-
               {exitFallbackSelected ? (
                 <div className="helper">
-                  Exit mode only sends the exit signal. Order type, qty, target, stop loss, and trail SL are ignored.
+                  Exit mode only sends the exit signal. Quantity and risk fields are ignored.
                 </div>
               ) : (
                 <>
@@ -3250,8 +4944,7 @@ export default function StrategyPage() {
                         <div className="input-group">
                           <label className="label">mStock defaults</label>
                           <div className="helper">
-                            API key and JWT token admin page se auto-use honge. Type B cash-equity
-                            me symboltoken symbol se auto-resolve ho sakta hai.
+                          Auth is taken from the admin mStock settings automatically.
                           </div>
                         </div>
                       </div>
@@ -3356,7 +5049,7 @@ export default function StrategyPage() {
                     </div>
                   </div>
                   <div className="helper">
-                    Capital(%) qty: (Capital Amount * Qty% / 100) / stock price.
+                    Capital(%) uses: (Capital × Qty%) ÷ stock price.
                   </div>
 
                   {qtyDistribution === "Capital(%)" ? (
@@ -3379,28 +5072,25 @@ export default function StrategyPage() {
 
               <div className="input-group">
                 {renderAddLabelWithInfo("market-daily-trade-limit", "Daily trade limit", "dailyTradeLimit")}
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Enable daily trade limit</span>
-                  <input
-                    id="market-daily-trade-limit"
-                    type="checkbox"
-                    checked={useDailyTradeLimit}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setUseDailyTradeLimit(checked);
-                      if (!checked) {
-                        setDailyTradeLimit("");
-                      }
-                    }}
-                  />
-                </div>
+                {renderFeatureSwitch(
+                  "market-daily-trade-limit",
+                  useDailyTradeLimit,
+                  (checked) => {
+                    setUseDailyTradeLimit(checked);
+                    if (!checked) setDailyTradeLimit("");
+                  },
+                  "Enable daily trade limit",
+                  "Limit how many trades this strategy can take each day.",
+                  undefined,
+                  { tone: "limit", icon: "limit" }
+                )}
               </div>
 
               {useDailyTradeLimit ? (
                 <div className="input-group">
                   {renderAddLabelWithInfo(
                     "market-daily-trade-limit-value",
-                    "Daily trade limit value",
+                    "Max trades per day",
                     "dailyTradeLimitValue"
                   )}
                   <input
@@ -3414,13 +5104,21 @@ export default function StrategyPage() {
                     placeholder="e.g. 5"
                   />
                   <div className="helper">
-                    Max trades per day for this strategy. Leave blank for no limit.
+                    Maximum trades allowed for this strategy in one day.
                   </div>
                 </div>
               ) : null}
+              </div>
 
               {!exitFallbackSelected ? (
-                <>
+                <div className="form-section form-section--risk">
+                  {renderFormSectionHeader({
+                    title: "Risk",
+                    description: "Optional target, stop loss, and trailing stop.",
+                    icon: "shield",
+                    tone: "risk",
+                  })}
+
                   <div className="input-group">
                     {renderAddLabelWithInfo(
                       "market-use-target",
@@ -3428,22 +5126,21 @@ export default function StrategyPage() {
                       "targetToggle",
                       "risk-label-target"
                     )}
-                    <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span className="risk-note risk-note-target">Enable target</span>
-                      <input
-                        id="market-use-target"
-                        type="checkbox"
-                        checked={useTarget}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setUseTarget(checked);
-                          if (!checked) {
-                            setTargetBy("");
-                            setTarget("");
-                          }
-                        }}
-                      />
-                    </div>
+                    {renderFeatureSwitch(
+                      "market-use-target",
+                      useTarget,
+                      (checked) => {
+                        setUseTarget(checked);
+                        if (!checked) {
+                          setTargetBy("");
+                          setTarget("");
+                        }
+                      },
+                      "Enable target",
+                      "Exit with profit when target is hit.",
+                      "risk-note risk-note-target",
+                      { tone: "target", icon: "target" }
+                    )}
                   </div>
 
                   {useTarget ? (
@@ -3503,22 +5200,21 @@ export default function StrategyPage() {
                       "stopLossToggle",
                       "risk-label-stop"
                     )}
-                    <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span className="risk-note risk-note-stop">Enable stop loss</span>
-                      <input
-                        id="market-use-sl"
-                        type="checkbox"
-                        checked={useStopLoss}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setUseStopLoss(checked);
-                          if (!checked) {
-                            setSlBy("");
-                            setSl("");
-                          }
-                        }}
-                      />
-                    </div>
+                    {renderFeatureSwitch(
+                      "market-use-sl",
+                      useStopLoss,
+                      (checked) => {
+                        setUseStopLoss(checked);
+                        if (!checked) {
+                          setSlBy("");
+                          setSl("");
+                        }
+                      },
+                      "Enable stop loss",
+                      "Exit if price moves against the trade.",
+                      "risk-note risk-note-stop",
+                      { tone: "risk", icon: "stop" }
+                    )}
                   </div>
 
                   {useStopLoss ? (
@@ -3568,22 +5264,21 @@ export default function StrategyPage() {
                       "trailSl",
                       "risk-label-stop"
                     )}
-                    <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span className="risk-note risk-note-stop">Enable trailing stop loss</span>
-                      <input
-                        id="market-trail-sl"
-                        type="checkbox"
-                        checked={trailSl}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setTrailSl(checked);
-                          if (!checked) {
-                            setSlMove("");
-                            setProfitMove("");
-                          }
-                        }}
-                      />
-                    </div>
+                    {renderFeatureSwitch(
+                      "market-trail-sl",
+                      trailSl,
+                      (checked) => {
+                        setTrailSl(checked);
+                        if (!checked) {
+                          setSlMove("");
+                          setProfitMove("");
+                        }
+                      },
+                      "Enable trailing stop loss",
+                      "Move stop loss up as profit increases.",
+                      "risk-note risk-note-stop",
+                      { tone: "risk", icon: "trail" }
+                    )}
                   </div>
 
                   {trailSl ? (
@@ -3620,44 +5315,48 @@ export default function StrategyPage() {
                       </div>
                     </div>
                   ) : null}
-                </>
+                </div>
               ) : null}
 
-              <div className="input-group">
-                {renderAddLabelWithInfo("email-enable", "Email alerts", "emailAlerts")}
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Send alerts to {emailAlertTarget}</span>
-                  <input
-                    id="email-enable"
-                    type="checkbox"
-                    checked={emailEnabled}
-                    onChange={(event) => setEmailEnabled(event.target.checked)}
-                  />
+              <div className="form-section form-section--alert">
+                {renderFormSectionHeader({
+                  title: "Alerts",
+                  description: "Send email or Telegram alerts for this strategy.",
+                  icon: "bell",
+                  tone: "alert",
+                })}
+
+                <div className="input-group">
+                  {renderAddLabelWithInfo("email-enable", "Email alerts", "emailAlerts")}
+                  {renderFeatureSwitch(
+                    "email-enable",
+                    emailEnabled,
+                    setEmailEnabled,
+                    `Send alerts to ${emailAlertTarget}`,
+                    profileEmail
+                      ? `Using ${profileEmail}`
+                      : "Uses your account email when available.",
+                    undefined,
+                    { tone: "alert", icon: "mail" }
+                  )}
                 </div>
-                <div className="helper">
-                  {profileEmail
-                    ? `Registered email: ${profileEmail}`
-                    : "Alerts use your account email when available."}
+
+                <div className="input-group">
+                  {renderAddLabelWithInfo("telegram-enable", "Telegram alerts", "telegramAlerts")}
+                  {renderFeatureSwitch(
+                    "telegram-enable",
+                    telegramEnabled,
+                    setTelegramEnabled,
+                    "Send alerts to Telegram",
+                    "Works with your linked Telegram bot subscription.",
+                    undefined,
+                    { tone: "alert", icon: "telegram" }
+                  )}
                 </div>
               </div>
-
-              <div className="input-group">
-                {renderAddLabelWithInfo("telegram-enable", "Telegram alerts", "telegramAlerts")}
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Send alerts to Telegram</span>
-                  <input
-                    id="telegram-enable"
-                    type="checkbox"
-                    checked={telegramEnabled}
-                    onChange={(event) => setTelegramEnabled(event.target.checked)}
-                  />
-                </div>
-                <div className="helper">
-                  Telegram is linked via bot token subscription (no chat ID needed).
-                </div>
               </div>
 
-              <div className="cta-row" style={{ marginTop: "8px" }}>
+              <div className="cta-row form-actions">
                 <button className="btn btn-primary" type="submit" disabled={loading}>
                   {loading ? "Saving..." : "Save strategy"}
                 </button>
@@ -3675,106 +5374,352 @@ export default function StrategyPage() {
       ) : null}
 
       {editing ? (
-        <div className="modal-overlay" onClick={closeEdit}>
-          <div className="modal card" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header-row">
-              <div className="page-title">Edit strategy</div>
-              {renderInfoToggle(showEditInfoButtons, setShowEditInfoButtons)}
+        <div className="modal-overlay strategy-modal-overlay" onClick={closeEdit}>
+          <div className="modal modal-form card" onClick={(event) => event.stopPropagation()}>
+            <div className="strategy-modal-header">
+              <div className="strategy-modal-heading">
+                <span className="section-icon form-section--teal" aria-hidden="true">
+                  {renderStrategyUiIcon("spark")}
+                </span>
+                <div className="strategy-modal-heading-copy">
+                  <div className="page-title">Edit strategy</div>
+                </div>
+              </div>
+              <div className="cta-row" style={{ gap: 10, alignItems: "center" }}>
+                {renderInfoToggle(showEditInfoButtons, setShowEditInfoButtons)}
+                <button
+                  className="btn btn-ghost strategy-modal-close"
+                  type="button"
+                  aria-label="Close edit strategy"
+                  onClick={closeEdit}
+                >
+                  {renderStrategyUiIcon("close")}
+                </button>
+              </div>
             </div>
-            <form className="form" onSubmit={handleUpdate} style={{ marginTop: "16px" }}>
-              <div className="input-group">
-                {renderEditLabelWithInfo("edit-strategy-name", "Strategy name", "strategyName")}
-                <input
-                  className="input"
-                  id="edit-strategy-name"
-                  value={editName}
-                  onChange={(event) => setEditName(event.target.value)}
-                  placeholder="e.g. Banknifty Breakout"
-                  required
-                />
-              </div>
+            <form className="form strategy-form" onSubmit={handleUpdate}>
+              <div className="strategy-modal-body">
+              <div className="form-section form-section--teal">
+                {renderFormSectionHeader({
+                  title: "Basics",
+                  description: "Update the strategy name and where trades should go.",
+                  icon: "spark",
+                  tone: "teal",
+                })}
 
-              <div className="input-group">
-                <div className="label-row">
-                  <label className="label">Webhook URL</label>
-                  {renderInfoButton("webhookUrl", "inline", showEditInfoButtons)}
-                </div>
-                <div className="list" style={{ gap: "10px" }}>
-                  <div className="list-item" style={{ justifyContent: "space-between" }}>
-                    <div>
-                      <div><strong>Chartink</strong></div>
-                      <code className="mono">{resolveWebhookUrl(editing, "chartink")}</code>
-                    </div>
-                    <button
-                      className="btn btn-ghost"
-                      type="button"
-                      onClick={() => copyToClipboard(resolveWebhookUrl(editing, "chartink"))}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                  <div className="list-item" style={{ justifyContent: "space-between" }}>
-                    <div>
-                      <div><strong>TradingView</strong></div>
-                      <code className="mono">{resolveWebhookUrl(editing, "tradingview")}</code>
-                    </div>
-                    <button
-                      className="btn btn-ghost"
-                      type="button"
-                      onClick={() => copyToClipboard(resolveWebhookUrl(editing, "tradingview"))}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-                <div className="helper">Webhook key stays the same for both providers.</div>
-              </div>
-
-              <div className="input-group">
-                {renderEditLabelWithInfo("edit-market-enable", "Enable Market Maya", "marketMayaEnable")}
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Send alerts to Market Maya</span>
+                <div className="input-group">
+                  {renderEditLabelWithInfo("edit-strategy-name", "Strategy name", "strategyName")}
                   <input
-                    id="edit-market-enable"
-                    type="checkbox"
-                    checked={editEnabled}
-                    onChange={(event) => setEditEnabled(event.target.checked)}
+                    className="input"
+                    id="edit-strategy-name"
+                    value={editName}
+                    onChange={(event) => setEditName(event.target.value)}
+                    placeholder="e.g. Banknifty Breakout"
+                    required
                   />
                 </div>
+
+                <div className="input-group">
+                  <div className="label-row">
+                    <label className="label">Webhook URL</label>
+                    {renderInfoButton("webhookUrl", "inline", showEditInfoButtons)}
+                  </div>
+                  <div className="list" style={{ gap: "10px" }}>
+                    <div className="list-item" style={{ justifyContent: "space-between" }}>
+                      <div>
+                        <div><strong>Chartink</strong></div>
+                        <code className="mono">{resolveWebhookUrl(editing, "chartink")}</code>
+                      </div>
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        onClick={() => copyToClipboard(resolveWebhookUrl(editing, "chartink"))}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <div className="list-item" style={{ justifyContent: "space-between" }}>
+                      <div>
+                        <div><strong>TradingView</strong></div>
+                        <code className="mono">{resolveWebhookUrl(editing, "tradingview")}</code>
+                      </div>
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        onClick={() => copyToClipboard(resolveWebhookUrl(editing, "tradingview"))}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="input-group">
+                  {renderEditLabelWithInfo("edit-strategy-enable", "Enable strategy", "marketMayaEnable")}
+                  {renderFeatureSwitch(
+                    "edit-strategy-enable",
+                    editEnabled,
+                    setEditEnabled,
+                    "Run this strategy on webhook alerts",
+                    "Turn off to pause auto trading without deleting the strategy.",
+                    undefined,
+                    { tone: "maya", icon: "broadcast" }
+                  )}
+                </div>
+
+                <div className="input-group">
+                  {renderEditLabelWithInfo("edit-market-enable", "Enable Market Maya", "marketMayaEnable")}
+                  {renderFeatureSwitch(
+                    "edit-market-enable",
+                    editMarketMayaEnabled,
+                    setEditMarketMayaEnabled,
+                    "Send trades to Market Maya",
+                    "Turn on to place live orders via Market Maya.",
+                    undefined,
+                    { tone: "maya", icon: "broadcast" }
+                  )}
+                </div>
+
+                {editMarketMayaEnabled ? (
+                  <div className="form-reveal input-group">
+                    {renderEditLabelWithInfo("edit-market-token", "Market Maya Token", "marketMayaToken")}
+                    <div className="token-field">
+                      <input
+                        className="input"
+                        id="edit-market-token"
+                        type={showEditMarketMayaToken ? "text" : "password"}
+                        value={editMarketMayaToken}
+                        onChange={(event) => setEditMarketMayaToken(event.target.value)}
+                        placeholder="Market Maya token"
+                      />
+                      <button
+                        className="token-visibility-btn"
+                        type="button"
+                        aria-label={
+                          showEditMarketMayaToken ? "Hide saved Market Maya token" : "Show saved Market Maya token"
+                        }
+                        aria-pressed={showEditMarketMayaToken}
+                        onClick={() => setShowEditMarketMayaToken((current) => !current)}
+                      >
+                        {renderVisibilityIcon(showEditMarketMayaToken)}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="input-group">
+                  {renderEditLabelWithInfo("edit-sharekhan-direct", "Sharekhan", "sharekhanDirect")}
+                  {renderFeatureSwitch(
+                    "edit-sharekhan-direct",
+                    editSharekhanDirect,
+                    setEditSharekhanDirect,
+                    "Also place orders on Sharekhan",
+                    "Uses your own Sharekhan API keys for this strategy.",
+                    undefined,
+                    { tone: "broker", icon: "broker" }
+                  )}
+                </div>
               </div>
 
-              {editEnabled ? (
-                <div className="input-group">
-                  {renderEditLabelWithInfo("edit-market-token", "Market Maya Token", "marketMayaToken")}
-                  <div className="token-field">
+              {editSharekhanDirect ? (
+                <div className="form-section form-section--broker form-reveal">
+                  {renderFormSectionHeader({
+                    title: "Sharekhan login",
+                    description: editSharekhanAccessToken.trim()
+                      ? "" : "",
+                    icon: "key",
+                    tone: "broker",
+                  })}
+                  {editSharekhanAccessToken.trim() ? (
+                    <div className="alert alert-success">
+                      Connected to Sharekhan. You can continue and save changes.
+                    </div>
+                  ) : null}
+                  <div className="input-group">
+                    {renderEditLabelWithInfo(
+                      "edit-sharekhan-redirect-url",
+                      "Redirect URL",
+                      "sharekhanRedirectUrl"
+                    )}
+                    <div className="token-field">
+                      <input className="input" readOnly value={sharekhanRedirectUrls.primary} />
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() => copyToClipboard(sharekhanRedirectUrls.primary)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <div className="token-field">
+                      <input className="input" readOnly value={sharekhanRedirectUrls.local} />
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() => copyToClipboard(sharekhanRedirectUrls.local)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    {renderEditLabelWithInfo(
+                      "edit-sharekhan-api-key",
+                      "Sharekhan API Key",
+                      "sharekhanApiKey"
+                    )}
+                    <div className="token-field">
+                      <input
+                        className="input"
+                        id="edit-sharekhan-api-key"
+                        type={showEditSharekhanApiKey ? "text" : "password"}
+                        value={editSharekhanApiKey}
+                        onChange={(event) => setEditSharekhanApiKey(event.target.value)}
+                        placeholder="Your Sharekhan API Key"
+                        autoComplete="off"
+                      />
+                      <button
+                        className="token-visibility-btn"
+                        type="button"
+                        aria-label={showEditSharekhanApiKey ? "Hide API key" : "Show API key"}
+                        onClick={() => setShowEditSharekhanApiKey((c) => !c)}
+                      >
+                        {renderVisibilityIcon(showEditSharekhanApiKey)}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    {renderEditLabelWithInfo(
+                      "edit-sharekhan-secure-key",
+                      "Sharekhan Secure Key",
+                      "sharekhanSecureKey"
+                    )}
+                    <div className="token-field">
+                      <input
+                        className="input"
+                        id="edit-sharekhan-secure-key"
+                        type={showEditSharekhanSecureKey ? "text" : "password"}
+                        value={editSharekhanSecureKey}
+                        onChange={(event) => setEditSharekhanSecureKey(event.target.value)}
+                        placeholder="Secure/secret key from Sharekhan app"
+                        autoComplete="off"
+                      />
+                      <button
+                        className="token-visibility-btn"
+                        type="button"
+                        aria-label={
+                          showEditSharekhanSecureKey ? "Hide secure key" : "Show secure key"
+                        }
+                        onClick={() => setShowEditSharekhanSecureKey((c) => !c)}
+                      >
+                        {renderVisibilityIcon(showEditSharekhanSecureKey)}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    {renderEditLabelWithInfo(
+                      "edit-sharekhan-customer-id",
+                      "Sharekhan Customer ID",
+                      "sharekhanCustomerId"
+                    )}
                     <input
                       className="input"
-                      id="edit-market-token"
-                      type={showEditMarketMayaToken ? "text" : "password"}
-                      value={editMarketMayaToken}
-                      onChange={(event) => setEditMarketMayaToken(event.target.value)}
-                      placeholder="Market Maya token"
+                      id="edit-sharekhan-customer-id"
+                      value={editSharekhanCustomerId}
+                      onChange={(event) => setEditSharekhanCustomerId(event.target.value)}
+                      placeholder="Numeric client ID e.g. 1464067"
+                      autoComplete="off"
                     />
+                  </div>
+
+                  <div className="input-group">
+                    {renderEditLabelWithInfo(
+                      "edit-sharekhan-channel-user",
+                      "Sharekhan Login ID",
+                      "sharekhanChannelUser"
+                    )}
+                    <input
+                      className="input"
+                      id="edit-sharekhan-channel-user"
+                      value={editSharekhanChannelUser}
+                      onChange={(event) => setEditSharekhanChannelUser(event.target.value)}
+                      placeholder="Login / channelUser e.g. pandurangs22"
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="cta-row" style={{ gap: 8, marginBottom: 12 }}>
                     <button
-                      className="token-visibility-btn"
+                      className="btn btn-secondary"
                       type="button"
-                      aria-label={
-                        showEditMarketMayaToken ? "Hide saved Market Maya token" : "Show saved Market Maya token"
-                      }
-                      aria-pressed={showEditMarketMayaToken}
-                      onClick={() => setShowEditMarketMayaToken((current) => !current)}
+                      onClick={() => startSharekhanLogin("edit")}
                     >
-                      {renderVisibilityIcon(showEditMarketMayaToken)}
+                      {editSharekhanAccessToken.trim() ? "Reconnect Sharekhan" : "Login with Sharekhan"}
                     </button>
                   </div>
-                  <div className="helper">Saved token is shown here. Update it if you want to replace it.</div>
+
+                  <div className="input-group">
+                    {renderEditLabelWithInfo(
+                      "edit-sharekhan-access-token",
+                      "Sharekhan Access Token",
+                      "sharekhanAccessToken"
+                    )}
+                    <div className="token-field">
+                      <input
+                        className="input"
+                        id="edit-sharekhan-access-token"
+                        type={showEditSharekhanAccessToken ? "text" : "password"}
+                        value={editSharekhanAccessToken}
+                        onChange={(event) => setEditSharekhanAccessToken(event.target.value)}
+                        placeholder="Generated after Sharekhan login"
+                        autoComplete="off"
+                      />
+                      <button
+                        className="token-visibility-btn"
+                        type="button"
+                        aria-label={
+                          showEditSharekhanAccessToken ? "Hide access token" : "Show access token"
+                        }
+                        onClick={() => setShowEditSharekhanAccessToken((c) => !c)}
+                      >
+                        {renderVisibilityIcon(showEditSharekhanAccessToken)}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    {renderEditLabelWithInfo(
+                      "edit-sharekhan-product",
+                      "Sharekhan product",
+                      "sharekhanProductType"
+                    )}
+                    <select
+                      className="select"
+                      id="edit-sharekhan-product"
+                      value={editSharekhanProductType}
+                      onChange={(event) => setEditSharekhanProductType(event.target.value)}
+                    >
+                      <option value="">Auto (INVESTMENT)</option>
+                      <option value="INVESTMENT">INVESTMENT</option>
+                      <option value="BIGTRADE">BIGTRADE</option>
+                      <option value="BIGTRADEPLUS">BIGTRADEPLUS</option>
+                    </select>
+                  </div>
                 </div>
               ) : null}
 
-              {renderEditTitleWithInfo("Symbol handling", "symbolSource", { marginTop: "10px" })}
-              <div className="helper">
-                Control how symbols are picked from webhook payloads.
-              </div>
+              <div className="form-section form-section--slate">
+                {renderFormSectionHeader({
+                  title: "Symbol handling",
+                  description: "Control how symbols are picked from webhook payloads.",
+                  icon: "tag",
+                  tone: "slate",
+                  infoKey: "symbolSource",
+                  showInfo: showEditInfoButtons,
+                })}
 
               <div className="grid-2">
                 <div className="input-group">
@@ -3804,9 +5749,6 @@ export default function StrategyPage() {
                     placeholder="5"
                     disabled={editSymbolMode === "stocksFirst" || editSymbolMode === "manualList"}
                   />
-                  <div className="helper">
-                    Up to 25. Used only when webhook sends multiple symbols.
-                  </div>
                 </div>
               </div>
 
@@ -3814,19 +5756,64 @@ export default function StrategyPage() {
                 <div className="input-group stock-builder-group">
                   {renderEditLabelWithInfo("edit-fixed-stock-input", "Fixed stocks list", "fixedStocks")}
                   <div className="token-field">
-                    <input
-                      className="input"
-                      id="edit-fixed-stock-input"
-                      value={editManualSymbolInput}
-                      onChange={(event) => setEditManualSymbolInput(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          handleAddEditManualSymbol();
-                        }
-                      }}
-                      placeholder="Type stock name like RELIANCE"
-                    />
+                    <div className="stock-suggest-wrap">
+                      <input
+                        className="input"
+                        id="edit-fixed-stock-input"
+                        value={editManualSymbolInput}
+                        onChange={(event) => {
+                          setEditManualSymbolInput(event.target.value);
+                          setShowEditManualSymbolSuggestions(true);
+                        }}
+                        onFocus={() => {
+                          if (editManualSymbolSuggestions.length > 0) {
+                            setShowEditManualSymbolSuggestions(true);
+                          }
+                        }}
+                        onBlur={() => {
+                          window.setTimeout(() => setShowEditManualSymbolSuggestions(false), 150);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            if (editManualSymbolSuggestions[0]) {
+                              handleSelectEditManualSymbol(editManualSymbolSuggestions[0]);
+                            } else {
+                              handleAddEditManualSymbol();
+                            }
+                          }
+                        }}
+                        placeholder="Search stock like RELIANCE"
+                        autoComplete="off"
+                      />
+                      {showEditManualSymbolSuggestions &&
+                      (editManualSymbolSearching || editManualSymbolSuggestions.length > 0) ? (
+                        <div className="stock-suggest-menu" role="listbox">
+                          {editManualSymbolSearching && editManualSymbolSuggestions.length === 0 ? (
+                            <div className="stock-suggest-empty">Searching...</div>
+                          ) : null}
+                          {editManualSymbolSuggestions.map((hit) => (
+                            <button
+                              key={`${hit.exchange || "X"}:${hit.token || hit.symbol}`}
+                              type="button"
+                              className="stock-suggest-item"
+                              role="option"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => handleSelectEditManualSymbol(hit)}
+                            >
+                              <span>
+                                <span className="stock-suggest-symbol">
+                                  {formatInstrumentSuggestion(hit)}
+                                </span>
+                                {hit.name ? (
+                                  <span className="stock-suggest-meta">{hit.name}</span>
+                                ) : null}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                     <button
                       className="btn btn-secondary"
                       type="button"
@@ -3835,9 +5822,6 @@ export default function StrategyPage() {
                     >
                       + Add
                     </button>
-                  </div>
-                  <div className="helper">
-                    Added names stay saved with this strategy and are reused on trigger.
                   </div>
                   {editManualSymbols.length > 0 ? (
                     <div className="stock-chip-list">
@@ -3871,13 +5855,48 @@ export default function StrategyPage() {
                     onChange={(event) => setEditSymbolKey(event.target.value)}
                     placeholder="symbol"
                   />
-                  <div className="helper">Webhook field name to read symbols from.</div>
+                  <div className="helper">Webhook field used for symbols.</div>
                 </div>
               ) : null}
+              </div>
 
-              {renderEditTitleWithInfo("Instrument setup", "instrumentSetup", { marginTop: "10px" })}
-              <div className="helper">
-                Select the segment first. EQ hides derivative fields, while FUT and OPT reveal only the contract fields needed for that segment.
+              <div className="form-section form-section--teal">
+                {renderFormSectionHeader({
+                  title: "Instrument setup",
+                  description:
+                    "Choose Equity, Futures, Options, or Commodity. Commodity uses MCX futures by default (GOLD, SILVER, CRUDEOIL...). Options unlock CE/PE + ATM/strike fields.",
+                  icon: "layers",
+                  tone: "teal",
+                  infoKey: "instrumentSetup",
+                  showInfo: showEditInfoButtons,
+                })}
+
+              <div className="input-group">
+                <label className="label" htmlFor="edit-market-instrument-kind">
+                  Instrument type
+                </label>
+                <select
+                  className="select"
+                  id="edit-market-instrument-kind"
+                  value={editInstrumentKind}
+                  onChange={(event) => applyInstrumentKind(event.target.value, true)}
+                >
+                  {INSTRUMENT_KIND_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {editInstrumentKind === "commodity" ? (
+                  <div className="helper">
+                    Examples: GOLD, SILVER, CRUDEOIL. MCX trade window ends at 23:30.
+                  </div>
+                ) : null}
+                {editInstrumentKind === "options" ? (
+                  <div className="helper">
+                    Set CE/PE and strike. Use NFO/BFO for index or stock options.
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid-2">
@@ -3887,7 +5906,11 @@ export default function StrategyPage() {
                     className="select"
                     id="edit-market-exchange"
                     value={editExchange}
-                    onChange={(event) => setEditExchange(event.target.value)}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setEditExchange(next);
+                      if (next === "MCX") setEditTradeWindowEnd(DEFAULT_MCX_TRADE_WINDOW_END);
+                    }}
                   >
                     {editExchangeOptions.map((option) => (
                       <option key={option} value={option}>
@@ -3905,8 +5928,8 @@ export default function StrategyPage() {
                     onChange={(event) => handleEditSegmentChange(event.target.value)}
                   >
                     {MARKET_SEGMENT_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -4051,11 +6074,18 @@ export default function StrategyPage() {
                   ) : null}
                 </>
               ) : null}
-
-              {renderEditTitleWithInfo("Trade defaults", "tradeSideFallback", { marginTop: "10px" })}
-              <div className="helper">
-                Payload `call_type` is used first. Fallback is used only when payload side is missing.
               </div>
+
+              <div className="form-section form-section--amber">
+                {renderFormSectionHeader({
+                  title: "Trade defaults",
+                  description:
+                    "Payload `call_type` is used first. Fallback is used only when payload side is missing.",
+                  icon: "clock",
+                  tone: "amber",
+                  infoKey: "tradeSideFallback",
+                  showInfo: showEditInfoButtons,
+                })}
 
               <div className="grid-2">
                 <div className="input-group">
@@ -4079,12 +6109,8 @@ export default function StrategyPage() {
                   />
                 </div>
               </div>
-              <div className="helper">
-                Default window is 09:15 to 15:30. `triggered_at` is used when Chartink sends it.
-              </div>
 
-              <div className="grid-2">
-                <div className="input-group">
+              <div className="input-group">
                   {renderEditLabelWithInfo("edit-market-calltype", "Trade side fallback", "tradeSideFallback")}
                   <select
                     className="select"
@@ -4100,34 +6126,9 @@ export default function StrategyPage() {
                     ))}
                   </select>
                 </div>
-                {!editExitFallbackSelected ? (
-                  <div className="input-group">
-                    {renderEditLabelWithInfo("edit-market-ordertype", "Order type", "orderType")}
-                    <select
-                      className="select"
-                      id="edit-market-ordertype"
-                      value={editOrderType}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        setEditOrderType(next);
-                        if (next !== "LIMIT") {
-                          setEditLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
-                          setEditLimitPrice("");
-                          setEditBufferBy("");
-                          setEditBufferPoints("");
-                        }
-                      }}
-                    >
-                      <option value="MARKET">MARKET</option>
-                      <option value="LIMIT">LIMIT</option>
-                    </select>
-                  </div>
-                ) : null}
-              </div>
-
               {editExitFallbackSelected ? (
                 <div className="helper">
-                  Exit mode only sends the exit signal. Order type, qty, target, stop loss, and trail SL are ignored.
+                  Exit mode only sends the exit signal. Quantity and risk fields are ignored.
                 </div>
               ) : (
                 <>
@@ -4268,8 +6269,7 @@ export default function StrategyPage() {
                         <div className="input-group">
                           <label className="label">mStock defaults</label>
                           <div className="helper">
-                            API key and JWT token admin page se auto-use honge. Type B cash-equity
-                            me symboltoken symbol se auto-resolve ho sakta hai.
+                          Auth is taken from the admin mStock settings automatically.
                           </div>
                         </div>
                       </div>
@@ -4378,7 +6378,7 @@ export default function StrategyPage() {
                     </div>
                   </div>
                   <div className="helper">
-                    Capital(%) qty: (Capital Amount * Qty% / 100) / stock price.
+                    Capital(%) uses: (Capital × Qty%) ÷ stock price.
                   </div>
 
                   {editQtyDistribution === "Capital(%)" ? (
@@ -4409,21 +6409,18 @@ export default function StrategyPage() {
                   "Daily trade limit",
                   "dailyTradeLimit"
                 )}
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Enable daily trade limit</span>
-                  <input
-                    id="edit-market-daily-trade-limit"
-                    type="checkbox"
-                    checked={editUseDailyTradeLimit}
-                    onChange={(event) => {
-                      const checked = event.target.checked;
-                      setEditUseDailyTradeLimit(checked);
-                      if (!checked) {
-                        setEditDailyTradeLimit("");
-                      }
-                    }}
-                  />
-                </div>
+                {renderFeatureSwitch(
+                  "edit-market-daily-trade-limit",
+                  editUseDailyTradeLimit,
+                  (checked) => {
+                    setEditUseDailyTradeLimit(checked);
+                    if (!checked) setEditDailyTradeLimit("");
+                  },
+                  "Enable daily trade limit",
+                  "Cap how many trades this strategy can fire per day.",
+                  undefined,
+                  { tone: "limit", icon: "limit" }
+                )}
               </div>
 
               {editUseDailyTradeLimit ? (
@@ -4444,13 +6441,21 @@ export default function StrategyPage() {
                     placeholder="e.g. 5"
                   />
                   <div className="helper">
-                    Max trades per day for this strategy. Leave blank for no limit.
+                    Maximum trades allowed for this strategy in one day.
                   </div>
                 </div>
               ) : null}
+              </div>
 
               {!editExitFallbackSelected ? (
-                <>
+                <div className="form-section form-section--risk">
+                  {renderFormSectionHeader({
+                    title: "Risk controls",
+                    description: "Optional target, stop loss, and trailing stop settings for live trades.",
+                    icon: "shield",
+                    tone: "risk",
+                  })}
+
                   <div className="input-group">
                     {renderEditLabelWithInfo(
                       "edit-market-use-target",
@@ -4458,22 +6463,21 @@ export default function StrategyPage() {
                       "targetToggle",
                       "risk-label-target"
                     )}
-                    <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span className="risk-note risk-note-target">Enable target</span>
-                      <input
-                        id="edit-market-use-target"
-                        type="checkbox"
-                        checked={editUseTarget}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setEditUseTarget(checked);
-                          if (!checked) {
-                            setEditTargetBy("");
-                            setEditTarget("");
-                          }
-                        }}
-                      />
-                    </div>
+                    {renderFeatureSwitch(
+                      "edit-market-use-target",
+                      editUseTarget,
+                      (checked) => {
+                        setEditUseTarget(checked);
+                        if (!checked) {
+                          setEditTargetBy("");
+                          setEditTarget("");
+                        }
+                      },
+                      "Enable target",
+                      "Book profit when price hits your target level.",
+                      "risk-note risk-note-target",
+                      { tone: "target", icon: "target" }
+                    )}
                   </div>
 
                   {editUseTarget ? (
@@ -4533,22 +6537,21 @@ export default function StrategyPage() {
                       "stopLossToggle",
                       "risk-label-stop"
                     )}
-                    <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span className="risk-note risk-note-stop">Enable stop loss</span>
-                      <input
-                        id="edit-market-use-sl"
-                        type="checkbox"
-                        checked={editUseStopLoss}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setEditUseStopLoss(checked);
-                          if (!checked) {
-                            setEditSlBy("");
-                            setEditSl("");
-                          }
-                        }}
-                      />
-                    </div>
+                    {renderFeatureSwitch(
+                      "edit-market-use-sl",
+                      editUseStopLoss,
+                      (checked) => {
+                        setEditUseStopLoss(checked);
+                        if (!checked) {
+                          setEditSlBy("");
+                          setEditSl("");
+                        }
+                      },
+                      "Enable stop loss",
+                      "Exit early if price moves against you.",
+                      "risk-note risk-note-stop",
+                      { tone: "risk", icon: "stop" }
+                    )}
                   </div>
 
                   {editUseStopLoss ? (
@@ -4598,22 +6601,21 @@ export default function StrategyPage() {
                       "trailSl",
                       "risk-label-stop"
                     )}
-                    <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <span className="risk-note risk-note-stop">Enable trailing stop loss</span>
-                      <input
-                        id="edit-market-trail-sl"
-                        type="checkbox"
-                        checked={editTrailSl}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setEditTrailSl(checked);
-                          if (!checked) {
-                            setEditSlMove("");
-                            setEditProfitMove("");
-                          }
-                        }}
-                      />
-                    </div>
+                    {renderFeatureSwitch(
+                      "edit-market-trail-sl",
+                      editTrailSl,
+                      (checked) => {
+                        setEditTrailSl(checked);
+                        if (!checked) {
+                          setEditSlMove("");
+                          setEditProfitMove("");
+                        }
+                      },
+                      "Enable trailing stop loss",
+                      "Move SL up as profit grows to lock gains.",
+                      "risk-note risk-note-stop",
+                      { tone: "risk", icon: "trail" }
+                    )}
                   </div>
 
                   {editTrailSl ? (
@@ -4650,41 +6652,48 @@ export default function StrategyPage() {
                       </div>
                     </div>
                   ) : null}
-                </>
+                </div>
               ) : null}
 
-              <div className="input-group">
-                {renderEditLabelWithInfo("edit-email-enable", "Email alerts", "emailAlerts")}
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Send alerts to {emailAlertTarget}</span>
-                  <input
-                    id="edit-email-enable"
-                    type="checkbox"
-                    checked={editEmailEnabled}
-                    onChange={(event) => setEditEmailEnabled(event.target.checked)}
-                  />
+              <div className="form-section form-section--alert">
+                {renderFormSectionHeader({
+                  title: "Alerts",
+                  description: "Optional email and Telegram notifications for this strategy.",
+                  icon: "bell",
+                  tone: "alert",
+                })}
+
+                <div className="input-group">
+                  {renderEditLabelWithInfo("edit-email-enable", "Email alerts", "emailAlerts")}
+                  {renderFeatureSwitch(
+                    "edit-email-enable",
+                    editEmailEnabled,
+                    setEditEmailEnabled,
+                    `Send alerts to ${emailAlertTarget}`,
+                    profileEmail
+                      ? `Registered email: ${profileEmail}`
+                      : "Alerts use your account email when available.",
+                    undefined,
+                    { tone: "alert", icon: "mail" }
+                  )}
                 </div>
-                <div className="helper">
-                  {profileEmail
-                    ? `Registered email: ${profileEmail}`
-                    : "Alerts use your account email when available."}
+
+                <div className="input-group">
+                  {renderEditLabelWithInfo("edit-telegram-enable", "Telegram alerts", "telegramAlerts")}
+                  {renderFeatureSwitch(
+                    "edit-telegram-enable",
+                    editTelegramEnabled,
+                    setEditTelegramEnabled,
+                    "Send alerts to Telegram",
+                    "Telegram is linked via bot token subscription (no chat ID needed).",
+                    undefined,
+                    { tone: "alert", icon: "telegram" }
+                  )}
                 </div>
               </div>
-
-              <div className="input-group">
-                {renderEditLabelWithInfo("edit-telegram-enable", "Telegram alerts", "telegramAlerts")}
-                <div className="list-item" style={{ justifyContent: "space-between" }}>
-                  <span>Send alerts to Telegram</span>
-                  <input
-                    id="edit-telegram-enable"
-                    type="checkbox"
-                    checked={editTelegramEnabled}
-                    onChange={(event) => setEditTelegramEnabled(event.target.checked)}
-                  />
-                </div>
               </div>
 
-              <div className="cta-row" style={{ marginTop: "8px" }}>
+              <div className="cta-row form-actions">
                 <button className="btn btn-primary" type="submit" disabled={editLoading}>
                   {editLoading ? "Saving..." : "Save changes"}
                 </button>
@@ -4723,36 +6732,54 @@ export default function StrategyPage() {
       ) : null}
 
       {showWebhookTestModal ? (
-        <div className="modal-overlay" onClick={closeWebhookTester}>
-          <div className="modal card" onClick={(event) => event.stopPropagation()}>
-            {renderTitleWithInfo("Test webhook", "testWebhook")}
-            <div className="helper" style={{ marginTop: "8px" }}>
-              Paste Chartink-like or TradingView JSON payload and click test to verify strategy webhook.
+        <div className="modal-overlay strategy-modal-overlay" onClick={closeWebhookTester}>
+          <div
+            className="modal modal-form card webhook-test-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="strategy-modal-header webhook-test-header">
+              <div className="page-title">Test webhook</div>
+              <button
+                className="btn btn-ghost strategy-modal-close"
+                type="button"
+                aria-label="Close webhook tester"
+                onClick={closeWebhookTester}
+              >
+                {renderStrategyUiIcon("close")}
+              </button>
             </div>
 
-            {testError ? (
-              <div className="alert alert-error" style={{ marginTop: "12px" }}>
-                {testError}
+            <div className="strategy-modal-body webhook-test-body">
+              {testError ? <div className="alert alert-error">{testError}</div> : null}
+
+              <div className="input-group webhook-test-url-group">
+                <label className="label" htmlFor="test-webhook-url">
+                  Webhook URL
+                </label>
+                <div className="token-field webhook-test-url-field">
+                  <input
+                    className="input"
+                    id="test-webhook-url"
+                    value={testWebhookUrl}
+                    onChange={(event) => setTestWebhookUrl(event.target.value)}
+                    placeholder="https://.../api/v1/webhooks/..."
+                  />
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() => copyToClipboard(testWebhookUrl.trim())}
+                    disabled={!testWebhookUrl.trim()}
+                  >
+                    Copy
+                  </button>
+                </div>
               </div>
-            ) : null}
 
-            <div className="input-group" style={{ marginTop: "12px" }}>
-              <label className="label" htmlFor="test-webhook-url">
-                Webhook URL
-              </label>
-              <input
-                className="input"
-                id="test-webhook-url"
-                value={testWebhookUrl}
-                onChange={(event) => setTestWebhookUrl(event.target.value)}
-                placeholder="https://.../api/v1/webhooks/chartink?key=... or /tradingview?key=..."
-              />
-            </div>
-
-            <div className="input-group">
-              <div className="cta-row" style={{ gap: "8px", marginBottom: "8px" }}>
+              <div className="webhook-test-provider-row" role="group" aria-label="Sample payload">
                 <button
-                  className="btn btn-ghost"
+                  className={`webhook-test-provider-btn${
+                    /tradingview/i.test(testWebhookUrl) ? "" : " is-active"
+                  }`}
                   type="button"
                   onClick={() => {
                     setTestPayload(DEFAULT_WEBHOOK_TEST_PAYLOAD);
@@ -4764,10 +6791,12 @@ export default function StrategyPage() {
                     );
                   }}
                 >
-                  Load Chartink sample
+                  Chartink
                 </button>
                 <button
-                  className="btn btn-ghost"
+                  className={`webhook-test-provider-btn${
+                    /tradingview/i.test(testWebhookUrl) ? " is-active" : ""
+                  }`}
                   type="button"
                   onClick={() => {
                     setTestPayload(DEFAULT_TRADINGVIEW_TEST_PAYLOAD);
@@ -4779,12 +6808,13 @@ export default function StrategyPage() {
                     );
                   }}
                 >
-                  Load TradingView sample
+                  TradingView
                 </button>
               </div>
+
               <div className="input-group stock-builder-group">
                 <label className="label" htmlFor="test-stock-input">
-                  Multiple stocks
+                  Stocks
                 </label>
                 <div className="token-field">
                   <input
@@ -4798,7 +6828,7 @@ export default function StrategyPage() {
                         handleAddTestStock();
                       }
                     }}
-                    placeholder="Type stock name like RELIANCE"
+                    placeholder="RELIANCE"
                     disabled={!testPayloadObject}
                   />
                   <button
@@ -4807,14 +6837,11 @@ export default function StrategyPage() {
                     onClick={handleAddTestStock}
                     disabled={!testPayloadObject || !testStockInput.trim()}
                   >
-                    + Add
+                    Add
                   </button>
                 </div>
-                <div className="helper">
-                  Added names are synced to the `stocks` key in JSON automatically.
-                </div>
                 {!testPayloadObject ? (
-                  <div className="helper">Fix the JSON payload first to use the stock builder.</div>
+                  <div className="helper">Fix JSON first to edit stocks.</div>
                 ) : testPayloadStocks.length > 0 ? (
                   <div className="stock-chip-list">
                     {testPayloadStocks.map((stock) => (
@@ -4826,40 +6853,50 @@ export default function StrategyPage() {
                           onClick={() => handleRemoveTestStock(stock)}
                           aria-label={`Remove ${stock}`}
                         >
-                          x
+                          ×
                         </button>
                       </span>
                     ))}
                   </div>
-                ) : (
-                  <div className="helper">No stocks added yet.</div>
-                )}
+                ) : null}
               </div>
-              <label className="label" htmlFor="test-webhook-payload">
-                Test payload (JSON)
-              </label>
-              <textarea
-                className="textarea"
-                id="test-webhook-payload"
-                rows={10}
-                value={testPayload}
-                onChange={(event) => setTestPayload(event.target.value)}
-              />
-              <div className="helper">
-                Example keys: `alert_name`, `scan_name`, `stocks` or `symbol`, `trigger_price`, optional `call_type`.
+
+              <div className="input-group webhook-test-payload-group">
+                <div className="webhook-test-payload-label-row">
+                  <label className="label" htmlFor="test-webhook-payload">
+                    Payload (JSON)
+                  </label>
+                  <button
+                    className="btn btn-ghost btn-compact"
+                    type="button"
+                    onClick={() => copyToClipboard(testPayload)}
+                    disabled={!testPayload.trim()}
+                  >
+                    Copy JSON
+                  </button>
+                </div>
+                <textarea
+                  className="textarea webhook-test-payload"
+                  id="test-webhook-payload"
+                  rows={11}
+                  value={testPayload}
+                  onChange={(event) => setTestPayload(event.target.value)}
+                  spellCheck={false}
+                />
               </div>
+
+              {testResult ? (
+                <div className="input-group">
+                  <label className="label">Response</label>
+                  <pre className="webhook-test-response">{testResult}</pre>
+                </div>
+              ) : null}
             </div>
 
-            {testResult ? (
-              <div className="input-group">
-                <label className="label">Response</label>
-                <pre className="mono" style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-                  {testResult}
-                </pre>
-              </div>
-            ) : null}
-
-            <div className="cta-row" style={{ marginTop: "14px" }}>
+            <div className="form-actions webhook-test-actions">
+              <button className="btn btn-ghost" type="button" onClick={closeWebhookTester}>
+                Cancel
+              </button>
               <button
                 className="btn btn-primary"
                 type="button"
@@ -4867,9 +6904,6 @@ export default function StrategyPage() {
                 disabled={testLoading}
               >
                 {testLoading ? "Testing..." : "Run test"}
-              </button>
-              <button className="btn btn-ghost" type="button" onClick={closeWebhookTester}>
-                Cancel
               </button>
             </div>
           </div>

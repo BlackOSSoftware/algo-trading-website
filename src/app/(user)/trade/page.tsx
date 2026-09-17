@@ -48,13 +48,6 @@ const CALL_TYPE_OPTIONS = [
   "PARTIAL SELL EXIT",
 ];
 
-const EXIT_CALL_TYPES = new Set([
-  "BUY EXIT",
-  "SELL EXIT",
-  "PARTIAL BUY EXIT",
-  "PARTIAL SELL EXIT",
-]);
-
 export default function TradePage() {
   const [tokenInput, setTokenInput] = useState("");
   const [showTokenModal, setShowTokenModal] = useState(true);
@@ -72,8 +65,6 @@ export default function TradePage() {
   const [atm, setAtm] = useState("0");
   const [strikePrice, setStrikePrice] = useState("");
   const [callType, setCallType] = useState("BUY");
-  const [orderType, setOrderType] = useState("MARKET");
-  const [price, setPrice] = useState("");
 
   const [qtyDistribution, setQtyDistribution] = useState("");
   const [qtyValue, setQtyValue] = useState("");
@@ -105,8 +96,6 @@ export default function TradePage() {
   const targetPlaceholder = isRatioTarget ? "e.g. 1:2" : "e.g. 50";
   const exchangeOptions = getExchangeOptions(normalizedSegment);
   const expiryOptions = getExpiryOptions(normalizedSegment);
-  const isExitTrade = EXIT_CALL_TYPES.has(callType);
-  const showLimitPrice = !isExitTrade && orderType === "LIMIT";
   const responseView = formatMarketMayaResponse(result);
 
   useEffect(() => {
@@ -160,8 +149,6 @@ export default function TradePage() {
     setSymbolCode("");
     setSymbol("ONGC");
     setCallType("BUY");
-    setOrderType("MARKET");
-    setPrice("");
     setQtyDistribution("Fix");
     setQtyValue("1");
     setTargetBy("");
@@ -171,6 +158,47 @@ export default function TradePage() {
     setTrailSl(false);
     setSlMove("");
     setProfitMove("");
+    setContract("NEAR");
+    setExpiry("MONTHLY");
+    setExpiryDate("");
+    setOptionType("CE");
+    setAtm("0");
+    setStrikePrice("");
+    setResult(null);
+    setError(null);
+  };
+
+  const fillCommodityExample = () => {
+    setExecute(false);
+    setExchange("MCX");
+    setSegment("FUT");
+    setSymbolCode("");
+    setSymbol("GOLD");
+    setCallType("BUY");
+    setContract("NEAR");
+    setExpiry("MONTHLY");
+    setExpiryDate("");
+    setQtyDistribution("Fix");
+    setQtyValue("1");
+    setResult(null);
+    setError(null);
+  };
+
+  const fillOptionsExample = () => {
+    setExecute(false);
+    setExchange("NFO");
+    setSegment("OPT");
+    setSymbolCode("");
+    setSymbol("BANKNIFTY");
+    setCallType("BUY");
+    setContract("NEAR");
+    setExpiry("WEEKLY");
+    setExpiryDate("");
+    setOptionType("CE");
+    setAtm("0");
+    setStrikePrice("");
+    setQtyDistribution("Fix");
+    setQtyValue("1");
     setResult(null);
     setError(null);
   };
@@ -193,10 +221,6 @@ export default function TradePage() {
       }
       if (!usingSymbolCode && !symbol.trim()) {
         setError("Symbol is required (or use Symbol code).");
-        return;
-      }
-      if (!isExitTrade && orderType === "LIMIT" && !price.trim()) {
-        setError("Price is required for LIMIT order.");
         return;
       }
 
@@ -226,8 +250,6 @@ export default function TradePage() {
         execute,
         exchange: resolvedExchange,
         call_type: callType,
-        order_type: !isExitTrade ? orderType : undefined,
-        price: showLimitPrice ? price || undefined : undefined,
         qty_distribution: qtyDistribution || undefined,
         qty_value: qtyValue || undefined,
         target_by: targetBy || undefined,
@@ -338,7 +360,13 @@ export default function TradePage() {
           <div className="helper">Create manual trades and fetch call history.</div>
         </div>
         <button className="btn btn-secondary" type="button" onClick={fillExample}>
-          Fill example
+          Equity example
+        </button>
+        <button className="btn btn-secondary" type="button" onClick={fillCommodityExample}>
+          Commodity example
+        </button>
+        <button className="btn btn-secondary" type="button" onClick={fillOptionsExample}>
+          Options example
         </button>
         <button className="btn btn-ghost" type="button" onClick={handleChangeToken}>
           Change token
@@ -385,13 +413,17 @@ export default function TradePage() {
                 onChange={(event) => setSegment(event.target.value)}
                 disabled={usingSymbolCode}
               >
-                <option value="EQ">EQ</option>
-                <option value="FUT">FUT</option>
-                <option value="OPT">OPT</option>
+                <option value="EQ">Equity (EQ)</option>
+                <option value="FUT">Futures (FUT) / Commodity</option>
+                <option value="OPT">Options (OPT)</option>
               </select>
               {usingSymbolCode ? (
                 <div className="helper">Segment is ignored when Symbol code is set.</div>
-              ) : null}
+              ) : (
+                <div className="helper">
+                  Commodity: choose Futures + MCX (GOLD/SILVER/CRUDEOIL). Options: choose Options + NFO/MCX, then CE/PE.
+                </div>
+              )}
             </div>
           </div>
 
@@ -421,7 +453,7 @@ export default function TradePage() {
                 id="mm-symbol"
                 value={symbol}
                 onChange={(event) => setSymbol(event.target.value.toUpperCase())}
-                placeholder="e.g. RELIANCE / BANKNIFTY"
+                placeholder="e.g. RELIANCE / BANKNIFTY / GOLD"
                 disabled={usingSymbolCode}
               />
               {usingSymbolCode ? (
@@ -447,31 +479,11 @@ export default function TradePage() {
                   </option>
                 ))}
               </select>
-            </div>
-
-            <div className="input-group">
-              <label className="label" htmlFor="mm-order-type">
-                Order type
-              </label>
-              <select
-                className="select"
-                id="mm-order-type"
-                value={orderType}
-                onChange={(event) => setOrderType(event.target.value)}
-                disabled={isExitTrade}
-              >
-                <option value="MARKET">MARKET</option>
-                <option value="LIMIT">LIMIT</option>
-              </select>
               <div className="helper">
-                {isExitTrade
-                  ? "Order type is ignored for exit trades."
-                  : "MARKET is used by default unless you need a LIMIT order."}
+                Market Maya places live broker orders from call type + symbol. MARKET/LIMIT order_type is no longer sent.
               </div>
             </div>
-          </div>
 
-          <div className="grid-2">
             <div className="input-group">
               <label className="label" htmlFor="mm-execute">
                 Execute
@@ -487,27 +499,6 @@ export default function TradePage() {
               </div>
               <div className="helper">
                 Keep this OFF to preview the generated request.
-              </div>
-            </div>
-
-            <div className="input-group">
-              <label className="label" htmlFor="mm-price">
-                Price
-              </label>
-              <input
-                className="input"
-                id="mm-price"
-                value={price}
-                onChange={(event) => setPrice(event.target.value)}
-                placeholder="e.g. 2500.50"
-                disabled={!showLimitPrice}
-              />
-              <div className="helper">
-                {isExitTrade
-                  ? "Price is ignored for exit trades."
-                  : showLimitPrice
-                    ? "Required only for LIMIT orders."
-                    : "Switch Order type to LIMIT to send a fixed price."}
               </div>
             </div>
           </div>

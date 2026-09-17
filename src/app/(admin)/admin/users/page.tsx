@@ -194,28 +194,46 @@ export default function AdminUsersPage() {
                 </span>
                 <span data-label="Days left">{getDaysLeftLabel(user.planExpiresAt)}</span>
                 <div className="table-cell" data-label="Action">
-                  <div className="cta-row">
+                  <div className="users-action-group">
                     <button
-                      className="btn btn-secondary"
+                      className="icon-btn users-action-btn"
                       type="button"
                       onClick={() => openModal(user._id)}
                       disabled={deletingUserId === user._id}
+                      aria-label={`Update plan for ${user.name || user.email}`}
+                      title="Update plan"
                     >
-                      Update plan
+                      <svg viewBox="0 0 24 24" fill="none" strokeWidth="2" aria-hidden="true">
+                        <path d="M4 20h4L19 9l-4-4L4 16v4Z" />
+                        <path d="m13.5 6.5 4 4" />
+                      </svg>
                     </button>
                     <Link
-                      className="btn btn-ghost"
+                      className="icon-btn users-action-btn"
                       href={`/admin/signals?userId=${user._id}`}
+                      aria-label={`View signals for ${user.name || user.email}`}
+                      title="View signals"
                     >
-                      View signals
+                      <svg viewBox="0 0 24 24" fill="none" strokeWidth="2" aria-hidden="true">
+                        <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z" />
+                        <circle cx="12" cy="12" r="2.5" />
+                      </svg>
                     </Link>
                     <button
-                      className="btn btn-danger"
+                      className="icon-btn users-action-btn users-action-delete"
                       type="button"
                       onClick={() => handleDeleteUser(user)}
                       disabled={deletingUserId === user._id}
+                      aria-label={`${deletingUserId === user._id ? "Deleting" : "Delete"} ${user.name || user.email}`}
+                      title={deletingUserId === user._id ? "Deleting..." : "Delete user"}
                     >
-                      {deletingUserId === user._id ? "Deleting..." : "Delete user"}
+                      <svg viewBox="0 0 24 24" fill="none" strokeWidth="2" aria-hidden="true">
+                        <path d="M4 7h16" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                        <path d="M6 7l1 13h10l1-13" />
+                        <path d="M9 7V4h6v3" />
+                      </svg>
                     </button>
                   </div>
                 </div>

@@ -14,6 +14,10 @@ export type MarketMayaResponse = {
   dryRun?: boolean;
   status?: number;
   error?: string;
+  brokerStatus?: string;
+  brokerRemark?: string;
+  brokerTime?: string;
+  brokerMatched?: boolean;
   telegram?: {
     attempted?: boolean;
     recipients?: number;
@@ -158,6 +162,15 @@ export function formatMarketMayaResponse(response: MarketMayaResponse | null) {
   if (contentType) details.push({ label: "Content type", value: contentType });
   if (server) details.push({ label: "Server", value: server });
   if (cfRay) details.push({ label: "CF-RAY", value: cfRay });
+  if (response.brokerStatus) {
+    details.push({ label: "Broker status", value: String(response.brokerStatus) });
+  }
+  if (response.brokerRemark) {
+    details.push({ label: "Remark", value: toSafeSnippet(String(response.brokerRemark)) });
+  }
+  if (response.brokerTime) {
+    details.push({ label: "Broker time", value: String(response.brokerTime) });
+  }
   if (telegram) {
     let telegramValue = "Not attempted";
     if (telegram.skipped) {
@@ -171,13 +184,51 @@ export function formatMarketMayaResponse(response: MarketMayaResponse | null) {
     }
   }
 
-  if (response.ok) {
-    const successMessage =
-      payloadMessage || "Market Maya accepted the request and returned a live API response.";
+  const brokerStatus = String(response.brokerStatus || "").toLowerCase();
+  const brokerRejected =
+    brokerStatus.includes("reject") ||
+    brokerStatus.includes("fail") ||
+    brokerStatus.includes("error");
+  const brokerAccepted =
+    brokerStatus.includes("accept") ||
+    brokerStatus.includes("execut") ||
+    brokerStatus.includes("success") ||
+    brokerStatus.includes("confirm");
+
+  if (brokerRejected) {
+    return {
+      tone: "error",
+      status: String(response.brokerStatus || "Rejected"),
+      message:
+        errorMessage ||
+        String(response.brokerRemark || "").trim() ||
+        "Market Maya rejected the order at broker/strategy level.",
+      details,
+      raw,
+    } satisfies MarketMayaResponseView;
+  }
+
+  if (response.ok && brokerAccepted) {
     return {
       tone: "ok",
-      status: "API response received",
-      message: successMessage,
+      status: String(response.brokerStatus || "Accepted"),
+      message:
+        String(response.brokerRemark || "").trim() ||
+        payloadMessage ||
+        "Market Maya accepted the live order.",
+      details,
+      raw,
+    } satisfies MarketMayaResponseView;
+  }
+
+  if (response.ok) {
+    return {
+      tone: "warn",
+      status: String(response.brokerStatus || "Submitted"),
+      message:
+        String(response.brokerRemark || "").trim() ||
+        payloadMessage ||
+        "Request reached Market Maya. Broker accept/reject comes from call history.",
       details,
       raw,
     } satisfies MarketMayaResponseView;
