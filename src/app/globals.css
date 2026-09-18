@@ -1717,6 +1717,12 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  /* Keep strategy modal denser on tablets */
+  .modal.modal-form .grid-2,
+  .modal.modal-form .strategy-cred-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
     min-height: 100vh;
@@ -2014,6 +2020,7 @@ textarea {
   .strategy-card {
     padding: 12px;
     gap: 10px;
+    overflow: hidden;
   }
 
   .strategy-card-main {
@@ -2025,21 +2032,77 @@ textarea {
     justify-content: stretch;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
   }
 
   .strategy-card-manage .strategy-action-btn {
     width: 100%;
     justify-content: center;
+    padding: 8px 6px;
+    font-size: 0.78rem;
   }
 
   .strategy-card-toolbar {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
   }
 
   .strategy-toolbar-btn {
     width: 100%;
     text-align: center;
+    padding: 8px 6px;
+    font-size: 0.78rem;
+  }
+
+  .strategy-card-name {
+    font-size: 1rem;
+    word-break: break-word;
+  }
+
+  .page-header {
+    gap: 10px;
+  }
+
+  .page-header .cta-row,
+  .page-header .btn {
+    width: 100%;
+  }
+
+  .card:not(.modal) .list-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .card:not(.modal) .list-item .mono,
+  .card:not(.modal) .list-item code {
+    width: 100%;
+    display: block;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+  }
+
+  .card:not(.modal) .cta-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .card:not(.modal) .cta-row .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .content {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-main {
+    padding: 14px 12px 40px;
   }
 
   .strategy-item {
@@ -2126,7 +2189,7 @@ textarea {
 }
 
 .modal.modal-form {
-  width: min(1120px, 96vw);
+  width: min(1240px, 97vw);
   max-height: 94vh;
   height: min(940px, 94vh);
   padding: 0;
@@ -2224,6 +2287,169 @@ textarea {
   height: 100%;
   gap: 0;
   overflow: hidden;
+}
+
+.strategy-form-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.strategy-form-pair > .form-section {
+  min-width: 0;
+  height: 100%;
+}
+
+.strategy-switch-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.form-section--alert .strategy-switch-rail {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.strategy-switch-rail > .input-group {
+  margin: 0;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.strategy-switch-rail > .input-group > .label-row,
+.strategy-switch-rail > .input-group > .label {
+  display: none;
+}
+
+.strategy-switch-rail .switch-row {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 48px;
+  min-width: 0;
+  padding: 10px 12px;
+  gap: 10px;
+  align-items: center;
+  overflow: hidden;
+}
+
+.strategy-switch-rail .switch-row-main {
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.strategy-switch-rail .switch-row-title {
+  font-size: 0.82rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.strategy-switch-rail .switch-row-desc {
+  display: none;
+}
+
+.strategy-switch-rail .info-toggle {
+  flex-shrink: 0;
+}
+
+.strategy-risk-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 2px;
+  align-items: stretch;
+}
+
+.strategy-risk-rail > .input-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.strategy-risk-rail .switch-row {
+  flex: 1;
+  min-height: 52px;
+}
+
+.strategy-risk-rail .switch-row-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.strategy-cred-grid {
+  gap: 12px;
+}
+
+.webhook-url-compact {
+  gap: 8px;
+}
+
+.webhook-url-rail {
+  display: grid;
+  gap: 8px;
+}
+
+.webhook-url-item {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.webhook-url-item strong {
+  font-size: 0.82rem;
+}
+
+.webhook-url-item .mono {
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.btn-compact {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.modal.modal-form .form-section {
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.modal.modal-form .form-section-desc {
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.modal.modal-form .strategy-modal-body {
+  gap: 14px;
+}
+
+.modal.modal-form .grid-2 {
+  gap: 12px;
+}
+
+.modal.modal-form .input-group {
+  gap: 6px;
+}
+
+.modal.modal-form .helper {
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .modal.webhook-test-modal {
@@ -2731,6 +2957,16 @@ textarea {
   .modal.modal-form {
     width: min(720px, 94vw);
   }
+
+  .strategy-form-pair {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-switch-rail,
+  .strategy-risk-rail,
+  .form-section--alert .strategy-switch-rail {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Small tablets only: keep card modal, tighten spacing */
@@ -2752,8 +2988,40 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .modal.modal-form .grid-2,
+  .modal.modal-form .strategy-cred-grid {
+    grid-template-columns: 1fr;
+  }
+
   .form-section-desc {
     margin-left: 0;
+  }
+
+  .strategy-form-pair {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .strategy-switch-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-risk-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .form-section--alert .strategy-switch-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .webhook-url-item {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .webhook-url-item .mono {
+    white-space: normal;
+    word-break: break-all;
   }
 }
 
@@ -2862,8 +3130,103 @@ textarea {
     gap: 12px;
   }
 
+  /* Beat the tablet 2-col rule so phone fields stack cleanly */
+  .modal.modal-form .grid-2,
+  .modal.modal-form .strategy-cred-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+
+  .strategy-form-pair {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .strategy-switch-rail,
+  .strategy-risk-rail,
+  .form-section--alert .strategy-switch-rail {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+  }
+
+  .strategy-switch-rail .switch-row,
+  .strategy-risk-rail .switch-row {
+    min-height: 48px;
+    padding: 12px;
+    align-items: center;
+  }
+
+  .strategy-risk-rail .switch-row-title,
+  .strategy-switch-rail .switch-row-title {
+    font-size: 0.88rem;
+    white-space: normal;
+  }
+
+  .strategy-risk-rail .switch-mini-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .modal.modal-form .form-section-desc {
+    display: none;
+  }
+
+  .modal.modal-form .strategy-modal-body {
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal.modal-form .input,
+  .modal.modal-form .select,
+  .modal.modal-form textarea {
+    font-size: 16px; /* prevent iOS zoom */
+    max-width: 100%;
+  }
+
+  .modal.modal-form .cta-row {
+    flex-wrap: wrap;
+  }
+
+  .modal.modal-form .cta-row .btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+  }
+
+  /* Don't force every form button full-width inside strategy modal */
+  .modal.modal-form .form .btn {
+    width: auto;
+  }
+
+  .modal.modal-form .form-actions .btn {
+    width: auto;
+  }
+
+  .webhook-url-item {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .webhook-url-item strong {
+    grid-column: auto;
+  }
+
+  .webhook-url-item .btn,
+  .webhook-url-item .btn-compact {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .webhook-url-item .mono {
+    white-space: normal;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+    font-size: 0.7rem;
+    line-height: 1.4;
+  }
+
   .switch-row {
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
     padding: 12px;
   }
@@ -2875,6 +3238,7 @@ textarea {
   .switch-row-main {
     flex: 1;
     min-width: 0;
+    align-items: center;
   }
 
   .switch-mini-icon {
@@ -2893,16 +3257,18 @@ textarea {
 
   .switch-row .info-toggle {
     flex-shrink: 0;
-    padding-top: 2px;
+    padding-top: 0;
   }
 
   .modal.modal-form .token-field {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    gap: 8px;
   }
 
   .modal.modal-form .token-field .input {
-    flex: 1 1 160px;
+    flex: 1 1 auto;
     min-width: 0;
+    width: 100%;
   }
 
   .modal.modal-form .token-field .btn,
@@ -2940,10 +3306,21 @@ textarea {
     max-height: 180px;
   }
 
+  .stock-suggest-wrap {
+    min-width: 0;
+    width: 100%;
+  }
+
   .mono,
   code.mono {
     word-break: break-all;
     overflow-wrap: anywhere;
+  }
+
+  .alert {
+    font-size: 0.82rem;
+    line-height: 1.4;
+    word-break: break-word;
   }
 }
 

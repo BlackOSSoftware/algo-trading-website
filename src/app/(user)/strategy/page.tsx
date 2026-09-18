@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost, API_BASE_URL } from "@/lib/api";
+import { apiGet, apiPost, API_BASE_URL, resolveWebhookBaseUrl } from "@/lib/api";
 import { getToken, setToken } from "@/lib/auth";
 
 type InstrumentHit = {
@@ -1504,11 +1504,10 @@ export default function StrategyPage() {
   const [showEditInfoButtons, setShowEditInfoButtons] = useState(false);
   const [activeInfoKey, setActiveInfoKey] = useState<string | null>(null);
 
-  const webhookBaseUrl = useMemo(() => {
-    const base =
-      process.env.NEXT_PUBLIC_WEBHOOK_URL || API_BASE_URL;
+  const [webhookBaseUrl, setWebhookBaseUrl] = useState(() => {
+    const base = resolveWebhookBaseUrl() || API_BASE_URL;
     return `${base}/api/v1/webhooks`;
-  }, []);
+  });
   const webhookReachabilityWarning = useMemo(
     () => getWebhookReachabilityWarning(webhookBaseUrl),
     [webhookBaseUrl]
@@ -2349,6 +2348,8 @@ export default function StrategyPage() {
 
   useEffect(() => {
     setSharekhanRedirectUrls(getSharekhanRedirectUrls());
+    const base = resolveWebhookBaseUrl() || API_BASE_URL;
+    setWebhookBaseUrl(`${base}/api/v1/webhooks`);
   }, []);
 
   useEffect(() => {
@@ -4309,30 +4310,45 @@ export default function StrategyPage() {
                   />
                 </div>
 
-                <div className="input-group">
-                  {renderAddLabelWithInfo("strategy-enable", "Enable strategy", "marketMayaEnable")}
-                  {renderFeatureSwitch(
-                    "strategy-enable",
-                    enabled,
-                    setEnabled,
-                    "Run this strategy on webhook alerts",
-                    "Turn off to pause auto trading without deleting the strategy.",
-                    undefined,
-                    { tone: "maya", icon: "broadcast" }
-                  )}
-                </div>
+                <div className="strategy-switch-rail">
+                  <div className="input-group">
+                    {renderAddLabelWithInfo("strategy-enable", "Enable strategy", "marketMayaEnable")}
+                    {renderFeatureSwitch(
+                      "strategy-enable",
+                      enabled,
+                      setEnabled,
+                      "Run this strategy on webhook alerts",
+                      undefined,
+                      undefined,
+                      { tone: "maya", icon: "broadcast" }
+                    )}
+                  </div>
 
-                <div className="input-group">
-                  {renderAddLabelWithInfo("market-enable", "Enable Market Maya", "marketMayaEnable")}
-                  {renderFeatureSwitch(
-                    "market-enable",
-                    marketMayaEnabled,
-                    setMarketMayaEnabled,
-                    "Send trades to Market Maya",
-                    "Turn on to place live orders via Market Maya.",
-                    undefined,
-                    { tone: "maya", icon: "broadcast" }
-                  )}
+                  <div className="input-group">
+                    {renderAddLabelWithInfo("market-enable", "Enable Market Maya", "marketMayaEnable")}
+                    {renderFeatureSwitch(
+                      "market-enable",
+                      marketMayaEnabled,
+                      setMarketMayaEnabled,
+                      "Send trades to Market Maya",
+                      undefined,
+                      undefined,
+                      { tone: "maya", icon: "broadcast" }
+                    )}
+                  </div>
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo("sharekhan-direct", "Sharekhan", "sharekhanDirect")}
+                    {renderFeatureSwitch(
+                      "sharekhan-direct",
+                      sharekhanDirect,
+                      setSharekhanDirect,
+                      "Also place orders on Sharekhan",
+                      undefined,
+                      undefined,
+                      { tone: "broker", icon: "broker" }
+                    )}
+                  </div>
                 </div>
 
                 {marketMayaEnabled ? (
@@ -4359,19 +4375,6 @@ export default function StrategyPage() {
                     </div>
                   </div>
                 ) : null}
-
-                <div className="input-group">
-                  {renderAddLabelWithInfo("sharekhan-direct", "Sharekhan", "sharekhanDirect")}
-                  {renderFeatureSwitch(
-                    "sharekhan-direct",
-                    sharekhanDirect,
-                    setSharekhanDirect,
-                    "Also place orders on Sharekhan",
-                    "Uses your own Sharekhan API keys for this strategy.",
-                    undefined,
-                    { tone: "broker", icon: "broker" }
-                  )}
-                </div>
               </div>
 
               {sharekhanDirect ? (
@@ -4437,6 +4440,7 @@ export default function StrategyPage() {
                     ) : null}
                   </div>
 
+                  <div className="grid-2 strategy-cred-grid">
                   <div className="input-group">
                     {renderAddLabelWithInfo("sharekhan-api-key", "Sharekhan API Key", "sharekhanApiKey")}
                     <div className="token-field">
@@ -4518,6 +4522,7 @@ export default function StrategyPage() {
                       autoComplete="off"
                     />
                   </div>
+                  </div>
 
                   <div className="cta-row" style={{ gap: 8 }}>
                     <button
@@ -4579,6 +4584,7 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
+              <div className="strategy-form-pair">
               <div className="form-section form-section--slate">
                 {renderFormSectionHeader({
                   title: "Symbols",
@@ -4944,6 +4950,7 @@ export default function StrategyPage() {
                   ) : null}
                 </>
               ) : null}
+              </div>
               </div>
 
               <div className="form-section form-section--amber">
@@ -5313,6 +5320,7 @@ export default function StrategyPage() {
                     tone: "risk",
                   })}
 
+                  <div className="strategy-switch-rail strategy-risk-rail">
                   <div className="input-group">
                     {renderAddLabelWithInfo(
                       "market-use-target",
@@ -5330,11 +5338,60 @@ export default function StrategyPage() {
                           setTarget("");
                         }
                       },
-                      "Enable target",
-                      "Exit with profit when target is hit.",
-                      "risk-note risk-note-target",
+                      "Target",
+                      undefined,
+                      undefined,
                       { tone: "target", icon: "target" }
                     )}
+                  </div>
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo(
+                      "market-use-sl",
+                      "Stop loss",
+                      "stopLossToggle",
+                      "risk-label-stop"
+                    )}
+                    {renderFeatureSwitch(
+                      "market-use-sl",
+                      useStopLoss,
+                      (checked) => {
+                        setUseStopLoss(checked);
+                        if (!checked) {
+                          setSlBy("");
+                          setSl("");
+                        }
+                      },
+                      "Stop loss",
+                      undefined,
+                      undefined,
+                      { tone: "risk", icon: "stop" }
+                    )}
+                  </div>
+
+                  <div className="input-group">
+                    {renderAddLabelWithInfo(
+                      "market-trail-sl",
+                      "Trail SL",
+                      "trailSl",
+                      "risk-label-stop"
+                    )}
+                    {renderFeatureSwitch(
+                      "market-trail-sl",
+                      trailSl,
+                      (checked) => {
+                        setTrailSl(checked);
+                        if (!checked) {
+                          setSlMove("");
+                          setProfitMove("");
+                        }
+                      },
+                      "Trail SL",
+                      undefined,
+                      undefined,
+                      { tone: "risk", icon: "trail" }
+                    )}
+                  </div>
                   </div>
 
                   {useTarget ? (
@@ -5387,30 +5444,6 @@ export default function StrategyPage() {
                     </div>
                   ) : null}
 
-                  <div className="input-group">
-                    {renderAddLabelWithInfo(
-                      "market-use-sl",
-                      "Stop loss",
-                      "stopLossToggle",
-                      "risk-label-stop"
-                    )}
-                    {renderFeatureSwitch(
-                      "market-use-sl",
-                      useStopLoss,
-                      (checked) => {
-                        setUseStopLoss(checked);
-                        if (!checked) {
-                          setSlBy("");
-                          setSl("");
-                        }
-                      },
-                      "Enable stop loss",
-                      "Exit if price moves against the trade.",
-                      "risk-note risk-note-stop",
-                      { tone: "risk", icon: "stop" }
-                    )}
-                  </div>
-
                   {useStopLoss ? (
                     <div className="grid-2">
                       <div className="input-group">
@@ -5450,30 +5483,6 @@ export default function StrategyPage() {
                       </div>
                     </div>
                   ) : null}
-
-                  <div className="input-group">
-                    {renderAddLabelWithInfo(
-                      "market-trail-sl",
-                      "Trail SL",
-                      "trailSl",
-                      "risk-label-stop"
-                    )}
-                    {renderFeatureSwitch(
-                      "market-trail-sl",
-                      trailSl,
-                      (checked) => {
-                        setTrailSl(checked);
-                        if (!checked) {
-                          setSlMove("");
-                          setProfitMove("");
-                        }
-                      },
-                      "Enable trailing stop loss",
-                      "Move stop loss up as profit increases.",
-                      "risk-note risk-note-stop",
-                      { tone: "risk", icon: "trail" }
-                    )}
-                  </div>
 
                   {trailSl ? (
                     <div className="grid-2">
@@ -5520,16 +5529,15 @@ export default function StrategyPage() {
                   tone: "alert",
                 })}
 
+                <div className="strategy-switch-rail">
                 <div className="input-group">
                   {renderAddLabelWithInfo("email-enable", "Email alerts", "emailAlerts")}
                   {renderFeatureSwitch(
                     "email-enable",
                     emailEnabled,
                     setEmailEnabled,
-                    `Send alerts to ${emailAlertTarget}`,
-                    profileEmail
-                      ? `Using ${profileEmail}`
-                      : "Uses your account email when available.",
+                    "Email alerts",
+                    undefined,
                     undefined,
                     { tone: "alert", icon: "mail" }
                   )}
@@ -5541,11 +5549,12 @@ export default function StrategyPage() {
                     "telegram-enable",
                     telegramEnabled,
                     setTelegramEnabled,
-                    "Send alerts to Telegram",
-                    "Works with your linked Telegram bot subscription.",
+                    "Telegram alerts",
+                    undefined,
                     undefined,
                     { tone: "alert", icon: "telegram" }
                   )}
+                </div>
                 </div>
               </div>
               </div>
@@ -5613,32 +5622,28 @@ export default function StrategyPage() {
                   />
                 </div>
 
-                <div className="input-group">
+                <div className="input-group webhook-url-compact">
                   <div className="label-row">
                     <label className="label">Webhook URL</label>
                     {renderInfoButton("webhookUrl", "inline", showEditInfoButtons)}
                   </div>
-                  <div className="list" style={{ gap: "10px" }}>
-                    <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <div>
-                        <div><strong>Chartink</strong></div>
-                        <code className="mono">{resolveWebhookUrl(editing, "chartink")}</code>
-                      </div>
+                  <div className="webhook-url-rail">
+                    <div className="webhook-url-item">
+                      <strong>Chartink</strong>
+                      <code className="mono">{resolveWebhookUrl(editing, "chartink")}</code>
                       <button
-                        className="btn btn-ghost"
+                        className="btn btn-ghost btn-compact"
                         type="button"
                         onClick={() => copyToClipboard(resolveWebhookUrl(editing, "chartink"))}
                       >
                         Copy
                       </button>
                     </div>
-                    <div className="list-item" style={{ justifyContent: "space-between" }}>
-                      <div>
-                        <div><strong>TradingView</strong></div>
-                        <code className="mono">{resolveWebhookUrl(editing, "tradingview")}</code>
-                      </div>
+                    <div className="webhook-url-item">
+                      <strong>TradingView</strong>
+                      <code className="mono">{resolveWebhookUrl(editing, "tradingview")}</code>
                       <button
-                        className="btn btn-ghost"
+                        className="btn btn-ghost btn-compact"
                         type="button"
                         onClick={() => copyToClipboard(resolveWebhookUrl(editing, "tradingview"))}
                       >
@@ -5648,30 +5653,45 @@ export default function StrategyPage() {
                   </div>
                 </div>
 
-                <div className="input-group">
-                  {renderEditLabelWithInfo("edit-strategy-enable", "Enable strategy", "marketMayaEnable")}
-                  {renderFeatureSwitch(
-                    "edit-strategy-enable",
-                    editEnabled,
-                    setEditEnabled,
-                    "Run this strategy on webhook alerts",
-                    "Turn off to pause auto trading without deleting the strategy.",
-                    undefined,
-                    { tone: "maya", icon: "broadcast" }
-                  )}
-                </div>
+                <div className="strategy-switch-rail">
+                  <div className="input-group">
+                    {renderEditLabelWithInfo("edit-strategy-enable", "Enable strategy", "marketMayaEnable")}
+                    {renderFeatureSwitch(
+                      "edit-strategy-enable",
+                      editEnabled,
+                      setEditEnabled,
+                      "Run this strategy on webhook alerts",
+                      undefined,
+                      undefined,
+                      { tone: "maya", icon: "broadcast" }
+                    )}
+                  </div>
 
-                <div className="input-group">
-                  {renderEditLabelWithInfo("edit-market-enable", "Enable Market Maya", "marketMayaEnable")}
-                  {renderFeatureSwitch(
-                    "edit-market-enable",
-                    editMarketMayaEnabled,
-                    setEditMarketMayaEnabled,
-                    "Send trades to Market Maya",
-                    "Turn on to place live orders via Market Maya.",
-                    undefined,
-                    { tone: "maya", icon: "broadcast" }
-                  )}
+                  <div className="input-group">
+                    {renderEditLabelWithInfo("edit-market-enable", "Enable Market Maya", "marketMayaEnable")}
+                    {renderFeatureSwitch(
+                      "edit-market-enable",
+                      editMarketMayaEnabled,
+                      setEditMarketMayaEnabled,
+                      "Send trades to Market Maya",
+                      undefined,
+                      undefined,
+                      { tone: "maya", icon: "broadcast" }
+                    )}
+                  </div>
+
+                  <div className="input-group">
+                    {renderEditLabelWithInfo("edit-sharekhan-direct", "Sharekhan", "sharekhanDirect")}
+                    {renderFeatureSwitch(
+                      "edit-sharekhan-direct",
+                      editSharekhanDirect,
+                      setEditSharekhanDirect,
+                      "Also place orders on Sharekhan",
+                      undefined,
+                      undefined,
+                      { tone: "broker", icon: "broker" }
+                    )}
+                  </div>
                 </div>
 
                 {editMarketMayaEnabled ? (
@@ -5700,19 +5720,6 @@ export default function StrategyPage() {
                     </div>
                   </div>
                 ) : null}
-
-                <div className="input-group">
-                  {renderEditLabelWithInfo("edit-sharekhan-direct", "Sharekhan", "sharekhanDirect")}
-                  {renderFeatureSwitch(
-                    "edit-sharekhan-direct",
-                    editSharekhanDirect,
-                    setEditSharekhanDirect,
-                    "Also place orders on Sharekhan",
-                    "Uses your own Sharekhan API keys for this strategy.",
-                    undefined,
-                    { tone: "broker", icon: "broker" }
-                  )}
-                </div>
               </div>
 
               {editSharekhanDirect ? (
@@ -5777,6 +5784,7 @@ export default function StrategyPage() {
                     ) : null}
                   </div>
 
+                  <div className="grid-2 strategy-cred-grid">
                   <div className="input-group">
                     {renderEditLabelWithInfo(
                       "edit-sharekhan-api-key",
@@ -5864,6 +5872,7 @@ export default function StrategyPage() {
                       autoComplete="off"
                     />
                   </div>
+                  </div>
 
                   <div className="cta-row" style={{ gap: 8, marginBottom: 12 }}>
                     <button
@@ -5925,6 +5934,7 @@ export default function StrategyPage() {
                 </div>
               ) : null}
 
+              <div className="strategy-form-pair">
               <div className="form-section form-section--slate">
                 {renderFormSectionHeader({
                   title: "Symbol handling",
@@ -6288,6 +6298,7 @@ export default function StrategyPage() {
                   ) : null}
                 </>
               ) : null}
+              </div>
               </div>
 
               <div className="form-section form-section--amber">
@@ -6670,6 +6681,7 @@ export default function StrategyPage() {
                     tone: "risk",
                   })}
 
+                  <div className="strategy-switch-rail strategy-risk-rail">
                   <div className="input-group">
                     {renderEditLabelWithInfo(
                       "edit-market-use-target",
@@ -6687,11 +6699,60 @@ export default function StrategyPage() {
                           setEditTarget("");
                         }
                       },
-                      "Enable target",
-                      "Book profit when price hits your target level.",
-                      "risk-note risk-note-target",
+                      "Target",
+                      undefined,
+                      undefined,
                       { tone: "target", icon: "target" }
                     )}
+                  </div>
+
+                  <div className="input-group">
+                    {renderEditLabelWithInfo(
+                      "edit-market-use-sl",
+                      "Stop loss",
+                      "stopLossToggle",
+                      "risk-label-stop"
+                    )}
+                    {renderFeatureSwitch(
+                      "edit-market-use-sl",
+                      editUseStopLoss,
+                      (checked) => {
+                        setEditUseStopLoss(checked);
+                        if (!checked) {
+                          setEditSlBy("");
+                          setEditSl("");
+                        }
+                      },
+                      "Stop loss",
+                      undefined,
+                      undefined,
+                      { tone: "risk", icon: "stop" }
+                    )}
+                  </div>
+
+                  <div className="input-group">
+                    {renderEditLabelWithInfo(
+                      "edit-market-trail-sl",
+                      "Trail SL",
+                      "trailSl",
+                      "risk-label-stop"
+                    )}
+                    {renderFeatureSwitch(
+                      "edit-market-trail-sl",
+                      editTrailSl,
+                      (checked) => {
+                        setEditTrailSl(checked);
+                        if (!checked) {
+                          setEditSlMove("");
+                          setEditProfitMove("");
+                        }
+                      },
+                      "Trail SL",
+                      undefined,
+                      undefined,
+                      { tone: "risk", icon: "trail" }
+                    )}
+                  </div>
                   </div>
 
                   {editUseTarget ? (
@@ -6744,30 +6805,6 @@ export default function StrategyPage() {
                     </div>
                   ) : null}
 
-                  <div className="input-group">
-                    {renderEditLabelWithInfo(
-                      "edit-market-use-sl",
-                      "Stop loss",
-                      "stopLossToggle",
-                      "risk-label-stop"
-                    )}
-                    {renderFeatureSwitch(
-                      "edit-market-use-sl",
-                      editUseStopLoss,
-                      (checked) => {
-                        setEditUseStopLoss(checked);
-                        if (!checked) {
-                          setEditSlBy("");
-                          setEditSl("");
-                        }
-                      },
-                      "Enable stop loss",
-                      "Exit early if price moves against you.",
-                      "risk-note risk-note-stop",
-                      { tone: "risk", icon: "stop" }
-                    )}
-                  </div>
-
                   {editUseStopLoss ? (
                     <div className="grid-2">
                       <div className="input-group">
@@ -6807,30 +6844,6 @@ export default function StrategyPage() {
                       </div>
                     </div>
                   ) : null}
-
-                  <div className="input-group">
-                    {renderEditLabelWithInfo(
-                      "edit-market-trail-sl",
-                      "Trail SL",
-                      "trailSl",
-                      "risk-label-stop"
-                    )}
-                    {renderFeatureSwitch(
-                      "edit-market-trail-sl",
-                      editTrailSl,
-                      (checked) => {
-                        setEditTrailSl(checked);
-                        if (!checked) {
-                          setEditSlMove("");
-                          setEditProfitMove("");
-                        }
-                      },
-                      "Enable trailing stop loss",
-                      "Move SL up as profit grows to lock gains.",
-                      "risk-note risk-note-stop",
-                      { tone: "risk", icon: "trail" }
-                    )}
-                  </div>
 
                   {editTrailSl ? (
                     <div className="grid-2">
@@ -6877,16 +6890,15 @@ export default function StrategyPage() {
                   tone: "alert",
                 })}
 
+                <div className="strategy-switch-rail">
                 <div className="input-group">
                   {renderEditLabelWithInfo("edit-email-enable", "Email alerts", "emailAlerts")}
                   {renderFeatureSwitch(
                     "edit-email-enable",
                     editEmailEnabled,
                     setEditEmailEnabled,
-                    `Send alerts to ${emailAlertTarget}`,
-                    profileEmail
-                      ? `Registered email: ${profileEmail}`
-                      : "Alerts use your account email when available.",
+                    "Email alerts",
+                    undefined,
                     undefined,
                     { tone: "alert", icon: "mail" }
                   )}
@@ -6898,11 +6910,12 @@ export default function StrategyPage() {
                     "edit-telegram-enable",
                     editTelegramEnabled,
                     setEditTelegramEnabled,
-                    "Send alerts to Telegram",
-                    "Telegram is linked via bot token subscription (no chat ID needed).",
+                    "Telegram alerts",
+                    undefined,
                     undefined,
                     { tone: "alert", icon: "telegram" }
                   )}
+                </div>
                 </div>
               </div>
               </div>
