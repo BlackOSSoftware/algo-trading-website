@@ -226,6 +226,8 @@ export default function TradePage() {
   const [atm, setAtm] = useState("0");
   const [strikePrice, setStrikePrice] = useState("");
   const [callType, setCallType] = useState("BUY");
+  const [orderType, setOrderType] = useState<"MARKET" | "LIMIT">("MARKET");
+  const [limitPrice, setLimitPrice] = useState("");
 
   const [qtyDistribution, setQtyDistribution] = useState("Fix");
   const [qtyValue, setQtyValue] = useState("1");
@@ -675,6 +677,12 @@ export default function TradePage() {
     if (sendSharekhan && !qtyValue.trim()) {
       return "Qty value is required for Sharekhan orders.";
     }
+    if (sendSharekhan && orderType === "LIMIT") {
+      const price = Number(limitPrice.trim());
+      if (!limitPrice.trim() || !Number.isFinite(price) || price <= 0) {
+        return "Limit price is required for Sharekhan LIMIT orders.";
+      }
+    }
     return null;
   };
 
@@ -733,6 +741,8 @@ export default function TradePage() {
       symbolToken: usingSymbolCode ? symbolCode.trim() : undefined,
       call_type: callType,
       quantity: qtyValue.trim(),
+      orderType,
+      ...(orderType === "LIMIT" ? { price: limitPrice.trim() } : { price: "0" }),
     };
   };
 
@@ -1255,6 +1265,47 @@ export default function TradePage() {
               )}
             </div>
           </div>
+
+          {sendSharekhan ? (
+            <div className="grid-2">
+              <div className="input-group">
+                <label className="label" htmlFor="sk-order-type">
+                  Sharekhan order type
+                </label>
+                <select
+                  className="select"
+                  id="sk-order-type"
+                  value={orderType}
+                  onChange={(event) =>
+                    setOrderType(event.target.value === "LIMIT" ? "LIMIT" : "MARKET")
+                  }
+                >
+                  <option value="MARKET">Market</option>
+                  <option value="LIMIT">Limit</option>
+                </select>
+              </div>
+              {orderType === "LIMIT" ? (
+                <div className="input-group">
+                  <label className="label" htmlFor="sk-limit-price">
+                    Limit price
+                  </label>
+                  <input
+                    className="input"
+                    id="sk-limit-price"
+                    value={limitPrice}
+                    onChange={(event) => setLimitPrice(event.target.value)}
+                    placeholder="e.g. 240.50"
+                    inputMode="decimal"
+                  />
+                  <div className="helper">Sharekhan places NORMAL order at this price.</div>
+                </div>
+              ) : (
+                <div className="helper" style={{ alignSelf: "end", paddingBottom: 8 }}>
+                  Market = price 0 (immediate).
+                </div>
+              )}
+            </div>
+          ) : null}
 
           {showDerivativeFields ? (
             <>

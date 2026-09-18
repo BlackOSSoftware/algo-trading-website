@@ -1545,20 +1545,40 @@ export default function StrategyPage() {
   const emailAlertTarget = profileEmail || "your registered email";
   const exitFallbackSelected = isExitTradeAction(callTypeFallback);
   const editExitFallbackSelected = isExitTradeAction(editCallTypeFallback);
-  const usingFixedLimitPrice = false;
-  const usingTriggerLimitPrice = false;
-  const usingMStockLimitPrice = false;
-  const usingDynamicLimitPrice = false;
+  const usingFixedLimitPrice =
+    !exitFallbackSelected && orderType === "LIMIT" && limitPriceSource === "fixed";
+  const usingTriggerLimitPrice =
+    !exitFallbackSelected && orderType === "LIMIT" && limitPriceSource === "trigger";
+  const usingMStockLimitPrice =
+    !exitFallbackSelected &&
+    orderType === "LIMIT" &&
+    (limitPriceSource === "mstockHigh" ||
+      limitPriceSource === "mstockLow" ||
+      limitPriceSource === "mstockOpen" ||
+      limitPriceSource === "mstockClose");
+  const usingDynamicLimitPrice = usingTriggerLimitPrice || usingMStockLimitPrice;
   const derivativeSegmentSelected = isDerivativeSegment(segment);
   const optionSegmentSelected = segment === "OPT";
   const exchangeOptions = getExchangeOptions(segment);
   const expiryOptions = getExpiryOptions(segment);
   const editDerivativeSegmentSelected = isDerivativeSegment(editSegment);
   const editOptionSegmentSelected = editSegment === "OPT";
-  const editUsingFixedLimitPrice = false;
-  const editUsingTriggerLimitPrice = false;
-  const editUsingMStockLimitPrice = false;
-  const editUsingDynamicLimitPrice = false;
+  const editUsingFixedLimitPrice =
+    !editExitFallbackSelected &&
+    editOrderType === "LIMIT" &&
+    editLimitPriceSource === "fixed";
+  const editUsingTriggerLimitPrice =
+    !editExitFallbackSelected &&
+    editOrderType === "LIMIT" &&
+    editLimitPriceSource === "trigger";
+  const editUsingMStockLimitPrice =
+    !editExitFallbackSelected &&
+    editOrderType === "LIMIT" &&
+    (editLimitPriceSource === "mstockHigh" ||
+      editLimitPriceSource === "mstockLow" ||
+      editLimitPriceSource === "mstockOpen" ||
+      editLimitPriceSource === "mstockClose");
+  const editUsingDynamicLimitPrice = editUsingTriggerLimitPrice || editUsingMStockLimitPrice;
   const editExchangeOptions = getExchangeOptions(editSegment);
   const editExpiryOptions = getExpiryOptions(editSegment);
   const activeInfo = activeInfoKey ? INFO_CONTENT[activeInfoKey] || null : null;
@@ -3190,7 +3210,17 @@ export default function StrategyPage() {
         ...(symbolMode !== "stocksFirst" && symbolMode !== "manualList" && maxSymbols.trim()
           ? { maxSymbols: maxSymbols.trim() }
           : {}),
-        ...(callTypeFallback ? { callTypeFallback } : {}),
+        ...(!exitFallbackSelected && callTypeFallback ? { callTypeFallback } : {}),
+        ...(!exitFallbackSelected && orderType ? { orderType } : {}),
+        ...(!exitFallbackSelected && orderType === "LIMIT" && limitPriceSource
+          ? { limitPriceSource }
+          : {}),
+        ...(!exitFallbackSelected &&
+        orderType === "LIMIT" &&
+        usingFixedLimitPrice &&
+        limitPrice.trim()
+          ? { limitPrice: limitPrice.trim() }
+          : {}),
         ...(!exitFallbackSelected && trimmedCapitalAmount
           ? { capitalAmount: capitalAmountNumber }
           : {}),
@@ -3690,10 +3720,20 @@ export default function StrategyPage() {
       ) {
         marketMayaClear.add("maxSymbols");
       }
-      if (true) {
-        marketMayaClear.add("orderType");
+      if (editOrderType !== "LIMIT") {
         marketMayaClear.add("limitPriceSource");
         marketMayaClear.add("limitPrice");
+        marketMayaClear.add("bufferBy");
+        marketMayaClear.add("bufferValue");
+        marketMayaClear.add("bufferPoints");
+        marketMayaClear.add("mStockApiType");
+        marketMayaClear.add("mStockApiKey");
+        marketMayaClear.add("mStockAuthToken");
+        marketMayaClear.add("mStockExchange");
+        marketMayaClear.add("mStockInstrumentToken");
+        marketMayaClear.add("mStockInterval");
+        marketMayaClear.add("mStockCandleOffset");
+      } else if (editLimitPriceSource === "fixed") {
         marketMayaClear.add("bufferBy");
         marketMayaClear.add("bufferValue");
         marketMayaClear.add("bufferPoints");
@@ -3796,6 +3836,16 @@ export default function StrategyPage() {
           ? { maxSymbols: editMaxSymbols.trim() }
           : {}),
         ...(editCallTypeFallback ? { callTypeFallback: editCallTypeFallback } : {}),
+        ...(!editExitFallbackSelected && editOrderType ? { orderType: editOrderType } : {}),
+        ...(!editExitFallbackSelected && editOrderType === "LIMIT" && editLimitPriceSource
+          ? { limitPriceSource: editLimitPriceSource }
+          : {}),
+        ...(!editExitFallbackSelected &&
+        editOrderType === "LIMIT" &&
+        editUsingFixedLimitPrice &&
+        editLimitPrice.trim()
+          ? { limitPrice: editLimitPrice.trim() }
+          : {}),
         ...(!editExitFallbackSelected && trimmedCapitalAmount
           ? { capitalAmount: capitalAmountNumber }
           : {}),
@@ -5008,6 +5058,21 @@ export default function StrategyPage() {
                 </div>
               ) : (
                 <>
+                  <div className="input-group">
+                    {renderAddLabelWithInfo("market-order-type", "Order type", "orderType")}
+                    <select
+                      className="select"
+                      id="market-order-type"
+                      value={orderType}
+                      onChange={(event) => setOrderType(event.target.value)}
+                    >
+                      <option value="MARKET">Market</option>
+                      <option value="LIMIT">Limit</option>
+                    </select>
+                    <div className="helper">
+                      Sharekhan: Market = price 0, Limit = fixed/trigger/candle price.
+                    </div>
+                  </div>
                   {orderType === "LIMIT" ? (
                     <>
                       <div className="input-group">
@@ -6357,6 +6422,21 @@ export default function StrategyPage() {
                 </div>
               ) : (
                 <>
+                  <div className="input-group">
+                    {renderEditLabelWithInfo("edit-market-order-type", "Order type", "orderType")}
+                    <select
+                      className="select"
+                      id="edit-market-order-type"
+                      value={editOrderType}
+                      onChange={(event) => setEditOrderType(event.target.value)}
+                    >
+                      <option value="MARKET">Market</option>
+                      <option value="LIMIT">Limit</option>
+                    </select>
+                    <div className="helper">
+                      Sharekhan: Market = price 0, Limit = fixed/trigger/candle price.
+                    </div>
+                  </div>
                   {editOrderType === "LIMIT" ? (
                     <>
                       <div className="input-group">
