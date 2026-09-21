@@ -73,6 +73,13 @@ type AlertEvent = {
           message?: string;
           payload?: unknown;
         } | null;
+        price?: string | number | null;
+        priceLookup?: {
+          status?: number | string;
+          price?: string | number;
+          error?: string | null;
+          result?: unknown;
+        } | null;
         response?: unknown;
         request?: Record<string, unknown> | null;
       }>;
@@ -116,6 +123,13 @@ type SharekhanTradeInfo = {
     status?: number | string;
     message?: string;
     payload?: unknown;
+  } | null;
+  price?: string | number | null;
+  priceLookup?: {
+    status?: number | string;
+    price?: string | number;
+    error?: string | null;
+    result?: unknown;
   } | null;
   response?: unknown;
   request?: Record<string, unknown> | null;
@@ -674,13 +688,20 @@ export default function AlertsPage() {
                                 ? ({ text: "Submitted", tone: "ok" } as StatusInfo)
                                 : ({ text: "Failed", tone: "error" } as StatusInfo);
                             const apiStatus = String(
-                              trade.status || trade.errorDetails?.status || ""
+                              trade.status ||
+                                trade.errorDetails?.status ||
+                                trade.priceLookup?.status ||
+                                ""
                             ).trim();
                             const errorText = sanitizeTradeError(
-                              trade.errorDetails?.message || trade.error
+                              trade.errorDetails?.message ||
+                                trade.priceLookup?.error ||
+                                trade.error
                             );
                             const responseText = formatSharekhanResponse(
-                              trade.errorDetails?.payload || trade.response
+                              trade.errorDetails?.payload ||
+                                trade.priceLookup?.result ||
+                                trade.response
                             );
                             const requestBody =
                               request.body && typeof request.body === "object"
@@ -707,6 +728,9 @@ export default function AlertsPage() {
                             );
                             const exchange = String(requestBody.exchange || "-");
                             const orderId = String(trade.orderId || requestBody.orderId || requestBody.order_id || "");
+                            const orderPrice = String(
+                              requestBody.price || trade.price || trade.priceLookup?.price || ""
+                            );
 
                             return (
                               <div className="detail-card" key={`${rowId}-sharekhan-${tradeIndex}`}>
@@ -749,6 +773,10 @@ export default function AlertsPage() {
                                 <div className="detail-row">
                                   <span>Qty</span>
                                   <span>{quantity}</span>
+                                </div>
+                                <div className="detail-row">
+                                  <span>Limit price</span>
+                                  <span>{orderPrice || "-"}</span>
                                 </div>
                                 <div className="detail-row">
                                   <span>Product</span>
