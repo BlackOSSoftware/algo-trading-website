@@ -184,6 +184,10 @@ export default function AdminShell({
             </span>
             Manual Trade
           </Link>
+          <Link className={`nav-link${pathname === "/admin/sharekhan-links" ? " active" : ""}`} href="/admin/sharekhan-links">
+            <span className="nav-icon"><svg viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7 .4l2-2a5 5 0 0 0-7-7l-2 2"/><path d="M14 11a5 5 0 0 0-7-.4l-2 2a5 5 0 0 0 7 7l2-2"/></svg></span>
+            Sharekhan Links
+          </Link>
           <Link
             className={`nav-link${pathname === "/admin/wallet" || pathname === "/admin/plans" ? " active" : ""}`}
             href="/admin/wallet"
