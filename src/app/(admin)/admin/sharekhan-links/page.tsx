@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { getAdminToken } from "@/lib/auth";
 
-type Details = { stock: string; tradingSymbol: string; side: string; quantity: string; price: string; exchange: string; orderType: string; productType: string; notes: string };
+type Details = { stock: string; tradingSymbol: string; scripCode: string; side: string; quantity: string; price: string; exchange: string; orderType: string; productType: string; notes: string };
 type LinkRecord = { code: string; shortUrl: string; kind: string; details: Partial<Details>; active: boolean; clicks: number };
-const blank: Details = { stock: "", tradingSymbol: "", side: "BUY", quantity: "1", price: "0", exchange: "NSE", orderType: "NORMAL", productType: "INVESTMENT", notes: "" };
+const blank: Details = { stock: "", tradingSymbol: "", scripCode: "", side: "BUY", quantity: "1", price: "0", exchange: "NSE", orderType: "NORMAL", productType: "INVESTMENT", notes: "" };
 const inputStyle = { width: "100%", marginTop: 6 };
 
 export default function SharekhanLinksPage() {
@@ -30,7 +30,7 @@ export default function SharekhanLinksPage() {
     try {
       const result = await apiPost("/api/v1/admin/order-intents", { details }, getAdminToken()) as { link: LinkRecord };
       setCreated(result.link); await refresh();
-      setMessage("Order link created. Phone par yeh Sharekhan app kholta hai, website nahi.");
+      setMessage("Order link created. Phone par yeh Sharekhan app ka order screen kholta hai.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not create link"); }
     finally { setBusy(false); }
   }
@@ -52,15 +52,16 @@ export default function SharekhanLinksPage() {
 
   return <div style={{ maxWidth: 1000, margin: "0 auto" }}>
     <h1>Shareable Order Links</h1>
-    <p>Order details ek baar bharo aur user ko link bhejo. Phone par link Sharekhan app kholta hai, website nahi. User app mein details khud enter karke order confirm karega.</p>
+    <p>Order details bharo aur link bhejo. Phone par yeh Sharekhan app ke order screen par khulta hai, website par nahi. Trade tabhi place hota hai jab user app mein confirm karta hai.</p>
     <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-      <strong>Link Sharekhan app kholta hai</strong>
-      <p>Phone par open karte hi Sharekhan app launch hota hai. Yeh link trade submit nahi karta. User app mein order khud confirm karta hai.</p>
+      <strong>Link Sharekhan order screen kholta hai</strong>
+      <p>Yeh wahi one-tap link hai jo Sharekhan app mein scrip, buy/sell, quantity aur price ke saath order page kholti hai.</p>
     </div>
     <form className="card" onSubmit={createOrderLink} style={{ padding: 24, marginBottom: 22 }}>
       <h2>Create order details link</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 16 }}>
         <label>Trading symbol *<input className="input" style={inputStyle} required value={details.tradingSymbol} onChange={(e) => update("tradingSymbol", e.target.value)} placeholder="ZYDUSLIFE" /></label>
+        <label>Sharekhan scrip code<input className="input" style={inputStyle} value={details.scripCode} onChange={(e) => update("scripCode", e.target.value)} placeholder="73927" /></label>
         <label>Stock name<input className="input" style={inputStyle} value={details.stock} onChange={(e) => update("stock", e.target.value)} placeholder="Zydus Lifesciences" /></label>
         <label>Buy / Sell *<select className="input" style={inputStyle} value={details.side} onChange={(e) => update("side", e.target.value)}><option>BUY</option><option>SELL</option></select></label>
         <label>Exchange *<select className="input" style={inputStyle} value={details.exchange} onChange={(e) => update("exchange", e.target.value)}><option>NSE</option><option>BSE</option></select></label>
