@@ -185,8 +185,8 @@ export default function AdminShell({
             Manual Trade
           </Link>
           <Link
-            className={`nav-link${pathname === "/admin/plans" ? " active" : ""}`}
-            href="/admin/plans"
+            className={`nav-link${pathname === "/admin/wallet" || pathname === "/admin/plans" ? " active" : ""}`}
+            href="/admin/wallet"
           >
             <span className="nav-icon">
               <svg viewBox="0 0 24 24" fill="none" strokeWidth="2">
@@ -194,7 +194,7 @@ export default function AdminShell({
                 <path d="M7 9h10" />
               </svg>
             </span>
-            Plans
+            Wallet
           </Link>
         </nav>
 

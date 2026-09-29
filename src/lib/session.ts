@@ -8,6 +8,7 @@ export type SessionUser = {
   role: "user" | "admin";
   phone?: string | null;
   emailVerified?: boolean;
+  walletBalance?: number;
 };
 
 export async function fetchSession(

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, API_BASE_URL, resolveWebhookBaseUrl } from "@/lib/api";
 import { getToken, setToken } from "@/lib/auth";
+import StrategyFormTabs, { StrategyTab } from "@/components/StrategyFormTabs";
 
 type InstrumentHit = {
   token?: string;
@@ -1160,7 +1161,10 @@ type StrategyUiIcon =
   | "play"
   | "edit"
   | "power"
-  | "trash";
+  | "trash"
+  | "chart"
+  | "candles"
+  | "link";
 
 type StrategySectionTone = "teal" | "orange" | "slate" | "amber" | "risk" | "alert" | "broker";
 type StrategySwitchTone = "maya" | "broker" | "risk" | "target" | "alert" | "limit";
@@ -1321,6 +1325,29 @@ function renderStrategyUiIcon(name: StrategyUiIcon) {
         <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <path d="M4.5 6h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           <path d="M8 3.8h4M7 6l.6 9.2h4.8L13 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "chart":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M3.2 15.2h13.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M4.2 12.4 7.4 9.2l2.6 2.2 5.6-6.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M12.6 5.2h3v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "candles":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M6.2 3.4v13.2M13.8 3.4v13.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <rect x="4.4" y="7" width="3.6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.5" />
+          <rect x="12" y="5.4" width="3.6" height="7.2" rx="0.8" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      );
+    case "link":
+      return (
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M8.2 11.8a3.2 3.2 0 0 0 4.6 0l2.2-2.2a3.2 3.2 0 0 0-4.6-4.6L9.2 6.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M11.8 8.2a3.2 3.2 0 0 0-4.6 0L5 10.4a3.2 3.2 0 0 0 4.6 4.6l1.2-1.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       );
     default:
@@ -2135,10 +2162,16 @@ export default function StrategyPage() {
     label: string,
     infoKey: string,
     showInfo = true,
-    labelClassName?: string
+    labelClassName?: string,
+    icon?: StrategyUiIcon
   ) => (
     <div className="label-row">
       <label className={labelClassName ? `label ${labelClassName}` : "label"} htmlFor={htmlFor}>
+        {icon ? (
+          <span className="field-label-icon" aria-hidden="true">
+            {renderStrategyUiIcon(icon)}
+          </span>
+        ) : null}
         {label}
       </label>
       {renderInfoButton(infoKey, "inline", showInfo)}
@@ -2188,15 +2221,26 @@ export default function StrategyPage() {
     checked: boolean,
     onChange: (checked: boolean) => void
   ) => (
-    <label className="info-toggle">
-      <span className="info-toggle-text">Info buttons</span>
-      <span className={`info-switch${checked ? " on" : ""}`}>
-        <span className="info-switch-thumb" />
+    <label className={`info-toggle${checked ? " is-on" : ""}`}>
+      <span className="info-toggle-lead">
+        <span className="info-toggle-icon" aria-hidden="true">
+          {renderStrategyUiIcon("info")}
+        </span>
+        <span className="info-toggle-text">
+          <span className="info-toggle-short">Info</span>
+          <span className="info-toggle-full">Info buttons</span>
+        </span>
+      </span>
+      <span className="info-toggle-control">
+        <span className="info-toggle-state">{checked ? "On" : "Off"}</span>
+        <span className={`info-switch${checked ? " on" : ""}`}>
+          <span className="info-switch-thumb" />
+        </span>
       </span>
       <input
         type="checkbox"
         role="switch"
-        aria-label="Show info buttons"
+        aria-label={checked ? "Info buttons on" : "Info buttons off"}
         checked={checked}
         onChange={(event) => {
           const next = event.target.checked;
@@ -2256,15 +2300,17 @@ export default function StrategyPage() {
     htmlFor: string,
     label: string,
     infoKey: string,
-    labelClassName?: string
-  ) => renderLabelWithInfo(htmlFor, label, infoKey, showAddInfoButtons, labelClassName);
+    labelClassName?: string,
+    icon?: StrategyUiIcon
+  ) => renderLabelWithInfo(htmlFor, label, infoKey, showAddInfoButtons, labelClassName, icon);
 
   const renderEditLabelWithInfo = (
     htmlFor: string,
     label: string,
     infoKey: string,
-    labelClassName?: string
-  ) => renderLabelWithInfo(htmlFor, label, infoKey, showEditInfoButtons, labelClassName);
+    labelClassName?: string,
+    icon?: StrategyUiIcon
+  ) => renderLabelWithInfo(htmlFor, label, infoKey, showEditInfoButtons, labelClassName, icon);
 
   const renderAddTitleWithInfo = (title: string, infoKey: string, style?: React.CSSProperties) =>
     renderTitleWithInfo(title, infoKey, style, showAddInfoButtons);
@@ -4156,47 +4202,100 @@ export default function StrategyPage() {
         </div>
       ) : null}
 
-      <div className="card">
-        {renderTitleWithInfo("Telegram access", "telegramAccess")}
-        <div className="helper">
-          Generate a one-time token and send it to the bot to start alerts.
-        </div>
-        <div className="list" style={{ marginTop: "14px" }}>
-          <div className="list-item">
-            <span>Latest token</span>
-            <code className="mono">{telegramToken?.token || "Not generated"}</code>
-          </div>
-          <div className="list-item">
-            <span>Expires</span>
-            <span>
-              {telegramToken?.expiresAt
-                ? new Date(telegramToken.expiresAt).toLocaleString()
-                : "-"}
-            </span>
-          </div>
-          <div className="list-item">
-            <span>Command</span>
-            <code className="mono">
-              {telegramToken?.token ? `/startAlert ${telegramToken.token}` : "-"}
-            </code>
+      <div className="card telegram-access-card">
+        <div className="telegram-access-head">
+          <span className="section-icon form-section--alert" aria-hidden="true">
+            {renderStrategyUiIcon("telegram")}
+          </span>
+          <div className="telegram-access-copy">
+            {renderTitleWithInfo("Telegram access", "telegramAccess")}
+            <p className="helper">
+              Generate a one-time token, then send it to the bot. The chat is linked automatically.
+            </p>
           </div>
         </div>
-        <div className="cta-row" style={{ marginTop: "16px" }}>
-          <button className="btn btn-secondary" type="button" onClick={handleGenerateToken}>
-            Generate new token
-          </button>
-          <a
-            className="btn btn-ghost"
-            href={TELEGRAM_BOT_URL}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open Telegram Bot
-          </a>
-        </div>
-        <div className="helper" style={{ marginTop: "10px" }}>
-          Send `/startAlert &lt;token&gt;` to the bot. Use `/stopAlert` to stop.
-        </div>
+
+        {(() => {
+          const tokenValue = telegramToken?.token?.trim() || "";
+          const command = tokenValue ? `/startAlert ${tokenValue}` : "";
+          const expiresAt = telegramToken?.expiresAt ? new Date(telegramToken.expiresAt) : null;
+          const expired = Boolean(expiresAt && expiresAt.getTime() < Date.now());
+          const linked = Boolean(telegramToken?.usedChatId || telegramToken?.usedAt);
+          const status = !tokenValue
+            ? "Not generated"
+            : expired
+              ? "Expired"
+              : linked
+                ? "Linked"
+                : "Waiting";
+          return (
+            <>
+              <div className="telegram-access-grid">
+                <div className="telegram-field">
+                  <div className="telegram-field-top">
+                    <span className="label">Latest token</span>
+                    <span className={`telegram-status is-${status.toLowerCase().replace(" ", "-")}`}>
+                      {status}
+                    </span>
+                  </div>
+                  <div className="token-field">
+                    <code className="mono telegram-code">
+                      {tokenValue || "Generate a token to start alerts"}
+                    </code>
+                    <button
+                      className="btn btn-ghost btn-compact"
+                      type="button"
+                      disabled={!tokenValue}
+                      onClick={() => copyToClipboard(tokenValue)}
+                    >
+                      {renderStrategyUiIcon("copy")}
+                      Copy
+                    </button>
+                  </div>
+                  <div className="helper">
+                    {expiresAt ? `Expires ${expiresAt.toLocaleString()}` : "No token yet"}
+                  </div>
+                </div>
+
+                <div className="telegram-field">
+                  <div className="telegram-field-top">
+                    <span className="label">Bot command</span>
+                  </div>
+                  <div className="token-field">
+                    <code className="mono telegram-code">
+                      {command || "/startAlert <token>"}
+                    </code>
+                    <button
+                      className="btn btn-ghost btn-compact"
+                      type="button"
+                      disabled={!command}
+                      onClick={() => copyToClipboard(command)}
+                    >
+                      {renderStrategyUiIcon("copy")}
+                      Copy
+                    </button>
+                  </div>
+                  <div className="helper">Send /stopAlert in the bot to stop alerts.</div>
+                </div>
+              </div>
+
+              <div className="telegram-access-actions">
+                <button className="btn btn-secondary" type="button" onClick={handleGenerateToken}>
+                  {tokenValue ? "Generate new token" : "Generate token"}
+                </button>
+                <a
+                  className="btn btn-ghost"
+                  href={TELEGRAM_BOT_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {renderStrategyUiIcon("telegram")}
+                  Open Telegram Bot
+                </a>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       <div className="card strategy-list-card">
@@ -4211,6 +4310,18 @@ export default function StrategyPage() {
         ) : (
           <div className="strategy-card-list">
             {strategies.map((item) => {
+              const statusFlags = [
+                { label: "Email", on: item.emailEnabled !== false },
+                { label: "Telegram", on: Boolean(item.telegramEnabled) },
+                {
+                  label: "Market Maya",
+                  on:
+                    item.marketMaya?.marketMayaEnabled === undefined
+                      ? Boolean(item.marketMaya?.tokenConfigured)
+                      : Boolean(item.marketMaya?.marketMayaEnabled),
+                },
+                { label: "Sharekhan", on: Boolean(item.marketMaya?.sharekhanDirect) },
+              ];
               return (
                 <article
                   className={`strategy-card${item.enabled ? " is-enabled" : " is-disabled"}`}
@@ -4265,6 +4376,18 @@ export default function StrategyPage() {
                         {deleteLoadingId === item._id ? "..." : "Delete"}
                       </button>
                     </div>
+                  </div>
+
+                  <div className="strategy-flag-row" aria-label="Alert and broker status">
+                    {statusFlags.map((flag) => (
+                      <span
+                        key={flag.label}
+                        className={`strategy-flag${flag.on ? " is-on" : " is-off"}`}
+                      >
+                        <span className="strategy-flag-label">{flag.label}</span>
+                        <span className="strategy-flag-state">{flag.on ? "On" : "Off"}</span>
+                      </span>
+                    ))}
                   </div>
 
                   <div className="strategy-card-toolbar" aria-label="Webhook actions">
@@ -4339,7 +4462,8 @@ export default function StrategyPage() {
               </div>
             </div>
             <form className="form strategy-form" onSubmit={handleSubmit}>
-              <div className="strategy-modal-body">
+              <StrategyFormTabs>
+              <StrategyTab label="Basics" icon={renderStrategyUiIcon("spark")}>
               <div className="form-section form-section--teal">
                 {renderFormSectionHeader({
                   title: "Basics",
@@ -4349,7 +4473,7 @@ export default function StrategyPage() {
                 })}
 
                 <div className="input-group">
-                  {renderAddLabelWithInfo("strategy-name", "Strategy name", "strategyName")}
+                  {renderAddLabelWithInfo("strategy-name", "Strategy name", "strategyName", undefined, "tag")}
                   <input
                     className="input"
                     id="strategy-name"
@@ -4370,7 +4494,7 @@ export default function StrategyPage() {
                       "Run this strategy on webhook alerts",
                       undefined,
                       undefined,
-                      { tone: "maya", icon: "broadcast" }
+                      { tone: "maya", icon: "power" }
                     )}
                   </div>
 
@@ -4426,8 +4550,8 @@ export default function StrategyPage() {
                   </div>
                 ) : null}
               </div>
-
-              {sharekhanDirect ? (
+              </StrategyTab>
+              {sharekhanDirect ? (<StrategyTab label="Broker" icon={renderStrategyUiIcon("broker")}>
                 <div className="form-section form-section--broker form-reveal">
                   {renderFormSectionHeader({
                     title: "Sharekhan login",
@@ -4632,8 +4756,8 @@ export default function StrategyPage() {
                     </select>
                   </div>
                 </div>
-              ) : null}
-
+              </StrategyTab>) : null}
+              <StrategyTab label="Instruments" icon={renderStrategyUiIcon("layers")}>
               <div className="strategy-form-pair">
               <div className="form-section form-section--slate">
                 {renderFormSectionHeader({
@@ -5002,7 +5126,8 @@ export default function StrategyPage() {
               ) : null}
               </div>
               </div>
-
+              </StrategyTab>
+              <StrategyTab label="Trade" icon={renderStrategyUiIcon("candles")}>
               <div className="form-section form-section--amber">
                 {renderFormSectionHeader({
                   title: "Trade settings",
@@ -5070,7 +5195,7 @@ export default function StrategyPage() {
                       <option value="LIMIT">Limit</option>
                     </select>
                     <div className="helper">
-                      Sharekhan: Market = price 0, Limit = fixed/trigger/candle price.
+                      Sharekhan orders use the admin live feed price and are sent as LIMIT orders.
                     </div>
                   </div>
                   {orderType === "LIMIT" ? (
@@ -5375,8 +5500,8 @@ export default function StrategyPage() {
                 </div>
               ) : null}
               </div>
-
-              {!exitFallbackSelected ? (
+              </StrategyTab>
+              {!exitFallbackSelected ? (<StrategyTab label="Risk" icon={renderStrategyUiIcon("shield")}>
                 <div className="form-section form-section--risk">
                   {renderFormSectionHeader({
                     title: "Risk",
@@ -5584,8 +5709,8 @@ export default function StrategyPage() {
                     </div>
                   ) : null}
                 </div>
-              ) : null}
-
+              </StrategyTab>) : null}
+              <StrategyTab label="Alerts" icon={renderStrategyUiIcon("bell")}>
               <div className="form-section form-section--alert">
                 {renderFormSectionHeader({
                   title: "Alerts",
@@ -5622,7 +5747,8 @@ export default function StrategyPage() {
                 </div>
                 </div>
               </div>
-              </div>
+              </StrategyTab>
+              </StrategyFormTabs>
 
               <div className="cta-row form-actions">
                 <button className="btn btn-primary" type="submit" disabled={loading}>
@@ -5666,7 +5792,8 @@ export default function StrategyPage() {
               </div>
             </div>
             <form className="form strategy-form" onSubmit={handleUpdate}>
-              <div className="strategy-modal-body">
+              <StrategyFormTabs>
+              <StrategyTab label="Basics" icon={renderStrategyUiIcon("spark")}>
               <div className="form-section form-section--teal">
                 {renderFormSectionHeader({
                   title: "Basics",
@@ -5676,7 +5803,7 @@ export default function StrategyPage() {
                 })}
 
                 <div className="input-group">
-                  {renderEditLabelWithInfo("edit-strategy-name", "Strategy name", "strategyName")}
+                  {renderEditLabelWithInfo("edit-strategy-name", "Strategy name", "strategyName", undefined, "tag")}
                   <input
                     className="input"
                     id="edit-strategy-name"
@@ -5689,29 +5816,46 @@ export default function StrategyPage() {
 
                 <div className="input-group webhook-url-compact">
                   <div className="label-row">
-                    <label className="label">Webhook URL</label>
+                    <label className="label">
+                      <span className="field-label-icon" aria-hidden="true">
+                        {renderStrategyUiIcon("link")}
+                      </span>
+                      Webhook URL
+                    </label>
                     {renderInfoButton("webhookUrl", "inline", showEditInfoButtons)}
                   </div>
                   <div className="webhook-url-rail">
                     <div className="webhook-url-item">
-                      <strong>Chartink</strong>
+                      <strong className="webhook-provider">
+                        <span className="webhook-provider-icon is-chartink" aria-hidden="true">
+                          {renderStrategyUiIcon("chart")}
+                        </span>
+                        Chartink
+                      </strong>
                       <code className="mono">{resolveWebhookUrl(editing, "chartink")}</code>
                       <button
                         className="btn btn-ghost btn-compact"
                         type="button"
                         onClick={() => copyToClipboard(resolveWebhookUrl(editing, "chartink"))}
                       >
+                        {renderStrategyUiIcon("copy")}
                         Copy
                       </button>
                     </div>
                     <div className="webhook-url-item">
-                      <strong>TradingView</strong>
+                      <strong className="webhook-provider">
+                        <span className="webhook-provider-icon is-tradingview" aria-hidden="true">
+                          {renderStrategyUiIcon("candles")}
+                        </span>
+                        TradingView
+                      </strong>
                       <code className="mono">{resolveWebhookUrl(editing, "tradingview")}</code>
                       <button
                         className="btn btn-ghost btn-compact"
                         type="button"
                         onClick={() => copyToClipboard(resolveWebhookUrl(editing, "tradingview"))}
                       >
+                        {renderStrategyUiIcon("copy")}
                         Copy
                       </button>
                     </div>
@@ -5728,7 +5872,7 @@ export default function StrategyPage() {
                       "Run this strategy on webhook alerts",
                       undefined,
                       undefined,
-                      { tone: "maya", icon: "broadcast" }
+                      { tone: "maya", icon: "power" }
                     )}
                   </div>
 
@@ -5786,8 +5930,8 @@ export default function StrategyPage() {
                   </div>
                 ) : null}
               </div>
-
-              {editSharekhanDirect ? (
+              </StrategyTab>
+              {editSharekhanDirect ? (<StrategyTab label="Broker" icon={renderStrategyUiIcon("broker")}>
                 <div className="form-section form-section--broker form-reveal">
                   {renderFormSectionHeader({
                     title: "Sharekhan login",
@@ -5997,8 +6141,8 @@ export default function StrategyPage() {
                     </select>
                   </div>
                 </div>
-              ) : null}
-
+              </StrategyTab>) : null}
+              <StrategyTab label="Instruments" icon={renderStrategyUiIcon("layers")}>
               <div className="strategy-form-pair">
               <div className="form-section form-section--slate">
                 {renderFormSectionHeader({
@@ -6365,7 +6509,8 @@ export default function StrategyPage() {
               ) : null}
               </div>
               </div>
-
+              </StrategyTab>
+              <StrategyTab label="Trade" icon={renderStrategyUiIcon("candles")}>
               <div className="form-section form-section--amber">
                 {renderFormSectionHeader({
                   title: "Trade defaults",
@@ -6434,7 +6579,7 @@ export default function StrategyPage() {
                       <option value="LIMIT">Limit</option>
                     </select>
                     <div className="helper">
-                      Sharekhan: Market = price 0, Limit = fixed/trigger/candle price.
+                      Sharekhan orders use the admin live feed price and are sent as LIMIT orders.
                     </div>
                   </div>
                   {editOrderType === "LIMIT" ? (
@@ -6751,8 +6896,8 @@ export default function StrategyPage() {
                 </div>
               ) : null}
               </div>
-
-              {!editExitFallbackSelected ? (
+              </StrategyTab>
+              {!editExitFallbackSelected ? (<StrategyTab label="Risk" icon={renderStrategyUiIcon("shield")}>
                 <div className="form-section form-section--risk">
                   {renderFormSectionHeader({
                     title: "Risk controls",
@@ -6960,8 +7105,8 @@ export default function StrategyPage() {
                     </div>
                   ) : null}
                 </div>
-              ) : null}
-
+              </StrategyTab>) : null}
+              <StrategyTab label="Alerts" icon={renderStrategyUiIcon("bell")}>
               <div className="form-section form-section--alert">
                 {renderFormSectionHeader({
                   title: "Alerts",
@@ -6998,7 +7143,8 @@ export default function StrategyPage() {
                 </div>
                 </div>
               </div>
-              </div>
+              </StrategyTab>
+              </StrategyFormTabs>
 
               <div className="cta-row form-actions">
                 <button className="btn btn-primary" type="submit" disabled={editLoading}>

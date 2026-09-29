@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import LoginWelcomeModal from "@/components/LoginWelcomeModal";
-import { clearToken } from "@/lib/auth";
+import { apiGet } from "@/lib/api";
+import { clearToken, getToken } from "@/lib/auth";
 import { consumeLoginWelcomePending } from "@/lib/loginWelcome";
 import { fetchSession, type SessionUser } from "@/lib/session";
 
@@ -52,7 +53,7 @@ const navItems = [
   },
   {
     href: "/subscription",
-    label: "Subscription",
+    label: "Wallet",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" strokeWidth="2">
         <rect x="3" y="5" width="18" height="14" rx="2" />
@@ -82,6 +83,7 @@ export default function UserShell({
   const [navOpen, setNavOpen] = useState(false);
   const [isMobileNav, setIsMobileNav] = useState(false);
   const [showLoginWelcome, setShowLoginWelcome] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -114,6 +116,22 @@ export default function UserShell({
   useEffect(() => {
     setNavOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!ready) return;
+    let active = true;
+    apiGet("/api/v1/wallet", getToken())
+      .then((data) => {
+        if (!active) return;
+        setWalletBalance(Number((data as { balance?: number }).balance || 0));
+      })
+      .catch(() => {
+        if (active) setWalletBalance(Number(user?.walletBalance || 0));
+      });
+    return () => {
+      active = false;
+    };
+  }, [ready, pathname, user?.walletBalance]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -231,6 +249,11 @@ export default function UserShell({
               </div>
             </div>
           </div>
+          <Link className="wallet-chip" href="/subscription">
+            <span>Credits</span>
+            <strong>{walletBalance}</strong>
+            <span>Recharge</span>
+          </Link>
         </header>
         <main className="content">{children}</main>
       </div>

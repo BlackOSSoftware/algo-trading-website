@@ -1,390 +1,223 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
-type UserPlan = {
-  planName?: string;
-  planExpiresAt?: string | null;
+type Charges = {
+  alert: number;
+  marketMaya: number;
+  sharekhan: number;
 };
 
-type Plan = {
-  _id: string;
-  name: string;
-  price: number;
-  durationDays: number;
-};
-
-type PlanRequest = {
-  _id: string;
-  planId: string;
-  status: string;
-  createdAt: string;
-  amount?: number;
-  razorpayOrderId?: string | null;
-  startDate?: string | null;
-  endDate?: string | null;
-};
-
-type RazorpayOrder = {
+type WalletTx = {
   id: string;
-  amount: number;
-  currency: string;
-  receipt?: string;
+  kind: string;
+  status: string;
+  credits: number;
+  rupees?: number | null;
+  title: string;
+  note?: string;
+  utr?: string;
+  createdAt: string;
 };
 
-type RazorpayOptions = {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  handler: (response: {
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-  }) => void;
-  prefill?: { name?: string; email?: string };
-  notes?: Record<string, string>;
-  theme?: { color?: string };
+type Payment = {
+  transaction: WalletTx;
+  upiId: string;
+  payeeName: string;
+  rupees: number;
+  credits: number;
+  upiLink: string;
+  qrDataUrl: string;
 };
 
-type RazorpayInstance = {
-  open: () => void;
-  on: (event: string, handler: (response: { error?: { description?: string } }) => void) => void;
-};
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: RazorpayOptions) => RazorpayInstance;
-  }
-}
-
-export default function SubscriptionPage() {
-  const router = useRouter();
-  const [plan, setPlan] = useState<UserPlan>({});
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [requests, setRequests] = useState<PlanRequest[]>([]);
-  const [requestingPlanId, setRequestingPlanId] = useState<string | null>(null);
+export default function WalletPage() {
+  const [balance, setBalance] = useState(0);
+  const [charges, setCharges] = useState<Charges>({ alert: 1, marketMaya: 2, sharekhan: 2 });
+  const [creditsPerRupee, setCreditsPerRupee] = useState(1);
+  const [upiReady, setUpiReady] = useState(false);
+  const [transactions, setTransactions] = useState<WalletTx[]>([]);
+  const [rupees, setRupees] = useState("100");
+  const [payment, setPayment] = useState<Payment | null>(null);
+  const [utr, setUtr] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const now = Date.now();
-  const planExpiryTs = plan.planExpiresAt ? new Date(plan.planExpiresAt).getTime() : null;
-  const remainingDays =
-    planExpiryTs !== null ? Math.max(0, Math.ceil((planExpiryTs - now) / 86400000)) : null;
-  const isExpired = planExpiryTs !== null ? planExpiryTs <= now : false;
 
-  const loadPlan = async () => {
-    try {
-      const token = getToken();
-      const data = await apiGet("/api/v1/auth/me", token);
-      const user = (data as { user?: UserPlan }).user || {};
-      setPlan({
-        planName: user.planName,
-        planExpiresAt: user.planExpiresAt,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load plan";
-      setError(msg);
-    }
-  };
-
-  const loadPlans = async () => {
-    try {
-      const data = await apiGet("/api/v1/plans");
-      setPlans((data as { plans?: Plan[] }).plans || []);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load plans";
-      setError(msg);
-    }
-  };
-
-  const loadRequests = async () => {
-    try {
-      const token = getToken();
-      const data = await apiGet("/api/v1/plans/requests", token);
-      setRequests((data as { requests?: PlanRequest[] }).requests || []);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load requests";
-      setError(msg);
-    }
-  };
-
-  const loadRazorpayScript = () =>
-    new Promise<boolean>((resolve) => {
-      if (typeof window === "undefined") return resolve(false);
-      if (window.Razorpay) return resolve(true);
-      const existing = document.getElementById("razorpay-sdk");
-      if (existing) {
-        existing.addEventListener("load", () => resolve(true));
-        existing.addEventListener("error", () => resolve(false));
-        return;
-      }
-      const script = document.createElement("script");
-      script.id = "razorpay-sdk";
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.async = true;
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-
-  const startCheckout = async (
-    order: RazorpayOrder,
-    planItem: Plan,
-    keyId: string,
-    token: string
-  ) => {
-    const loaded = await loadRazorpayScript();
-    if (!loaded || !window.Razorpay) {
-      setError("Unable to load Razorpay checkout. Please try again.");
-      return;
-    }
-
-    const options: RazorpayOptions = {
-      key: keyId,
-      amount: order.amount,
-      currency: order.currency,
-      name: "Market Maya",
-      description: `${planItem.name} plan`,
-      order_id: order.id,
-      handler: async (response) => {
-        try {
-          await apiPost(
-            "/api/v1/plans/verify-payment",
-            {
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-            },
-            token
-          );
-          setMessage("Payment verified. Activation will be confirmed shortly.");
-          await loadRequests();
-          router.push("/subscription/pending");
-        } catch (err) {
-          const msg =
-            err instanceof Error ? err.message : "Payment verification failed";
-          setError(msg);
-        }
-      },
-      theme: { color: "#1f7a8c" },
+  const load = useCallback(async () => {
+    const data = await apiGet("/api/v1/wallet", getToken());
+    const wallet = data as {
+      balance?: number;
+      charges?: Charges;
+      creditsPerRupee?: number;
+      upiReady?: boolean;
+      transactions?: WalletTx[];
     };
-
-    const razorpay = new window.Razorpay(options);
-    razorpay.on("payment.failed", (response) => {
-      const msg = response.error?.description || "Payment failed.";
-      setError(msg);
-    });
-    razorpay.open();
-  };
-
-  const handlePurchase = async (planItem: Plan) => {
-    setError(null);
-    setMessage(null);
-    setRequestingPlanId(planItem._id);
-    try {
-      const token = getToken();
-      if (!token) {
-        setError("Please sign in to continue.");
-        return;
-      }
-
-      const data = await apiPost(
-        "/api/v1/plans/create-order",
-        { planId: planItem._id },
-        token
-      );
-
-      const order = (data as { order?: RazorpayOrder }).order;
-      const keyId = (data as { keyId?: string }).keyId;
-      if (!order || !keyId) {
-        throw new Error("Unable to start payment");
-      }
-      if (typeof window !== "undefined") {
-        localStorage.setItem("wt_razorpay_key_id", keyId);
-      }
-
-      await startCheckout(order, planItem, keyId, token);
-      await loadRequests();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Request failed";
-      setError(msg);
-    }
-    setRequestingPlanId(null);
-  };
-
-  const handleResume = async (planItem: Plan, request: PlanRequest) => {
-    setError(null);
-    setMessage(null);
-    setRequestingPlanId(planItem._id);
-    try {
-      const token = getToken();
-      if (!token) {
-        setError("Please sign in to continue.");
-        return;
-      }
-      if (!request.razorpayOrderId) {
-        setError("Payment order not found. Please start a new purchase.");
-        return;
-      }
-
-      const order: RazorpayOrder = {
-        id: request.razorpayOrderId,
-        amount: Math.round((planItem.price || 0) * 100),
-        currency: "INR",
-      };
-      const storedKey =
-        typeof window !== "undefined"
-          ? localStorage.getItem("wt_razorpay_key_id")
-          : "";
-      const keyId =
-        storedKey || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "";
-      if (!keyId) {
-        setError("Payment key is not configured.");
-        return;
-      }
-      await startCheckout(order, planItem, keyId, token);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unable to resume payment";
-      setError(msg);
-    } finally {
-      setRequestingPlanId(null);
-    }
-  };
-
-  useEffect(() => {
-    loadPlan();
-    loadPlans();
-    loadRequests();
+    setBalance(Number(wallet.balance || 0));
+    if (wallet.charges) setCharges(wallet.charges);
+    setCreditsPerRupee(Number(wallet.creditsPerRupee || 1));
+    setUpiReady(Boolean(wallet.upiReady));
+    setTransactions(wallet.transactions || []);
   }, []);
 
-  const latestRequest = useMemo(() => {
-    if (requests.length === 0) return null;
-    return [...requests].sort((a, b) => {
-      const aTime = new Date(a.createdAt || 0).getTime();
-      const bTime = new Date(b.createdAt || 0).getTime();
-      return bTime - aTime;
-    })[0];
-  }, [requests]);
+  useEffect(() => {
+    load().catch((err) => setError(err instanceof Error ? err.message : "Could not load wallet"));
+  }, [load]);
+
+  const amount = Math.round(Number(rupees) || 0);
+  const credits = amount > 0 ? amount * creditsPerRupee : 0;
+
+  const createPayment = async () => {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const data = await apiPost("/api/v1/wallet/recharge", { rupees: amount }, getToken());
+      setPayment(data as Payment);
+      setUtr("");
+      setMessage("Scan the QR and pay the exact amount. Then mark it as paid.");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create recharge");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markPaid = async () => {
+    if (!payment?.transaction?.id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await apiPost(
+        "/api/v1/wallet/recharge/paid",
+        { id: payment.transaction.id, utr },
+        getToken()
+      );
+      setMessage("Payment marked. Credits are added after admin approves it.");
+      setPayment(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update payment");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="content">
       <div className="page-header">
         <div>
-          <div className="page-title">Subscription</div>
-          <div className="helper">Manage plans and billing</div>
+          <div className="page-title">Wallet</div>
+          <div className="helper">Recharge credits, then alerts and trades use them automatically.</div>
         </div>
       </div>
 
       {error ? <div className="alert alert-error">{error}</div> : null}
       {message ? <div className="alert alert-success">{message}</div> : null}
 
-      <div className="plan-grid">
-        {plans.length === 0 ? (
-          <div className="card">No plans available.</div>
+      <div className="wallet-balance-card">
+        <div>
+          <div className="helper">Available credits</div>
+          <div className="wallet-balance">{balance}</div>
+        </div>
+        <div className="wallet-rate-row">
+          <span>Alert {charges.alert}</span>
+          <span>Market Maya {charges.marketMaya}</span>
+          <span>Sharekhan {charges.sharekhan}</span>
+        </div>
+      </div>
+
+      <div className="card wallet-recharge">
+        <div className="section-title">Recharge</div>
+        <p className="helper">
+          {creditsPerRupee === 1
+            ? "1 rupee adds 1 credit."
+            : `1 rupee adds ${creditsPerRupee} credits.`}
+          {upiReady ? "" : " UPI is not set yet, so recharge opens after admin adds a UPI ID."}
+        </p>
+        <div className="wallet-amount-row">
+          {["100", "500", "1000"].map((preset) => (
+            <button
+              key={preset}
+              className={`btn btn-ghost${rupees === preset ? " is-on" : ""}`}
+              type="button"
+              onClick={() => setRupees(preset)}
+            >
+              Rs. {preset}
+            </button>
+          ))}
+        </div>
+        <div className="wallet-amount-field">
+          <label className="label" htmlFor="recharge-rupees">
+            Amount in rupees
+          </label>
+          <input
+            className="input"
+            id="recharge-rupees"
+            inputMode="numeric"
+            value={rupees}
+            onChange={(event) => setRupees(event.target.value.replace(/[^\d]/g, ""))}
+            placeholder="100"
+          />
+          <div className="helper">{credits > 0 ? `You will get ${credits} credits.` : "Enter an amount."}</div>
+        </div>
+        <button className="btn btn-primary" type="button" disabled={loading || amount < 1 || !upiReady} onClick={createPayment}>
+          {loading ? "Please wait..." : "Generate UPI QR"}
+        </button>
+
+        {payment ? (
+          <div className="wallet-qr">
+            <img src={payment.qrDataUrl} alt={`UPI QR for Rs. ${payment.rupees}`} />
+            <div>
+              <strong>Pay Rs. {payment.rupees}</strong>
+              <div className="helper">UPI ID: {payment.upiId}</div>
+              <div className="helper">Name: {payment.payeeName}</div>
+              <div className="helper">{payment.credits} credits after approval</div>
+              <label className="label" htmlFor="recharge-utr">
+                UTR / reference (optional)
+              </label>
+              <input
+                className="input"
+                id="recharge-utr"
+                value={utr}
+                onChange={(event) => setUtr(event.target.value)}
+                placeholder="Payment reference"
+              />
+              <button className="btn btn-secondary" type="button" disabled={loading} onClick={markPaid}>
+                I have paid
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="card">
+        <div className="section-title">Transaction history</div>
+        {transactions.length === 0 ? (
+          <div className="helper">No wallet activity yet.</div>
         ) : (
-          plans.map((item) => {
-            const request = requests.find((req) => req.planId === item._id);
-            const isPending = request?.status === "pending";
-            const isPaid = request?.status === "paid";
-            const isActive = request?.status === "active";
-            return (
-              <div className="plan-card" key={item._id}>
-                <h4>{item.name}</h4>
-                <div className="plan-price">Rs. {item.price}</div>
-                <div className="helper">{item.durationDays} days access</div>
-                <div className="list" style={{ marginTop: "16px" }}>
-                  <div className="list-item">Alerts + strategies</div>
-                  <div className="list-item">Telegram access</div>
-                </div>
-                {request ? (
-                  <div className="helper" style={{ marginTop: "10px" }}>
-                    Status: <span className="badge">{request.status}</span>
+          <div className="wallet-history">
+            {transactions.map((item) => (
+              <article className="wallet-history-row" key={item.id}>
+                <div>
+                  <strong>{item.title}</strong>
+                  <div className="helper">
+                    {item.note || item.kind}
+                    {item.utr ? ` · UTR ${item.utr}` : ""}
                   </div>
-                ) : null}
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  onClick={() =>
-                    isPending && request?.razorpayOrderId
-                      ? handleResume(item, request)
-                      : handlePurchase(item)
-                  }
-                  style={{ marginTop: "16px" }}
-                  disabled={isActive || isPaid || requestingPlanId === item._id}
-                >
-                  {requestingPlanId === item._id
-                    ? "Processing..."
-                    : isPending
-                    ? "Continue payment"
-                    : isPaid
-                    ? "Payment verified"
-                    : isActive
-                    ? "Active"
-                    : "Buy now"}
-                </button>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {latestRequest ? (
-        <div className="card">
-          <div className="page-title">Latest payment</div>
-          <div className="helper">
-            Status: <span className="badge">{latestRequest.status}</span>
-          </div>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            style={{ marginTop: "12px" }}
-            onClick={() => router.push("/subscription/pending")}
-          >
-            View payment status
-          </button>
-        </div>
-      ) : null}
-
-      <div className="card">
-        <div className="page-title">Current plan</div>
-        <div className="list">
-          <div className="list-item">
-            <span>Plan</span>
-            <span className="badge">
-              {plan.planName ? (isExpired ? "Expired" : plan.planName) : "-"}
-            </span>
-          </div>
-          <div className="list-item">
-            <span>Expires on</span>
-            <span>
-              {plan.planExpiresAt
-                ? new Date(plan.planExpiresAt).toLocaleDateString()
-                : "-"}
-            </span>
-          </div>
-          <div className="list-item">
-            <span>Remaining days</span>
-            <span>{remainingDays !== null ? remainingDays : "-"}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="page-title">Your requests</div>
-        {requests.length === 0 ? (
-          <div className="helper">No plan requests yet.</div>
-        ) : (
-          <div className="list">
-            {requests.map((req) => (
-              <div className="list-item" key={req._id}>
-                <span>{plans.find((p) => p._id === req.planId)?.name || req.planId}</span>
-                <span className="badge">{req.status}</span>
-              </div>
+                </div>
+                <div className="wallet-history-meta">
+                  <span className={`status-chip ${item.status === "completed" || item.status === "approved" ? "ok" : item.status === "rejected" ? "error" : "warn"}`}>
+                    {item.status}
+                  </span>
+                  <strong className={item.credits < 0 ? "is-debit" : "is-credit"}>
+                    {item.credits > 0 ? `+${item.credits}` : item.credits}
+                  </strong>
+                  <span className="helper">{new Date(item.createdAt).toLocaleString()}</span>
+                </div>
+              </article>
             ))}
           </div>
         )}

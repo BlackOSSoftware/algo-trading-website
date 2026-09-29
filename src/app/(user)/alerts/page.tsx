@@ -7,6 +7,7 @@ import { getToken } from "@/lib/auth";
 type AlertEvent = {
   _id?: string;
   id?: string;
+  provider?: string;
   receivedAt?: string;
   processedAt?: string;
   strategyName?: string;
@@ -438,7 +439,7 @@ export default function AlertsPage() {
       {error ? <div className="alert alert-error">{error}</div> : null}
 
       <div className="card">
-        <div className="table">
+        <div className="table alerts-table">
           <div className="table-row table-head alerts-row">
             <span>Alert</span>
             <span>Scan</span>
@@ -468,6 +469,8 @@ export default function AlertsPage() {
               const time = item.receivedAt
                 ? new Date(item.receivedAt).toLocaleTimeString()
                 : "-";
+              const provider = String(item.provider || item.debug?.provider || "").toLowerCase();
+              const providerLabel = provider.includes("trading") ? "TradingView" : "Chartink";
               const chartinkStatus: StatusInfo = { text: "Received", tone: "ok" };
               const marketMayaStatus = formatMarketMayaStatus(item.debug);
               const sharekhanStatus = formatSharekhanStatus(item.debug);
@@ -486,12 +489,12 @@ export default function AlertsPage() {
               return (
                 <div className="alert-group" key={rowId}>
                   <div className="table-row alerts-row">
-                    <span data-label="Alert">{alertName}</span>
-                    <span data-label="Scan">{scanName}</span>
-                    <span data-label="Match">{matchText}</span>
+                    <span className="alert-name" data-label="Alert">{alertName}</span>
+                    <span className="alert-scan" data-label="Scan">{scanName}</span>
+                    <span className="alert-match" data-label="Match">{matchText}</span>
                     <div className="table-cell status-stack" data-label="Status">
                       <div className="status-line">
-                        <span className="status-label">Chartink</span>
+                        <span className="status-label">{providerLabel}</span>
                         <span className={`status-chip ${chartinkStatus.tone}`}>
                           {chartinkStatus.text}
                         </span>
@@ -530,7 +533,7 @@ export default function AlertsPage() {
                         {isOpen ? "Hide details" : "View details"}
                       </button>
                     </div>
-                    <span data-label="Time">{time}</span>
+                    <span className="alert-time" data-label="Time">{time}</span>
                   </div>
                   {isOpen ? (
                     <div className="table-row alert-details">

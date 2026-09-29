@@ -211,6 +211,7 @@ export default function TradePage() {
   const [execute, setExecute] = useState(false);
   const [sendMarketMaya, setSendMarketMaya] = useState(true);
   const [sendSharekhan, setSendSharekhan] = useState(false);
+  const [tradeTab, setTradeTab] = useState<"Route" | "Order" | "Risk" | "Activity">("Route");
 
   const [exchange, setExchange] = useState("NSE");
   const [segment, setSegment] = useState("EQ");
@@ -602,6 +603,7 @@ export default function TradePage() {
     setMayaResult(null);
     setSharekhanResult(null);
     setError(null);
+    setTradeTab("Order");
   };
 
   const fillCommodityExample = () => {
@@ -619,6 +621,7 @@ export default function TradePage() {
     setMayaResult(null);
     setSharekhanResult(null);
     setError(null);
+    setTradeTab("Order");
   };
 
   const fillOptionsExample = () => {
@@ -639,6 +642,19 @@ export default function TradePage() {
     setMayaResult(null);
     setSharekhanResult(null);
     setError(null);
+    setTradeTab("Order");
+  };
+
+  const focusTradeTab = (message: string) => {
+    if (/Qty value|Stop loss|Target by/.test(message)) {
+      setTradeTab("Risk");
+      return;
+    }
+    if (/Symbol|FUT\/OPT|option type|atm or strike|Limit price/.test(message)) {
+      setTradeTab("Order");
+      return;
+    }
+    setTradeTab("Route");
   };
 
   const validateCommon = () => {
@@ -757,6 +773,7 @@ export default function TradePage() {
       const validationError = validateCommon();
       if (validationError) {
         setError(validationError);
+        focusTradeTab(validationError);
         return;
       }
 
@@ -782,6 +799,7 @@ export default function TradePage() {
       }
 
       if (errors.length) setError(errors.join(" · "));
+      setTradeTab("Activity");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Trade failed");
     } finally {
@@ -790,6 +808,7 @@ export default function TradePage() {
   };
 
   const fetchHistory = async () => {
+    setTradeTab("Activity");
     setLoading(true);
     setError(null);
     setMayaResult(null);
@@ -818,6 +837,7 @@ export default function TradePage() {
   };
 
   const fetchPosition = async () => {
+    setTradeTab("Activity");
     setLoading(true);
     setError(null);
     setMayaResult(null);
@@ -853,6 +873,7 @@ export default function TradePage() {
   });
 
   const fetchSharekhanOrders = async () => {
+    setTradeTab("Activity");
     setLoading(true);
     setError(null);
     setSharekhanResult(null);
@@ -889,6 +910,7 @@ export default function TradePage() {
   };
 
   const fetchSharekhanPositions = async () => {
+    setTradeTab("Activity");
     setLoading(true);
     setError(null);
     setSharekhanResult(null);
@@ -998,7 +1020,34 @@ export default function TradePage() {
 
       {error ? <div className="alert alert-error">{error}</div> : null}
 
-      <form className="modal-form" onSubmit={submitTrade}>
+      <form className="trade-form" onSubmit={submitTrade}>
+        <div className="strategy-tab-list" role="tablist" aria-label="Manual trade">
+          {(
+            [
+              ["Route", "broadcast"],
+              ["Order", "layers"],
+              ["Risk", "shield"],
+              ["Activity", "play"],
+            ] as const
+          ).map(([label, icon]) => (
+            <button
+              key={label}
+              className="strategy-tab"
+              type="button"
+              role="tab"
+              data-tab={label}
+              aria-selected={tradeTab === label}
+              onClick={() => setTradeTab(label)}
+            >
+              <span className="strategy-tab-icon" aria-hidden="true">
+                {renderTradeIcon(icon)}
+              </span>
+              <span className="strategy-tab-label">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="trade-tab-panel" hidden={tradeTab !== "Route"}>
         <div className="form-section form-section--teal form-reveal">
           {renderSectionHeader(
             "Destinations",
@@ -1093,7 +1142,9 @@ export default function TradePage() {
             </div>
           ) : null}
         </div>
+        </div>
 
+        <div className="trade-tab-panel" hidden={tradeTab !== "Order"}>
         <div className="form-section form-section--slate form-reveal">
           {renderSectionHeader(
             "Instrument",
@@ -1398,7 +1449,9 @@ export default function TradePage() {
             </div>
           ) : null}
         </div>
+        </div>
 
+        <div className="trade-tab-panel" hidden={tradeTab !== "Risk"}>
         <div className="form-section form-section--risk form-reveal">
           {renderSectionHeader(
             "Qty & risk",
@@ -1562,43 +1615,46 @@ export default function TradePage() {
             </div>
           </div>
         </div>
-
-        <div className="form-actions">
-          <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? "Submitting..." : execute ? "Execute trade" : "Preview trade"}
-          </button>
-          {sendMarketMaya ? (
-            <>
-              <button className="btn btn-ghost" type="button" disabled={loading} onClick={fetchHistory}>
-                Maya call history
-              </button>
-              <button className="btn btn-ghost" type="button" disabled={loading} onClick={fetchPosition}>
-                Maya position
-              </button>
-            </>
-          ) : null}
-          {sendSharekhan ? (
-            <>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                disabled={loading}
-                onClick={fetchSharekhanOrders}
-              >
-                Sharekhan orders
-              </button>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                disabled={loading}
-                onClick={fetchSharekhanPositions}
-              >
-                Sharekhan positions
-              </button>
-            </>
-          ) : null}
         </div>
-      </form>
+
+        <div className="trade-tab-panel" hidden={tradeTab !== "Activity"}>
+          <div className="trade-activity-actions">
+            {sendMarketMaya ? (
+              <>
+                <button className="btn btn-ghost" type="button" disabled={loading} onClick={fetchHistory}>
+                  Maya call history
+                </button>
+                <button className="btn btn-ghost" type="button" disabled={loading} onClick={fetchPosition}>
+                  Maya position
+                </button>
+              </>
+            ) : null}
+            {sendSharekhan ? (
+              <>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  disabled={loading}
+                  onClick={fetchSharekhanOrders}
+                >
+                  Sharekhan orders
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  disabled={loading}
+                  onClick={fetchSharekhanPositions}
+                >
+                  Sharekhan positions
+                </button>
+              </>
+            ) : null}
+          </div>
+          {!mayaResult && !sharekhanResult ? (
+            <div className="trade-activity-empty">
+              Preview or execute a trade, then the response shows here. History and positions load in this tab.
+            </div>
+          ) : null}
 
       {mayaResult ? (
         <div className="card form-section form-section--teal" style={{ marginTop: "16px" }}>
@@ -1695,6 +1751,14 @@ export default function TradePage() {
           </details>
         </div>
       ) : null}
+        </div>
+
+        <div className="form-actions trade-form-actions">
+          <button className="btn btn-primary" type="submit" disabled={loading}>
+            {loading ? "Submitting..." : execute ? "Execute trade" : "Preview trade"}
+          </button>
+        </div>
+      </form>
 
       {showTokenModal ? (
         <div className="modal-overlay" onClick={() => setShowTokenModal(false)}>
