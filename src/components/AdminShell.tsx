@@ -159,7 +159,7 @@ export default function AdminShell({
             Signals
           </Link>
           <Link
-            className={`nav-link${pathname === "/admin/mstock" ? " active" : ""}`}
+            className={`nav-link${(pathname === "/admin/mstock" || pathname === "/admin/sharekhan") ? " active" : ""}`}
             href="/admin/mstock"
           >
             <span className="nav-icon">
@@ -169,7 +169,7 @@ export default function AdminShell({
                 <path d="M5 18h9" />
               </svg>
             </span>
-            mStock Access
+            Broker Connections
           </Link>
           <Link
             className={`nav-link${pathname === "/admin/trade" ? " active" : ""}`}

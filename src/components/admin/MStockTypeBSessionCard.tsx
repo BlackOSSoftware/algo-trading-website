@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { getAdminToken } from "@/lib/auth";
+import { BrokerIcon, BrokerModal } from "./BrokerUi";
 
 type MStockSessionData = {
   jwtToken?: string;
@@ -83,28 +84,13 @@ type MarketDataTestResponse = {
 
 const DRAFT_STORAGE_KEY = "wt_admin_mstock_draft";
 
-function prettyJson(value: unknown) {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-async function copyText(value: string) {
-  if (!value) return false;
-  if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-    return false;
-  }
-  try {
-    await navigator.clipboard.writeText(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export default function MStockTypeBSessionCard() {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"login" | "candles" | "test">("login");
+  const [verifyMode, setVerifyMode] = useState<"otp" | "totp">("otp");
+  const [editKeys, setEditKeys] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30000); return () => window.clearInterval(timer); }, []);
   const [apiKey, setApiKey] = useState("");
   const [clientCode, setClientCode] = useState("");
   const [password, setPassword] = useState("");
@@ -115,13 +101,10 @@ export default function MStockTypeBSessionCard() {
   const [refreshToken, setRefreshToken] = useState("");
   const [otp, setOtp] = useState("");
   const [totp, setTotp] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [result, setResult] = useState<MStockSessionResponse | null>(null);
-  const [copiedField, setCopiedField] = useState("");
   const [savedDefaults, setSavedDefaults] = useState<SavedDefaultsSummary | null>(null);
   const [testSymbol, setTestSymbol] = useState("ONGC");
   const [testingMarketData, setTestingMarketData] = useState(false);
@@ -157,18 +140,6 @@ export default function MStockTypeBSessionCard() {
   };
 
   const session = result?.session || {};
-  const raw = prettyJson(result?.payload || result || {});
-  const statusTone = result?.ok ? "ok" : "error";
-  const statusLabel = result?.step === "saved" && savedDefaults?.authTokenExpired
-    ? "JWT expired"
-    : result?.session?.jwtToken
-      ? "JWT ready"
-      : result?.ok && result?.step === "login"
-      ? "OTP/TOTP pending"
-      : result?.ok
-        ? "Session ready"
-        : "Request failed";
-
   const handleResult = (data: MStockSessionResponse) => {
     setResult(data);
     setError(data.ok === false ? data.message || "mStock request failed" : null);
@@ -205,7 +176,7 @@ export default function MStockTypeBSessionCard() {
         setSavedDefaults(data.savedDefaults);
         applySavedConfig(data.savedConfig);
       } catch {
-        // keep form usable even if summary fetch fails
+        if (active) setError("Could not load saved mStock settings. Please refresh and try again.");
       }
     };
 
@@ -247,7 +218,6 @@ export default function MStockTypeBSessionCard() {
     setLoading(true);
     setError(null);
     setMessage(null);
-    setCopiedField("");
     try {
       const token = getAdminToken();
       const data = (await apiPost(path, body, token)) as MStockSessionResponse;
@@ -360,16 +330,6 @@ export default function MStockTypeBSessionCard() {
     });
   };
 
-  const handleCopy = async (field: string, value: string) => {
-    const ok = await copyText(value);
-    if (!ok) {
-      setError("Copy failed. Please copy manually.");
-      return;
-    }
-    setCopiedField(field);
-    setError(null);
-  };
-
   const testMarketData = async () => {
     setTestingMarketData(true);
     setMarketTestError(null);
@@ -393,545 +353,35 @@ export default function MStockTypeBSessionCard() {
     }
   };
 
-  return (
-    <div className="card">
-      <div className="page-title">mStock JWT Session</div>
-      <div className="helper" style={{ marginTop: "6px" }}>
-        Admin-only helper for mStock Type B login used in candle data access. `Start login`
-        request/refresh token laata hai, lekin candle fetch ke liye final JWT OTP/TOTP
-        verification ke baad hi ready hota hai.
-        SMS/email OTP flow me separate send button nahi hai; `Start login` hi OTP trigger
-        karta hai.
-        Agar aap authenticator app use karte ho to fresh code `TOTP` field me dalo aur
-        `Verify TOTP` click karo.
-      </div>
-
-      {savedDefaults?.hasAnySavedDefaults ? (
-        <div className="card" style={{ marginTop: "14px", padding: "14px" }}>
-          <div className="page-title" style={{ fontSize: "16px" }}>
-            Saved mStock Defaults
-          </div>
-          <div className="helper" style={{ marginTop: "6px" }}>
-            JWT/session save alag cheez hai. Candle setup tab complete hota hai jab exchange aur
-            timeframe ready ho. Type B cash-equity ke liye symboltoken runtime par auto-resolve
-            hota hai.
-          </div>
-          <div style={{ marginTop: "12px" }}>
-            <span className={`status-chip ${savedDefaults.candleReady ? "ok" : "error"}`}>
-              {savedDefaults.candleReady ? "Candle setup ready" : "Candle setup incomplete"}
-            </span>
-          </div>
-          <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>API type</strong>
-              <span>{savedDefaults.apiType || "typeB"}</span>
-            </div>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>Client code</strong>
-              <span>{savedDefaults.clientCode || "-"}</span>
-            </div>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>State</strong>
-              <span>{savedDefaults.state || "-"}</span>
-            </div>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>API key</strong>
-              <span>{savedDefaults.apiKeyConfigured ? "Saved" : "Not saved"}</span>
-            </div>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>JWT token</strong>
-              <span>
-                {savedDefaults.authTokenConfigured
-                  ? savedDefaults.authTokenExpired
-                    ? "Expired"
-                    : "Saved"
-                  : "Not saved"}
-              </span>
-            </div>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>JWT expires</strong>
-              <span>
-                {savedDefaults.authTokenExpiresAt
-                  ? new Date(savedDefaults.authTokenExpiresAt).toLocaleString()
-                  : "-"}
-              </span>
-            </div>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>Exchange</strong>
-              <span>{savedDefaults.exchange || "-"}</span>
-            </div>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>Interval</strong>
-              <span>{savedDefaults.interval || "-"}</span>
-            </div>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>Candle offset</strong>
-              <span>{savedDefaults.candleOffset ?? "-"}</span>
-            </div>
-            <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-              <strong>Updated</strong>
-              <span>
-                {savedDefaults.updatedAt
-                  ? new Date(savedDefaults.updatedAt).toLocaleString()
-                  : "-"}
-              </span>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {error ? (
-        <div className="alert alert-error" style={{ marginTop: "14px" }}>
-          {error}
-        </div>
-      ) : null}
-      {message ? (
-        <div className="alert alert-success" style={{ marginTop: "14px" }}>
-          {message}
-        </div>
-      ) : null}
-
-      <div className="form" style={{ marginTop: "16px" }}>
-        <div className="grid-2">
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-api-key">
-              mStock API key
-            </label>
-            <div className="cta-row">
-              <input
-                className="input"
-                id="mstock-api-key"
-                type={showApiKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder="Type B API key"
-              />
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => setShowApiKey((current) => !current)}
-              >
-                {showApiKey ? "Hide" : "Show"}
-              </button>
-            </div>
-            <div className="helper">
-              Leave blank if the API key has already been saved in strategy defaults.
-            </div>
-          </div>
-
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-client-code">
-              Client code
-            </label>
-            <input
-              className="input"
-              id="mstock-client-code"
-              value={clientCode}
-              onChange={(event) => setClientCode(event.target.value)}
-              placeholder="Your mStock client code"
-            />
-          </div>
-        </div>
-
-        <div className="grid-2">
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-password">
-              Password
-            </label>
-            <div className="cta-row">
-              <input
-                className="input"
-                id="mstock-password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="mStock password"
-              />
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => setShowPassword((current) => !current)}
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
-            </div>
-          </div>
-
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-state">
-              State (optional)
-            </label>
-            <input
-              className="input"
-              id="mstock-state"
-              value={stateValue}
-              onChange={(event) => setStateValue(event.target.value)}
-              placeholder="Optional state value"
-            />
-          </div>
-        </div>
-
-        <div className="cta-row" style={{ marginTop: "8px" }}>
-          <button className="btn btn-primary" type="button" disabled={loading} onClick={startLogin}>
-            {loading ? "Working..." : "Start login / Send OTP"}
-          </button>
-        </div>
-        <div className="helper" style={{ marginTop: "8px" }}>
-          Agar aapka account SMS/email OTP use karta hai to isi button se OTP aata hai. Agar
-          aap authenticator app use karte ho to fresh code niche `TOTP` field me dalo aur
-          `Verify TOTP` click karo.
-        </div>
-
-        <div className="grid-2" style={{ marginTop: "18px" }}>
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-refresh-token">
-              Refresh token
-            </label>
-            <input
-              className="input mono"
-              id="mstock-refresh-token"
-              value={refreshToken}
-              onChange={(event) => setRefreshToken(event.target.value)}
-              placeholder="Auto-filled after login if mStock returns it"
-            />
-            <div className="helper">
-              Login response se auto-fill ho jayega agar mStock return kare. Kuch accounts me ye
-              request token hota hai. Final live JWT OTP/TOTP verification ke baad aata hai.
-            </div>
-          </div>
-
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-otp">
-              OTP
-            </label>
-            <input
-              className="input"
-              id="mstock-otp"
-              value={otp}
-              onChange={(event) => setOtp(event.target.value)}
-              placeholder="SMS / email OTP"
-            />
-          </div>
-        </div>
-
-        <div className="grid-2">
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-totp">
-              TOTP
-            </label>
-            <input
-              className="input"
-              id="mstock-totp"
-              value={totp}
-              onChange={(event) => setTotp(event.target.value)}
-              placeholder="Authenticator code"
-            />
-          </div>
-
-          <div className="input-group">
-            <label className="label">Verify session</label>
-            <div className="cta-row">
-              <button className="btn btn-ghost" type="button" disabled={loading} onClick={verifyOtp}>
-                Verify OTP (SMS/email)
-              </button>
-              <button
-                className="btn btn-ghost"
-                type="button"
-                disabled={loading}
-                onClick={verifyTotp}
-              >
-                Verify TOTP (app)
-              </button>
-            </div>
-            <div className="helper">
-              OTP aur TOTP me se jo aapke account flow me lage, wahi use karo.
-            </div>
-          </div>
-        </div>
-
-        <div className="page-title" style={{ marginTop: "18px" }}>
-          Candle Defaults
-        </div>
-        <div className="helper" style={{ marginTop: "6px" }}>
-          Type B cash-equity ke liye symboltoken runtime par auto-resolve hoga. Yahan sirf
-          exchange, timeframe, aur candle offset save karna hai.
-        </div>
-
-        <div className="grid-2" style={{ marginTop: "12px" }}>
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-default-exchange">
-              Exchange
-            </label>
-            <select
-              className="select"
-              id="mstock-default-exchange"
-              value={exchange}
-              onChange={(event) => setExchange(event.target.value)}
-            >
-              <option value="NSE">NSE</option>
-              <option value="BSE">BSE</option>
-              <option value="NFO">NFO</option>
-              <option value="BFO">BFO</option>
-              <option value="CDS">CDS</option>
-              <option value="MCX">MCX</option>
-            </select>
-          </div>
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-default-interval">
-              Candle timeframe
-            </label>
-            <select
-              className="select"
-              id="mstock-default-interval"
-              value={interval}
-              onChange={(event) => setInterval(event.target.value)}
-            >
-              <option value="minute">1 minute</option>
-              <option value="3minute">3 minute</option>
-              <option value="5minute">5 minute</option>
-              <option value="10minute">10 minute</option>
-              <option value="15minute">15 minute</option>
-              <option value="30minute">30 minute</option>
-              <option value="60minute">60 minute</option>
-              <option value="day">1 day</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="input-group">
-          <label className="label" htmlFor="mstock-default-offset">
-            Candle offset
-          </label>
-          <input
-            className="input"
-            id="mstock-default-offset"
-            value={candleOffset}
-            onChange={(event) => setCandleOffset(event.target.value)}
-            placeholder="1"
-          />
-          <div className="helper">`1` = latest candle, `2` = previous candle.</div>
-        </div>
-
-        <div className="cta-row" style={{ marginTop: "8px" }}>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            disabled={loading}
-            onClick={saveCandleDefaults}
-          >
-            {loading ? "Saving..." : "Save candle defaults"}
-          </button>
-        </div>
-
-        <div className="page-title" style={{ marginTop: "18px" }}>
-          Market Data Test
-        </div>
-        <div className="helper" style={{ marginTop: "6px" }}>
-          Yeh test check karta hai ki saved mStock session actual market data endpoints hit kar pa
-          raha hai ya nahi.
-        </div>
-        <div className="grid-2" style={{ marginTop: "12px" }}>
-          <div className="input-group">
-            <label className="label" htmlFor="mstock-test-symbol">
-              Test symbol
-            </label>
-            <input
-              className="input"
-              id="mstock-test-symbol"
-              value={testSymbol}
-              onChange={(event) => setTestSymbol(event.target.value.toUpperCase())}
-              placeholder="ONGC"
-            />
-          </div>
-          <div className="input-group">
-            <label className="label">Run test</label>
-            <div className="cta-row">
-              <button
-                className="btn btn-secondary"
-                type="button"
-                disabled={testingMarketData}
-                onClick={testMarketData}
-              >
-                {testingMarketData ? "Testing..." : "Test mStock market data"}
-              </button>
-            </div>
-          </div>
-        </div>
-        {marketTestError ? (
-          <div className="alert alert-error" style={{ marginTop: "14px" }}>
-            {marketTestError}
-          </div>
-        ) : null}
-        {marketTestMessage ? (
-          <div className="alert alert-success" style={{ marginTop: "14px" }}>
-            {marketTestMessage}
-          </div>
-        ) : null}
-        {marketTestResult ? (
-          <>
-            <div style={{ marginTop: "14px" }}>
-              <span className={`status-chip ${marketTestResult.ok ? "ok" : "error"}`}>
-                {marketTestResult.ok ? "Market data test passed" : "Market data test failed"}
-              </span>
-            </div>
-            <div style={{ display: "grid", gap: "8px", marginTop: "14px" }}>
-              <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                <strong>Symbol</strong>
-                <span>{marketTestResult.symbol || "-"}</span>
-              </div>
-              <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                <strong>Instrument token</strong>
-                <span>{marketTestResult.instrumentToken || "-"}</span>
-              </div>
-              <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                <strong>Exchange</strong>
-                <span>{marketTestResult.exchange || "-"}</span>
-              </div>
-              <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                <strong>Interval</strong>
-                <span>{marketTestResult.interval || "-"}</span>
-              </div>
-              <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                <strong>JWT expires</strong>
-                <span>
-                  {marketTestResult.authTokenExpiresAt
-                    ? new Date(marketTestResult.authTokenExpiresAt).toLocaleString()
-                    : "-"}
-                </span>
-              </div>
-              {!marketTestResult.ok ? (
-                <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                  <strong>Failure reason</strong>
-                  <span>{marketTestResult.error || marketTestResult.message || "-"}</span>
-                </div>
-              ) : null}
-              {marketTestResult.candle ? (
-                <>
-                  <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                    <strong>Candle time</strong>
-                    <span>{marketTestResult.candle.timestamp || "-"}</span>
-                  </div>
-                  <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                    <strong>High</strong>
-                    <span>{marketTestResult.candle.high ?? "-"}</span>
-                  </div>
-                  <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                    <strong>Low</strong>
-                    <span>{marketTestResult.candle.low ?? "-"}</span>
-                  </div>
-                </>
-              ) : null}
-            </div>
-            <details style={{ marginTop: "14px" }}>
-              <summary className="helper" style={{ cursor: "pointer" }}>
-                Market data test details
-              </summary>
-              <pre className="mono" style={{ marginTop: "12px", whiteSpace: "pre-wrap" }}>
-                {prettyJson(marketTestResult)}
-              </pre>
-            </details>
-          </>
-        ) : null}
-      </div>
-
-      {result ? (
-        <>
-          <div style={{ marginTop: "18px" }}>
-            <span className={`status-chip ${statusTone}`}>{statusLabel}</span>
-          </div>
-          <div className="helper" style={{ marginTop: "10px" }}>
-            {result.message || "mStock response received."}
-          </div>
-
-          {session.jwtToken ? (
-            <div className="input-group" style={{ marginTop: "14px" }}>
-              <label className="label" htmlFor="mstock-jwt-result">
-                JWT token
-              </label>
-              <textarea
-                className="input mono"
-                id="mstock-jwt-result"
-                readOnly
-                rows={4}
-                value={session.jwtToken}
-                style={{ minHeight: "96px" }}
-              />
-              <div className="cta-row">
-                <button
-                  className="btn btn-secondary"
-                  type="button"
-                  onClick={() => handleCopy("jwt", session.jwtToken || "")}
-                >
-                  {copiedField === "jwt" ? "Copied" : "Copy JWT"}
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {session.refreshToken ? (
-            <div className="input-group" style={{ marginTop: "14px" }}>
-              <label className="label" htmlFor="mstock-refresh-result">
-                Refresh token
-              </label>
-              <textarea
-                className="input mono"
-                id="mstock-refresh-result"
-                readOnly
-                rows={3}
-                value={session.refreshToken}
-                style={{ minHeight: "82px" }}
-              />
-              <div className="cta-row">
-                <button
-                  className="btn btn-secondary"
-                  type="button"
-                  onClick={() => handleCopy("refresh", session.refreshToken || "")}
-                >
-                  {copiedField === "refresh" ? "Copied" : "Copy refresh token"}
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          <div style={{ display: "grid", gap: "8px", marginTop: "14px" }}>
-            {session.clientCode ? (
-              <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                <strong>Client code</strong>
-                <span>{session.clientCode}</span>
-              </div>
-            ) : null}
-            {session.state ? (
-              <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                <strong>State</strong>
-                <span>{session.state}</span>
-              </div>
-            ) : null}
-            {session.requestTime ? (
-              <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                <strong>Request time</strong>
-                <span>{session.requestTime}</span>
-              </div>
-            ) : null}
-            {session.feedToken ? (
-              <div className="list-item" style={{ justifyContent: "space-between", gap: "12px" }}>
-                <strong>Feed token</strong>
-                <span className="mono" style={{ overflowWrap: "anywhere" }}>
-                  {session.feedToken}
-                </span>
-              </div>
-            ) : null}
-          </div>
-
-          <details style={{ marginTop: "14px" }}>
-            <summary className="helper" style={{ cursor: "pointer" }}>
-              Technical details
-            </summary>
-            <pre className="mono" style={{ marginTop: "12px", whiteSpace: "pre-wrap" }}>
-              {raw}
-            </pre>
-          </details>
-        </>
-      ) : null}
-    </div>
-  );
+  const expired = Boolean(savedDefaults?.authTokenExpired || (savedDefaults?.authTokenExpiresAt && Date.parse(savedDefaults.authTokenExpiresAt) <= now));
+  const hasJwt = Boolean(savedDefaults?.authTokenConfigured || session.jwtToken);
+  const label = !savedDefaults ? "Checking status" : expired ? "Session expired" : hasJwt ? "Token saved" : refreshToken ? "Verification needed" : "Not connected";
+  const tone = expired ? "bad" : hasJwt ? "good" : "pending";
+  return <section className="broker-card broker-mstock">
+    <div className="broker-card-top"><span className="broker-logo"><BrokerIcon kind="candle" /></span><span className="broker-role">CANDLE DATA</span></div>
+    <h2>mStock</h2><p className="broker-description">Historical candles for candle-based strategies.</p>
+    <span className={`broker-status ${tone}`} role="status"><i />{label}</span>
+    <dl className="broker-facts"><div><dt>Account</dt><dd>{savedDefaults?.clientCode || clientCode || "Not added"}</dd></div><div><dt>API key</dt><dd>{savedDefaults?.apiKeyConfigured ? "Saved" : "Not saved"}</dd></div><div><dt>Token expiry</dt><dd>{savedDefaults?.authTokenExpiresAt ? new Date(savedDefaults.authTokenExpiresAt).toLocaleString() : "Not available"}</dd></div><div><dt>Candle settings</dt><dd>{savedDefaults?.candleReady ? `${exchange} ? ${interval}` : "Setup needed"}</dd></div></dl>
+    {error && !open && <p className="broker-notice error" role="alert">{error}</p>}
+    <p className="broker-notice">Live order prices come from Sharekhan. mStock is kept separate for candles.</p>
+    <div className="broker-actions"><button className="btn btn-secondary" onClick={() => { setTab("login"); setOpen(true); }}>{hasJwt && !expired ? "Manage account" : "Connect mStock"}</button><button className="btn btn-ghost" onClick={() => { setTab("candles"); setOpen(true); }}>Candle settings</button></div>
+    <BrokerModal open={open} onClose={() => setOpen(false)} title="mStock candle account">
+      <div className="broker-tabs" role="group" aria-label="mStock setup section">{(["login", "candles", "test"] as const).map((value) => <button key={value} aria-pressed={tab === value} onClick={() => setTab(value)}>{value === "login" ? "Account & login" : value === "candles" ? "Candle settings" : "Test connection"}</button>)}</div>
+      {error && <p className="broker-notice error" role="alert">{error}</p>}{message && <p className="broker-notice" role="status">{message}</p>}
+      {tab === "login" && <div className="broker-form">
+        <div className="broker-step"><span>1</span><div><strong>Sign in to mStock</strong><p>Your API key and client code are remembered.</p></div></div>
+        {savedDefaults?.apiKeyConfigured && !editKeys ? <div className="broker-saved"><BrokerIcon kind="key" /><div><strong>API key saved</strong><p>{clientCode}</p></div><button className="btn btn-ghost" onClick={() => setEditKeys(true)}>Change</button></div> : <label>API key<input className="input" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" /></label>}
+        <div className="broker-fields"><label>Client code<input className="input" value={clientCode} onChange={(e) => setClientCode(e.target.value)} /></label><label>Password<input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label></div>
+        <button className="btn btn-primary" disabled={loading} onClick={startLogin}>{loading ? "Please wait..." : "Start login / Send OTP"}</button>
+        <div className="broker-step"><span>2</span><div><strong>Verify your account</strong><p>Use the SMS/email OTP or your authenticator code.</p></div></div>
+        <div className="broker-tabs"><button aria-pressed={verifyMode === "otp"} onClick={() => setVerifyMode("otp")}>SMS / email OTP</button><button aria-pressed={verifyMode === "totp"} onClick={() => setVerifyMode("totp")}>Authenticator TOTP</button></div>
+        <label>{verifyMode === "otp" ? "OTP" : "Authenticator code"}<input className="input" inputMode="numeric" autoComplete="one-time-code" value={verifyMode === "otp" ? otp : totp} onChange={(e) => verifyMode === "otp" ? setOtp(e.target.value) : setTotp(e.target.value)} /></label>
+        <button className="btn btn-secondary" disabled={loading || !refreshToken} onClick={verifyMode === "otp" ? verifyOtp : verifyTotp}>Verify & save session</button>
+        {!refreshToken && <p className="helper">Start login first to enable verification.</p>}
+        <details className="broker-details"><summary>Advanced login settings</summary><label>State<input className="input" value={stateValue} onChange={(e) => setStateValue(e.target.value)} /></label><label>Refresh / request token<input className="input" type="password" value={refreshToken} onChange={(e) => setRefreshToken(e.target.value)} /></label></details>
+      </div>}
+      {tab === "candles" && <div className="broker-form"><p className="broker-notice">These settings apply only to historical candle requests.</p><div className="broker-fields"><label>Exchange<select className="select" value={exchange} onChange={(e) => setExchange(e.target.value)}>{["NSE", "BSE", "NFO", "BFO", "CDS", "MCX"].map((value) => <option key={value}>{value}</option>)}</select></label><label>Timeframe<select className="select" value={interval} onChange={(e) => setInterval(e.target.value)}>{["1minute", "3minute", "5minute", "10minute", "15minute", "30minute", "60minute", "day"].map((value) => <option key={value} value={value}>{value === "day" ? "1 day" : value.replace("minute", " minutes")}</option>)}</select></label></div><label>Candle offset<input className="input" type="number" min="1" step="1" value={candleOffset} onChange={(e) => setCandleOffset(e.target.value)} /></label><p className="helper">1 = latest candle, 2 = previous candle.</p><button className="btn btn-primary" disabled={loading} onClick={saveCandleDefaults}>Save candle settings</button></div>}
+      {tab === "test" && <div className="broker-form"><p className="helper">Check that mStock can return historical candle data.</p><label>Test symbol<input className="input" value={testSymbol} onChange={(e) => setTestSymbol(e.target.value)} /></label><button className="btn btn-secondary" disabled={testingMarketData} onClick={testMarketData}>{testingMarketData ? "Testing..." : "Test candle connection"}</button>{marketTestError && <p className="broker-notice error" role="alert">{marketTestError}</p>}{marketTestMessage && <p className="broker-notice" role="status">{marketTestMessage}</p>}{marketTestResult?.candle && <div className="broker-saved"><BrokerIcon kind="candle" /><div><strong>{marketTestResult.symbol || testSymbol}</strong><p>Close: {marketTestResult.candle.close} ? {marketTestResult.candle.timestamp}</p></div></div>}</div>}
+    </BrokerModal>
+  </section>;
 }

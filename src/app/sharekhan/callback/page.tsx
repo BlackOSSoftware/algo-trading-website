@@ -70,6 +70,11 @@ function SharekhanCallbackInner() {
   const [returnTo, setReturnTo] = useState("/strategy");
 
   useEffect(() => {
+    // Admin callback is routed before touching user login/drafts/credentials.
+    if (searchParams.get("state")?.startsWith("admin-feed-")) {
+      window.location.replace(`/admin/sharekhan${window.location.search}`);
+      return;
+    }
     const incoming = pickRequestToken(searchParams);
 
     async function run() {
