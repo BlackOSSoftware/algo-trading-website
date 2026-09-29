@@ -30,7 +30,7 @@ export default function SharekhanLinksPage() {
     try {
       const result = await apiPost("/api/v1/admin/order-intents", { details }, getAdminToken()) as { link: LinkRecord };
       setCreated(result.link); await refresh();
-      setMessage("Order details link created. User can review the details, then enter them in Sharekhan. This does not prefill the Sharekhan app.");
+      setMessage("Order link created. Phone par yeh Sharekhan app kholta hai, website nahi.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not create link"); }
     finally { setBusy(false); }
   }
@@ -52,10 +52,10 @@ export default function SharekhanLinksPage() {
 
   return <div style={{ maxWidth: 1000, margin: "0 auto" }}>
     <h1>Shareable Order Links</h1>
-    <p>Order details ek baar bharo aur user ko review link bhejo. User Sharekhan mein details check karke khud order dalega.</p>
+    <p>Order details ek baar bharo aur user ko link bhejo. Phone par link Sharekhan app kholta hai, website nahi. User app mein details khud enter karke order confirm karega.</p>
     <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-      <strong>New links do not prefill the Sharekhan app</strong>
-      <p>Sharekhan ke one-tap numbers ka verified format nahi mila. Yeh link hamari site par order details dikhata hai. It does not submit a trade.</p>
+      <strong>Link Sharekhan app kholta hai</strong>
+      <p>Phone par open karte hi Sharekhan app launch hota hai. Yeh link trade submit nahi karta. User app mein order khud confirm karta hai.</p>
     </div>
     <form className="card" onSubmit={createOrderLink} style={{ padding: 24, marginBottom: 22 }}>
       <h2>Create order details link</h2>
