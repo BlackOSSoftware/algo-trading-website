@@ -1447,7 +1447,7 @@ export default function TradePage() {
                 </div>
               ) : (
                 <div className="helper" style={{ alignSelf: "end", paddingBottom: 8 }}>
-                  Market = price 0 (immediate).
+                  Market buys at the ask and sells at the bid.
                 </div>
               )}
             </div>

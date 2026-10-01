@@ -468,7 +468,7 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     description:
       "Choose Market or Limit for Sharekhan. Both are sent as limit orders, with different prices.",
     points: [
-      "Market sends a Sharekhan limit at the live price: buy and short-cover +1%, sell and short-sell -1%.",
+      "Market sends a Sharekhan limit at the live ask for buy and short-cover, and the live bid for sell and short-sell.",
       "Limit sends the price you set. The live market price is not used.",
       "Market Maya does not receive order type or price.",
     ],
@@ -5293,7 +5293,7 @@ export default function StrategyPage() {
                     <div className="helper">
                       {orderType === "LIMIT"
                         ? "Limit orders go out at the price you set below. The live market price is not used."
-                        : "Market orders go to Sharekhan as a limit at the live price: buy and short-cover +1%, sell and short-sell -1%."}
+                        : "Market orders go to Sharekhan as a limit at the live ask for buy and short-cover, and the live bid for sell and short-sell."}
                     </div>
                   </div>
                   {orderType === "LIMIT" ? (
@@ -6725,7 +6725,7 @@ export default function StrategyPage() {
                     <div className="helper">
                       {editOrderType === "LIMIT"
                         ? "Limit orders go out at the price you set below. The live market price is not used."
-                        : "Market orders go to Sharekhan as a limit at the live price: buy and short-cover +1%, sell and short-sell -1%."}
+                        : "Market orders go to Sharekhan as a limit at the live ask for buy and short-cover, and the live bid for sell and short-sell."}
                     </div>
                   </div>
                   {editOrderType === "LIMIT" ? (
