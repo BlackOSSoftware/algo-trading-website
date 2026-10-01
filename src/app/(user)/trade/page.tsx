@@ -122,6 +122,7 @@ function buildInstrumentSearchParams(query: string, exchange: string, segment: s
     if (exchange) params.set("exchange", exchange);
   } else if (exchange === "MCX") {
     params.set("exchange", "MCX");
+    if (segment === "FUT" || segment === "OPT") params.set("segment", segment);
   } else {
     params.set("instrumentType", "EQ");
     params.set("exchange", "NSE");
@@ -1316,7 +1317,7 @@ export default function TradePage() {
                   autoComplete="off"
                 />
                 {showSymbolSuggestions &&
-                (symbolSearching || symbolSuggestions.length > 0) ? (
+                (symbolSearching || symbolSuggestions.length > 0 || symbol.trim().length >= 2) ? (
                   <div className="stock-suggest-menu" role="listbox">
                     {symbolSearching && symbolSuggestions.length === 0 ? (
                       <div className="stock-suggest-empty">Searching...</div>
