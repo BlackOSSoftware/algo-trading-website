@@ -47,6 +47,8 @@ function computeRatioTarget(slValue: string, ratioValue: string) {
 const CALL_TYPE_OPTIONS = [
   "BUY",
   "SELL",
+  "SHORT SELL",
+  "SHORT SELL COVER",
   "BUY EXIT",
   "SELL EXIT",
   "BUY ADD",

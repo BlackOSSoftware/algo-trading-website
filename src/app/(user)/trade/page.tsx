@@ -196,6 +196,8 @@ function renderTradeIcon(name: TradeIcon) {
 const CALL_TYPE_OPTIONS = [
   "BUY",
   "SELL",
+  "SHORT SELL",
+  "SHORT SELL COVER",
   "BUY EXIT",
   "SELL EXIT",
   "BUY ADD",
@@ -1105,9 +1107,9 @@ export default function TradePage() {
                   value={sharekhanProductType}
                   onChange={(event) => setSharekhanProductType(event.target.value)}
                 >
-                  <option value="INVESTMENT">INVESTMENT (Delivery)</option>
-                  <option value="BIGTRADE">BIGTRADE (Intraday)</option>
-                  <option value="BIGTRADEPLUS">BIGTRADEPLUS</option>
+                  <option value="INVESTMENT">Delivery (Investment)</option>
+                  <option value="BIGTRADE">Intraday (BigTrade)</option>
+                  <option value="BIGTRADEPLUS">Intraday Plus (BigTrade Plus)</option>
                 </select>
               </div>
               <div className="input-group">

@@ -150,12 +150,20 @@ const DEFAULT_TRADE_WINDOW_START = "09:15";
 const DEFAULT_TRADE_WINDOW_END = "15:30";
 const DEFAULT_MCX_TRADE_WINDOW_END = "23:30";
 const STRATEGY_CALL_TYPE_OPTIONS = [
-  "BUY",
-  "SELL",
-  "BUY EXIT",
-  "SELL EXIT",
-  "BUY ADD",
-  "SELL ADD",
+  { value: "BUY", label: "BUY" },
+  { value: "SELL", label: "SELL" },
+  { value: "SHORT SELL", label: "Short sell" },
+  { value: "SHORT SELL COVER", label: "Short sell cover" },
+  { value: "BUY EXIT", label: "BUY EXIT" },
+  { value: "SELL EXIT", label: "SELL EXIT" },
+  { value: "BUY ADD", label: "BUY ADD" },
+  { value: "SELL ADD", label: "SELL ADD" },
+];
+const SHAREKHAN_PRODUCT_OPTIONS = [
+  { value: "", label: "Auto (Delivery)" },
+  { value: "INVESTMENT", label: "Delivery (Investment)" },
+  { value: "BIGTRADE", label: "Intraday (BigTrade)" },
+  { value: "BIGTRADEPLUS", label: "Intraday Plus (BigTrade Plus)" },
 ];
 const EXIT_CALL_TYPES = new Set([
   "BUY EXIT",
@@ -304,9 +312,10 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     title: "Sharekhan product",
     description: "Product type sent to Sharekhan for direct orders.",
     points: [
-      "INVESTMENT = delivery / carry.",
-      "BIGTRADE = intraday style.",
-      "Auto uses INVESTMENT when blank.",
+      "Delivery (Investment) keeps the position in your demat.",
+      "Intraday (BigTrade) is squared off the same day.",
+      "Short sell and short sell cover always use Intraday (BigTrade).",
+      "Auto uses Delivery when this is left blank.",
     ],
   },
   symbolSource: {
@@ -446,7 +455,8 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     title: "Trade Side Fallback",
     description: "If the payload does not include `call_type`, the selected action here will be used.",
     points: [
-      "BUY and SELL are used for normal entry trades.",
+      "BUY and SELL are normal delivery or intraday entries.",
+      "Short sell opens an intraday short (Sharekhan SM). Short sell cover buys it back (Sharekhan BM).",
       "BUY EXIT and SELL EXIT send exit actions.",
       "In exit mode, order type, quantity, target, and stop loss are ignored.",
     ],
@@ -454,11 +464,11 @@ const INFO_CONTENT: Record<string, InfoContent> = {
   orderType: {
     title: "Order Type",
     description:
-      "Market Maya REST API no longer accepts MARKET/LIMIT order_type. Live broker orders are placed from call type + symbol only.",
+      "Choose Market or Limit for Sharekhan. Both are sent as limit orders, with different prices.",
     points: [
-      "Do not send order_type or price in the custom-trade URL.",
-      "Sending MARKET previously caused pseudo/paper fills instead of live orders.",
-      "Qty, target, and stop loss still work as documented additional variables.",
+      "Market sends a Sharekhan limit at the live price: buy and short-cover +1%, sell and short-sell -1%.",
+      "Limit sends the price you set. The live market price is not used.",
+      "Market Maya does not receive order type or price.",
     ],
   },
   limitPrice: {
@@ -4737,24 +4747,6 @@ export default function StrategyPage() {
                     </div>
                   </div>
 
-                  <div className="input-group">
-                    {renderAddLabelWithInfo(
-                      "sharekhan-product",
-                      "Sharekhan product",
-                      "sharekhanProductType"
-                    )}
-                    <select
-                      className="select"
-                      id="sharekhan-product"
-                      value={sharekhanProductType}
-                      onChange={(event) => setSharekhanProductType(event.target.value)}
-                    >
-                      <option value="">Auto (INVESTMENT)</option>
-                      <option value="INVESTMENT">INVESTMENT</option>
-                      <option value="BIGTRADE">BIGTRADE</option>
-                      <option value="BIGTRADEPLUS">BIGTRADEPLUS</option>
-                    </select>
-                  </div>
                 </div>
               </StrategyTab>) : null}
               <StrategyTab label="Instruments" icon={renderStrategyUiIcon("layers")}>
@@ -5171,11 +5163,29 @@ export default function StrategyPage() {
                   >
                     <option value="">Use webhook side</option>
                     {STRATEGY_CALL_TYPE_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="input-group">
+                  {renderAddLabelWithInfo("sharekhan-product", "Sharekhan product", "sharekhanProductType")}
+                  <select
+                    className="select"
+                    id="sharekhan-product"
+                    value={sharekhanProductType}
+                    onChange={(event) => setSharekhanProductType(event.target.value)}
+                  >
+                    {SHAREKHAN_PRODUCT_OPTIONS.map((option) => (
+                      <option key={option.value || "auto"} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="helper">
+                    Delivery keeps the shares. Intraday (BigTrade) squares off the same day. Short sell and short sell cover always use Intraday.
+                  </div>
                 </div>
               {exitFallbackSelected ? (
                 <div className="helper">
@@ -5195,7 +5205,9 @@ export default function StrategyPage() {
                       <option value="LIMIT">Limit</option>
                     </select>
                     <div className="helper">
-                      Sharekhan orders use the admin live feed price and are sent as LIMIT orders.
+                      {orderType === "LIMIT"
+                        ? "Limit orders go out at the price you set below. The live market price is not used."
+                        : "Market orders go to Sharekhan as a limit at the live price: buy and short-cover +1%, sell and short-sell -1%."}
                     </div>
                   </div>
                   {orderType === "LIMIT" ? (
@@ -6122,24 +6134,6 @@ export default function StrategyPage() {
                     </div>
                   </div>
 
-                  <div className="input-group">
-                    {renderEditLabelWithInfo(
-                      "edit-sharekhan-product",
-                      "Sharekhan product",
-                      "sharekhanProductType"
-                    )}
-                    <select
-                      className="select"
-                      id="edit-sharekhan-product"
-                      value={editSharekhanProductType}
-                      onChange={(event) => setEditSharekhanProductType(event.target.value)}
-                    >
-                      <option value="">Auto (INVESTMENT)</option>
-                      <option value="INVESTMENT">INVESTMENT</option>
-                      <option value="BIGTRADE">BIGTRADE</option>
-                      <option value="BIGTRADEPLUS">BIGTRADEPLUS</option>
-                    </select>
-                  </div>
                 </div>
               </StrategyTab>) : null}
               <StrategyTab label="Instruments" icon={renderStrategyUiIcon("layers")}>
@@ -6555,11 +6549,33 @@ export default function StrategyPage() {
                   >
                     <option value="">Use payload `call_type`</option>
                     {STRATEGY_CALL_TYPE_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="input-group">
+                  {renderEditLabelWithInfo(
+                    "edit-sharekhan-product",
+                    "Sharekhan product",
+                    "sharekhanProductType"
+                  )}
+                  <select
+                    className="select"
+                    id="edit-sharekhan-product"
+                    value={editSharekhanProductType}
+                    onChange={(event) => setEditSharekhanProductType(event.target.value)}
+                  >
+                    {SHAREKHAN_PRODUCT_OPTIONS.map((option) => (
+                      <option key={option.value || "auto"} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="helper">
+                    Delivery keeps the shares. Intraday (BigTrade) squares off the same day. Short sell and short sell cover always use Intraday.
+                  </div>
                 </div>
               {editExitFallbackSelected ? (
                 <div className="helper">
@@ -6579,7 +6595,9 @@ export default function StrategyPage() {
                       <option value="LIMIT">Limit</option>
                     </select>
                     <div className="helper">
-                      Sharekhan orders use the admin live feed price and are sent as LIMIT orders.
+                      {editOrderType === "LIMIT"
+                        ? "Limit orders go out at the price you set below. The live market price is not used."
+                        : "Market orders go to Sharekhan as a limit at the live price: buy and short-cover +1%, sell and short-sell -1%."}
                     </div>
                   </div>
                   {editOrderType === "LIMIT" ? (
