@@ -715,6 +715,9 @@ export default function TradePage() {
     setSegment("OPT");
     setSymbolCode("");
     setSymbol("BANKNIFTY");
+    setPickedToken("");
+    setPickedLotSize("");
+    setShowManualContract(false);
     setCallType("BUY");
     setContract("NEAR");
     setExpiry("WEEKLY");
