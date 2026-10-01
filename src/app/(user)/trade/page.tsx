@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import {
@@ -21,6 +21,9 @@ type InstrumentHit = {
   name?: string;
   exchange?: string;
   instrumentType?: string;
+  expiry?: string;
+  strike?: string;
+  lotSize?: string;
 };
 
 type SharekhanSavedCredentials = {
@@ -126,10 +129,53 @@ function buildInstrumentSearchParams(query: string, exchange: string, segment: s
   return params;
 }
 
+function formatExpiryForOrder(value: string) {
+  const raw = value.trim();
+  if (!raw) return "";
+  if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) return raw;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (iso) return `${iso[3]}-${iso[2]}-${iso[1]}`;
+  const slash = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
+  if (slash) return `${slash[1]}-${slash[2]}-${slash[3]}`;
+  const months: Record<string, string> = {
+    JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06",
+    JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12",
+  };
+  const named = /^(\d{1,2})[- ]?([A-Za-z]{3})[- ]?(\d{4})$/.exec(raw.replace(/\s+/g, ""));
+  if (named) {
+    const month = months[named[2].toUpperCase()];
+    if (month) return `${named[1].padStart(2, "0")}-${month}-${named[3]}`;
+  }
+  return "";
+}
+
+function expirySortKey(value: string) {
+  const formatted = formatExpiryForOrder(value);
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(formatted);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+  return Number(`${match[3]}${match[2]}${match[1]}`);
+}
+
+function inferSegmentFromInstrument(hit: InstrumentHit) {
+  const type = String(hit.instrumentType || "").toUpperCase();
+  if (/OPT/.test(type)) return "OPT";
+  if (/FUT/.test(type) || hit.exchange === "MCX") return "FUT";
+  if (hit.expiry && hit.exchange && hit.exchange !== "NSE" && hit.exchange !== "BSE") return "FUT";
+  return "EQ";
+}
+
+function inferOptionSide(hit: InstrumentHit) {
+  const symbol = String(hit.symbol || "").toUpperCase();
+  if (symbol.endsWith("PE") || /\bPE\b/.test(symbol)) return "PE";
+  if (symbol.endsWith("CE") || /\bCE\b/.test(symbol)) return "CE";
+  return "";
+}
+
 function formatInstrumentSuggestion(hit: InstrumentHit) {
+  const expiry = formatExpiryForOrder(String(hit.expiry || ""));
   const parts = [hit.symbol];
+  if (expiry) parts.push(expiry);
   if (hit.exchange) parts.push(hit.exchange);
-  if (hit.instrumentType) parts.push(hit.instrumentType);
   return parts.join(" · ");
 }
 
@@ -222,6 +268,10 @@ export default function TradePage() {
   const [symbolSuggestions, setSymbolSuggestions] = useState<InstrumentHit[]>([]);
   const [symbolSearching, setSymbolSearching] = useState(false);
   const [showSymbolSuggestions, setShowSymbolSuggestions] = useState(false);
+  const [pickedToken, setPickedToken] = useState("");
+  const [pickedLotSize, setPickedLotSize] = useState("");
+  const [showManualContract, setShowManualContract] = useState(false);
+  const suppressSuggestRef = useRef("");
   const [contract, setContract] = useState("NEAR");
   const [expiry, setExpiry] = useState("WEEKLY");
   const [expiryDate, setExpiryDate] = useState("");
@@ -523,7 +573,7 @@ export default function TradePage() {
 
   useEffect(() => {
     const query = symbol.trim();
-    if (usingSymbolCode || query.length < 2) {
+    if (usingSymbolCode || query.length < 2 || suppressSuggestRef.current === query) {
       setSymbolSuggestions([]);
       setSymbolSearching(false);
       return;
@@ -542,7 +592,16 @@ export default function TradePage() {
           token
         )) as { instruments?: InstrumentHit[] };
         if (cancelled) return;
-        setSymbolSuggestions(Array.isArray(data?.instruments) ? data.instruments : []);
+        const rows = Array.isArray(data?.instruments) ? data.instruments : [];
+        const filtered = rows
+          .filter((hit) => {
+            const type = String(hit.instrumentType || "").toUpperCase();
+            if (normalizedSegment === "OPT") return /OPT/.test(type);
+            if (normalizedSegment === "FUT") return !/OPT/.test(type);
+            return true;
+          })
+          .sort((a, b) => expirySortKey(String(a.expiry || "")) - expirySortKey(String(b.expiry || "")));
+        setSymbolSuggestions(filtered);
         setShowSymbolSuggestions(true);
       } catch {
         if (!cancelled) setSymbolSuggestions([]);
@@ -560,9 +619,27 @@ export default function TradePage() {
   const handleSelectSymbol = useCallback((hit: InstrumentHit) => {
     const nextSymbol = String(hit.symbol || "").trim().toUpperCase();
     if (!nextSymbol) return;
+    const nextSegment = inferSegmentFromInstrument(hit);
+    const nextExpiry = formatExpiryForOrder(String(hit.expiry || ""));
+    suppressSuggestRef.current = nextSymbol;
     setSymbol(nextSymbol);
     setSymbolCode("");
-    if (hit.exchange) setExchange(String(hit.exchange));
+    setPickedToken(String(hit.token || "").trim());
+    setPickedLotSize(String(hit.lotSize || "").trim());
+    if (hit.exchange) setExchange(String(hit.exchange).toUpperCase());
+    if (nextSegment) setSegment(nextSegment);
+    if (nextExpiry) {
+      setExpiryDate(nextExpiry);
+      setContract("NEAR");
+      setExpiry(nextSegment === "OPT" ? "WEEKLY" : "MONTHLY");
+    }
+    const side = inferOptionSide(hit);
+    if (side) setOptionType(side);
+    const strike = Number(String(hit.strike || "").replace(/,/g, ""));
+    if (Number.isFinite(strike) && strike > 0) {
+      setStrikePrice(String(strike));
+    }
+    setShowManualContract(false);
     setSymbolSuggestions([]);
     setShowSymbolSuggestions(false);
   }, []);
@@ -586,6 +663,9 @@ export default function TradePage() {
     setSegment("EQ");
     setSymbolCode("");
     setSymbol("ONGC");
+    setPickedToken("");
+    setPickedLotSize("");
+    setShowManualContract(false);
     setCallType("BUY");
     setQtyDistribution("Fix");
     setQtyValue("1");
@@ -614,6 +694,9 @@ export default function TradePage() {
     setSegment("FUT");
     setSymbolCode("");
     setSymbol("GOLD");
+    setPickedToken("");
+    setPickedLotSize("");
+    setShowManualContract(false);
     setCallType("BUY");
     setContract("NEAR");
     setExpiry("MONTHLY");
@@ -756,7 +839,7 @@ export default function TradePage() {
       exchange: resolvedExchange,
       segment: usingSymbolCode ? "EQ" : normalizedSegment,
       symbol: usingSymbolCode ? symbolCode.trim() : symbol.trim(),
-      symbolToken: usingSymbolCode ? symbolCode.trim() : undefined,
+      symbolToken: usingSymbolCode ? symbolCode.trim() : pickedToken || undefined,
       call_type: callType,
       quantity: qtyValue.trim(),
       orderType,
@@ -1201,9 +1284,13 @@ export default function TradePage() {
                   id="mm-symbol"
                   value={symbol}
                   onChange={(event) => {
-                    setSymbol(event.target.value.toUpperCase());
+                    const next = event.target.value.toUpperCase();
+                    suppressSuggestRef.current = "";
+                    setSymbol(next);
+                    setPickedToken("");
+                    setPickedLotSize("");
+                    setExpiryDate("");
                     setShowSymbolSuggestions(true);
-                    // Typing a name should exit numeric token mode.
                     if (symbolCode.trim() && !/^\d+$/.test(symbolCode.trim())) {
                       setSymbolCode("");
                     }
@@ -1258,7 +1345,9 @@ export default function TradePage() {
                   </div>
                 ) : null}
               </div>
-              <div className="helper">Type 2+ letters — pick from suggestions.</div>
+              <div className="helper">
+                Type the contract, then click a result. Exchange, expiry, and scrip fill in.
+              </div>
             </div>
             <div className="input-group">
               <label className="label" htmlFor="mm-symbol-code">
@@ -1360,7 +1449,34 @@ export default function TradePage() {
             </div>
           ) : null}
 
-          {showDerivativeFields ? (
+          {pickedToken ? (
+            <div className="helper">
+              {symbol} · {exchange} · {normalizedSegment === "OPT" ? "Option" : "Futures"}
+              {expiryDate ? ` · Expiry ${expiryDate}` : ""}
+              {` · Scrip ${pickedToken}`}
+              {pickedLotSize ? ` · Lot ${pickedLotSize}` : ""}
+              {normalizedSegment === "OPT" && optionType ? ` · ${optionType}` : ""}
+              {normalizedSegment === "OPT" && strikePrice ? ` · Strike ${strikePrice}` : ""}
+            </div>
+          ) : showDerivativeFields ? (
+            <div className="helper">
+              Search the contract and click it. Contract, expiry, and scrip are filled from that result.
+            </div>
+          ) : null}
+
+          {showDerivativeFields && !pickedToken ? (
+            <div className="cta-row">
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => setShowManualContract((current) => !current)}
+              >
+                {showManualContract ? "Hide manual contract" : "Enter contract manually"}
+              </button>
+            </div>
+          ) : null}
+
+          {showDerivativeFields && showManualContract && !pickedToken ? (
             <>
               <div className="grid-2">
                 <div className="input-group">
@@ -1411,7 +1527,7 @@ export default function TradePage() {
             </>
           ) : null}
 
-          {showOptionFields ? (
+          {showOptionFields && !pickedToken ? (
             <div className="grid-2">
               <div className="input-group">
                 <label className="label" htmlFor="mm-option-type">
