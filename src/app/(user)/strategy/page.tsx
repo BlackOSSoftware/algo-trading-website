@@ -55,6 +55,8 @@ type Strategy = {
     orderType?: string;
     limitPriceSource?: "fixed" | "trigger" | string;
     limitPrice?: string;
+    sharekhanTriggerSource?: string;
+    sharekhanTriggerPrice?: string;
     mStockApiType?: string;
     mStockApiKey?: string;
     mStockAuthToken?: string;
@@ -471,6 +473,15 @@ const INFO_CONTENT: Record<string, InfoContent> = {
       "Market Maya does not receive order type or price.",
     ],
   },
+  sharekhanTriggerPrice: {
+    title: "Trigger price",
+    description: "Optional Sharekhan trigger sent with a limit order.",
+    points: [
+      "None sends 0. The order does not wait for a trigger.",
+      "Your price sends the number you enter. 0 means no trigger.",
+      "Chartink uses the alert trigger_price. If that alert has none, 0 is sent.",
+    ],
+  },
   limitPrice: {
     title: "Limit Price",
     description: "Use this field to set a direct price for a LIMIT order.",
@@ -702,6 +713,15 @@ const INFO_CONTENT: Record<string, InfoContent> = {
     ],
   },
 };
+
+type SharekhanTriggerSource = "none" | "fixed" | "chartink";
+
+function normalizeSharekhanTriggerSource(value: string): SharekhanTriggerSource {
+  const raw = value.trim().toLowerCase();
+  if (raw === "fixed" || raw === "manual") return "fixed";
+  if (raw === "chartink" || raw === "trigger") return "chartink";
+  return "none";
+}
 
 function normalizeTradeAction(value: string) {
   return value.trim().toUpperCase().replace(/\s+/g, " ");
@@ -1417,6 +1437,8 @@ export default function StrategyPage() {
   const [limitPriceSource, setLimitPriceSource] =
     useState<LimitPriceSource>(DEFAULT_LIMIT_PRICE_SOURCE);
   const [limitPrice, setLimitPrice] = useState("");
+  const [sharekhanTriggerSource, setSharekhanTriggerSource] = useState<SharekhanTriggerSource>("none");
+  const [sharekhanTriggerPrice, setSharekhanTriggerPrice] = useState("");
   const [mStockApiType, setMStockApiType] = useState(DEFAULT_MSTOCK_API_TYPE);
   const [mStockApiKey, setMStockApiKey] = useState("");
   const [showMStockApiKey, setShowMStockApiKey] = useState(false);
@@ -1507,6 +1529,9 @@ export default function StrategyPage() {
   const [editLimitPriceSource, setEditLimitPriceSource] =
     useState<LimitPriceSource>(DEFAULT_LIMIT_PRICE_SOURCE);
   const [editLimitPrice, setEditLimitPrice] = useState("");
+  const [editSharekhanTriggerSource, setEditSharekhanTriggerSource] =
+    useState<SharekhanTriggerSource>("none");
+  const [editSharekhanTriggerPrice, setEditSharekhanTriggerPrice] = useState("");
   const [editMStockApiType, setEditMStockApiType] = useState(DEFAULT_MSTOCK_API_TYPE);
   const [editMStockApiKey, setEditMStockApiKey] = useState("");
   const [showEditMStockApiKey, setShowEditMStockApiKey] = useState(false);
@@ -1754,6 +1779,8 @@ export default function StrategyPage() {
             orderType,
             limitPriceSource,
             limitPrice,
+            sharekhanTriggerSource,
+            sharekhanTriggerPrice,
             mStockApiType,
             mStockApiKey,
             mStockAuthToken,
@@ -1812,6 +1839,8 @@ export default function StrategyPage() {
             orderType: editOrderType,
             limitPriceSource: editLimitPriceSource,
             limitPrice: editLimitPrice,
+            sharekhanTriggerSource: editSharekhanTriggerSource,
+            sharekhanTriggerPrice: editSharekhanTriggerPrice,
             mStockApiType: editMStockApiType,
             mStockApiKey: editMStockApiKey,
             mStockAuthToken: editMStockAuthToken,
@@ -1951,6 +1980,8 @@ export default function StrategyPage() {
       setOrderType(text("orderType", "MARKET"));
       setLimitPriceSource((text("limitPriceSource", DEFAULT_LIMIT_PRICE_SOURCE) as LimitPriceSource) || DEFAULT_LIMIT_PRICE_SOURCE);
       setLimitPrice(text("limitPrice"));
+      setSharekhanTriggerSource(normalizeSharekhanTriggerSource(text("sharekhanTriggerSource")));
+      setSharekhanTriggerPrice(text("sharekhanTriggerPrice"));
       setMStockApiType(text("mStockApiType", DEFAULT_MSTOCK_API_TYPE));
       setMStockApiKey(text("mStockApiKey"));
       setMStockAuthToken(text("mStockAuthToken"));
@@ -2012,6 +2043,8 @@ export default function StrategyPage() {
     setEditOrderType(text("orderType", "MARKET"));
     setEditLimitPriceSource((text("limitPriceSource", DEFAULT_LIMIT_PRICE_SOURCE) as LimitPriceSource) || DEFAULT_LIMIT_PRICE_SOURCE);
     setEditLimitPrice(text("limitPrice"));
+    setEditSharekhanTriggerSource(normalizeSharekhanTriggerSource(text("sharekhanTriggerSource")));
+    setEditSharekhanTriggerPrice(text("sharekhanTriggerPrice"));
     setEditMStockApiType(text("mStockApiType", DEFAULT_MSTOCK_API_TYPE));
     setEditMStockApiKey(text("mStockApiKey"));
     setEditMStockAuthToken(text("mStockAuthToken"));
@@ -3158,6 +3191,15 @@ export default function StrategyPage() {
           setError("Limit price is required when fixed limit price is selected.");
           return;
         }
+        if (
+          orderType === "LIMIT" &&
+          sharekhanTriggerSource === "fixed" &&
+          sharekhanTriggerPrice.trim() &&
+          !(Number(sharekhanTriggerPrice) >= 0)
+        ) {
+          setError("Trigger price must be 0 or a positive number.");
+          return;
+        }
         if (usingDynamicLimitPrice && trimmedBufferBy && !trimmedBufferPoints) {
           setError("Trade buffer value is required when buffer type is selected.");
           return;
@@ -3277,6 +3319,16 @@ export default function StrategyPage() {
         limitPrice.trim()
           ? { limitPrice: limitPrice.trim() }
           : {}),
+        ...(!exitFallbackSelected && orderType === "LIMIT"
+          ? { sharekhanTriggerSource }
+          : {}),
+        ...(!exitFallbackSelected &&
+        orderType === "LIMIT" &&
+        sharekhanTriggerSource === "fixed" &&
+        sharekhanTriggerPrice.trim() &&
+        Number(sharekhanTriggerPrice) > 0
+          ? { sharekhanTriggerPrice: sharekhanTriggerPrice.trim() }
+          : {}),
         ...(!exitFallbackSelected && trimmedCapitalAmount
           ? { capitalAmount: capitalAmountNumber }
           : {}),
@@ -3375,6 +3427,8 @@ export default function StrategyPage() {
       setOrderType("MARKET");
       setLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
       setLimitPrice("");
+      setSharekhanTriggerSource("none");
+      setSharekhanTriggerPrice("");
       setMStockApiType(DEFAULT_MSTOCK_API_TYPE);
       setMStockApiKey("");
       setShowMStockApiKey(false);
@@ -3467,6 +3521,8 @@ export default function StrategyPage() {
     setEditOrderType(mm.orderType || "MARKET");
     setEditLimitPriceSource(resolveLimitPriceSource(mm.limitPriceSource, mm.limitPrice));
     setEditLimitPrice(mm.limitPrice || "");
+    setEditSharekhanTriggerSource(normalizeSharekhanTriggerSource(mm.sharekhanTriggerSource || ""));
+    setEditSharekhanTriggerPrice(mm.sharekhanTriggerPrice || "");
     setShowEditMStockApiKey(false);
     setEditMStockApiType(mm.mStockApiType || DEFAULT_MSTOCK_API_TYPE);
     setEditMStockApiKey(mm.mStockApiKey || "");
@@ -3563,6 +3619,8 @@ export default function StrategyPage() {
     setEditOrderType("MARKET");
     setEditLimitPriceSource(DEFAULT_LIMIT_PRICE_SOURCE);
     setEditLimitPrice("");
+    setEditSharekhanTriggerSource("none");
+    setEditSharekhanTriggerPrice("");
     setEditMStockApiType(DEFAULT_MSTOCK_API_TYPE);
     setEditMStockApiKey("");
     setEditMStockAuthToken("");
@@ -3674,6 +3732,15 @@ export default function StrategyPage() {
           setError("Limit price is required when fixed limit price is selected.");
           return;
         }
+        if (
+          editOrderType === "LIMIT" &&
+          editSharekhanTriggerSource === "fixed" &&
+          editSharekhanTriggerPrice.trim() &&
+          !(Number(editSharekhanTriggerPrice) >= 0)
+        ) {
+          setError("Trigger price must be 0 or a positive number.");
+          return;
+        }
         if (editUsingDynamicLimitPrice && trimmedBufferBy && !trimmedBufferPoints) {
           setError("Trade buffer value is required when buffer type is selected.");
           return;
@@ -3779,6 +3846,8 @@ export default function StrategyPage() {
       if (editOrderType !== "LIMIT") {
         marketMayaClear.add("limitPriceSource");
         marketMayaClear.add("limitPrice");
+        marketMayaClear.add("sharekhanTriggerSource");
+        marketMayaClear.add("sharekhanTriggerPrice");
         marketMayaClear.add("bufferBy");
         marketMayaClear.add("bufferValue");
         marketMayaClear.add("bufferPoints");
@@ -3800,6 +3869,13 @@ export default function StrategyPage() {
         marketMayaClear.add("mStockInstrumentToken");
         marketMayaClear.add("mStockInterval");
         marketMayaClear.add("mStockCandleOffset");
+      }
+      if (
+        editOrderType !== "LIMIT" ||
+        editSharekhanTriggerSource !== "fixed" ||
+        !(Number(editSharekhanTriggerPrice) > 0)
+      ) {
+        marketMayaClear.add("sharekhanTriggerPrice");
       }
       if (editExitFallbackSelected || !trimmedQtyDistribution) {
         marketMayaClear.add("qtyDistribution");
@@ -3901,6 +3977,16 @@ export default function StrategyPage() {
         editUsingFixedLimitPrice &&
         editLimitPrice.trim()
           ? { limitPrice: editLimitPrice.trim() }
+          : {}),
+        ...(!editExitFallbackSelected && editOrderType === "LIMIT"
+          ? { sharekhanTriggerSource: editSharekhanTriggerSource }
+          : {}),
+        ...(!editExitFallbackSelected &&
+        editOrderType === "LIMIT" &&
+        editSharekhanTriggerSource === "fixed" &&
+        editSharekhanTriggerPrice.trim() &&
+        Number(editSharekhanTriggerPrice) > 0
+          ? { sharekhanTriggerPrice: editSharekhanTriggerPrice.trim() }
           : {}),
         ...(!editExitFallbackSelected && trimmedCapitalAmount
           ? { capitalAmount: capitalAmountNumber }
@@ -5261,6 +5347,48 @@ export default function StrategyPage() {
                             : "mStock candle price will be used for the LIMIT order."}
                         </div>
                       )}
+                      <div className="input-group">
+                        {renderAddLabelWithInfo(
+                          "market-sharekhan-trigger-source",
+                          "Trigger price",
+                          "sharekhanTriggerPrice"
+                        )}
+                        <select
+                          className="select"
+                          id="market-sharekhan-trigger-source"
+                          value={sharekhanTriggerSource}
+                          onChange={(event) =>
+                            setSharekhanTriggerSource(
+                              normalizeSharekhanTriggerSource(event.target.value)
+                            )
+                          }
+                        >
+                          <option value="none">None (0)</option>
+                          <option value="fixed">Your trigger price</option>
+                          <option value="chartink">Chartink trigger price</option>
+                        </select>
+                        <div className="helper">
+                          {sharekhanTriggerSource === "fixed"
+                            ? "Enter your own trigger. Leave 0 if you do not want one."
+                            : sharekhanTriggerSource === "chartink"
+                              ? "Chartink trigger_price is sent. If the alert has none, 0 is sent."
+                              : "Trigger price 0 is sent. Sharekhan does not wait for a trigger."}
+                        </div>
+                      </div>
+                      {sharekhanTriggerSource === "fixed" ? (
+                        <div className="input-group">
+                          <label className="label" htmlFor="market-sharekhan-trigger-price">
+                            Your trigger price
+                          </label>
+                          <input
+                            className="input"
+                            id="market-sharekhan-trigger-price"
+                            value={sharekhanTriggerPrice}
+                            onChange={(event) => setSharekhanTriggerPrice(event.target.value)}
+                            placeholder="0"
+                          />
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
 
@@ -6651,6 +6779,48 @@ export default function StrategyPage() {
                             : "mStock candle price will be used for the LIMIT order."}
                         </div>
                       )}
+                      <div className="input-group">
+                        {renderEditLabelWithInfo(
+                          "edit-sharekhan-trigger-source",
+                          "Trigger price",
+                          "sharekhanTriggerPrice"
+                        )}
+                        <select
+                          className="select"
+                          id="edit-sharekhan-trigger-source"
+                          value={editSharekhanTriggerSource}
+                          onChange={(event) =>
+                            setEditSharekhanTriggerSource(
+                              normalizeSharekhanTriggerSource(event.target.value)
+                            )
+                          }
+                        >
+                          <option value="none">None (0)</option>
+                          <option value="fixed">Your trigger price</option>
+                          <option value="chartink">Chartink trigger price</option>
+                        </select>
+                        <div className="helper">
+                          {editSharekhanTriggerSource === "fixed"
+                            ? "Enter your own trigger. Leave 0 if you do not want one."
+                            : editSharekhanTriggerSource === "chartink"
+                              ? "Chartink trigger_price is sent. If the alert has none, 0 is sent."
+                              : "Trigger price 0 is sent. Sharekhan does not wait for a trigger."}
+                        </div>
+                      </div>
+                      {editSharekhanTriggerSource === "fixed" ? (
+                        <div className="input-group">
+                          <label className="label" htmlFor="edit-sharekhan-trigger-price">
+                            Your trigger price
+                          </label>
+                          <input
+                            className="input"
+                            id="edit-sharekhan-trigger-price"
+                            value={editSharekhanTriggerPrice}
+                            onChange={(event) => setEditSharekhanTriggerPrice(event.target.value)}
+                            placeholder="0"
+                          />
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
 

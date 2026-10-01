@@ -782,6 +782,10 @@ export default function AlertsPage() {
                                   <span>{orderPrice || "-"}</span>
                                 </div>
                                 <div className="detail-row">
+                                  <span>Trigger price</span>
+                                  <span>{String(requestBody.triggerPrice ?? "0")}</span>
+                                </div>
+                                <div className="detail-row">
                                   <span>Product</span>
                                   <span>{product}</span>
                                 </div>
