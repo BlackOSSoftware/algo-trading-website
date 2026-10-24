@@ -28,6 +28,7 @@ export default function SharekhanLinksPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [expiries, setExpiries] = useState<Expiry[]>([]);
   const [loadingExpiries, setLoadingExpiries] = useState(false);
+  const [expiryError, setExpiryError] = useState("");
   const [bracketEnabled, setBracketEnabled] = useState(false);
   const [bracketTarget, setBracketTarget] = useState("");
   const [bracketStop, setBracketStop] = useState("");
@@ -55,14 +56,24 @@ export default function SharekhanLinksPage() {
   useEffect(() => {
     if (details.segment === "EQ") { setExpiries([]); return; }
     let cancelled = false;
-    const params = new URLSearchParams({ q: query.trim(), exchange: details.exchange, segment: details.segment });
+    const params = new URLSearchParams({ exchange: details.exchange, segment: details.segment });
     setLoadingExpiries(true);
+    setExpiryError("");
     apiGet(`/api/v1/sharekhan/instruments/expiries?${params}`, getSharekhanToken())
-      .then((response) => { if (!cancelled) setExpiries((response as { expiries?: Expiry[] }).expiries || []); })
-      .catch(() => { if (!cancelled) setExpiries([]); })
+      .then((response) => {
+        if (cancelled) return;
+        const rows = (response as { expiries?: Expiry[] }).expiries || [];
+        setExpiries(rows);
+        if (!rows.length) setExpiryError("No contract expiries are available for this exchange. Check the instrument master and try again.");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setExpiries([]);
+        setExpiryError(error instanceof Error ? error.message : "Could not load contract expiries. Please retry.");
+      })
       .finally(() => { if (!cancelled) setLoadingExpiries(false); });
     return () => { cancelled = true; };
-  }, [query, details.exchange, details.segment]);
+  }, [details.exchange, details.segment]);
   function update(key: keyof Details, value: string) { setDetails((current) => ({ ...current, [key]: value })); }
   function selectInstrument(item: Instrument) {
     setDetails((current) => ({ ...current, tradingSymbol: item.symbol, scripCode: item.token, stock: item.name || item.symbol, exchange: item.exchange, expiry: item.expiry || "", strike: item.strike || "", lotSize: item.lotSize || "", optionType: /CE$/i.test(item.symbol) ? "CE" : /PE$/i.test(item.symbol) ? "PE" : "" }));
@@ -107,6 +118,7 @@ export default function SharekhanLinksPage() {
       <h2 style={{ marginBottom: 18 }}>Create an order link</h2>
       <div className="sharekhan-form-grid">
         <label>Instrument segment<select className="input" style={inputStyle} value={details.segment} onChange={(e) => { const segment = e.target.value; const exchange = segment === "EQ" ? "NSE" : segment === "OPT" || segment === "FUT" ? "NFO" : "NSE"; setDetails((current) => ({ ...current, segment, exchange, tradingSymbol: "", scripCode: "", stock: "", expiry: "", strike: "", optionType: "", lotSize: "" })); setQuery(""); }}><option value="EQ">Equity</option><option value="FUT">Futures</option><option value="OPT">Options</option></select></label>
+        {details.segment !== "EQ" && <label>Contract expiry<select className="input" style={inputStyle} value={details.expiry} onChange={(e) => { setDetails((current) => ({ ...current, expiry: e.target.value, tradingSymbol: "", scripCode: "", strike: "", optionType: "", lotSize: "" })); setQuery(""); }}><option value="">{loadingExpiries ? "Loading expiries…" : "Select expiry"}</option>{expiries.map((item) => <option key={item.expiry} value={item.expiry}>{item.expiry} ({item.contracts} contracts)</option>)}</select>{expiryError && <span role="alert" style={{ display: "block", marginTop: 5, color: "#b42318", fontSize: 12 }}>{expiryError}</span>}</label>}
         <label style={{ position: "relative" }}>Search {details.segment === "OPT" ? "underlying or option contract" : details.segment === "FUT" ? "underlying or futures contract" : "share or symbol"}<input className="input" style={inputStyle} value={query} onFocus={() => setShowSuggestions(true)} onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); setDetails((current) => ({ ...current, tradingSymbol: e.target.value.toUpperCase(), scripCode: "", stock: "" })); }} placeholder={details.segment === "EQ" ? "RELIANCE or company name" : "NIFTY, BANKNIFTY, RELIANCE"} autoComplete="off" />{showSuggestions && (query.trim().length >= 2 || (details.segment !== "EQ" && details.expiry)) && <div role="listbox" className="sharekhan-search-results">{searching ? <div style={{ padding: 12 }}>Searching instruments…</div> : suggestions.length ? suggestions.map((item) => <button type="button" role="option" key={`${item.exchange}-${item.token}`} onMouseDown={(e) => e.preventDefault()} onClick={() => selectInstrument(item)}><strong>{item.symbol}</strong> · {item.exchange}<div style={{ fontSize: 13, opacity: 0.7 }}>{item.expiry ? `Expiry ${item.expiry} · ` : ""}{item.strike ? `Strike ${item.strike} · ` : ""}{item.lotSize ? `Lot ${item.lotSize} · ` : ""}{item.instrumentType} · Scrip {item.token}</div></button>) : <div style={{ padding: 12 }}>No matching contracts found. Check the exchange and instrument master.</div>}</div>}</label>
         <label>Trading symbol *<input className="input" style={inputStyle} required value={details.tradingSymbol} onChange={(e) => { update("tradingSymbol", e.target.value.toUpperCase()); if (query) setQuery(""); }} placeholder="RELIANCE" /></label>
         <label>Sharekhan scrip code *<input className="input" style={inputStyle} required value={details.scripCode} onChange={(e) => update("scripCode", e.target.value)} placeholder="Select a search result" /></label>
@@ -114,7 +126,7 @@ export default function SharekhanLinksPage() {
         <label>Buy / Sell *<select className="input" style={inputStyle} value={details.side} onChange={(e) => update("side", e.target.value)}><option>BUY</option><option>SELL</option></select></label>
         <label>Exchange *<select className="input" style={inputStyle} value={details.exchange} onChange={(e) => { setDetails((current) => ({ ...current, exchange: e.target.value, tradingSymbol: "", scripCode: "", stock: "", expiry: "", strike: "", optionType: "", lotSize: "" })); setQuery(""); }}><option value="NSE">NSE</option><option value="BSE">BSE</option><option value="NFO">NFO</option><option value="BFO">BFO</option><option value="MCX">MCX</option><option value="CDS">CDS</option></select></label>
         {details.segment === "OPT" && <><label>Strike price<input className="input" style={inputStyle} value={details.strike} onChange={(e) => update("strike", e.target.value)} /></label><label>Option type<select className="input" style={inputStyle} value={details.optionType} onChange={(e) => update("optionType", e.target.value)}><option value="">Select CE / PE</option><option value="CE">Call (CE)</option><option value="PE">Put (PE)</option></select></label></>}
-        {details.segment !== "EQ" && <><label>Contract expiry<select className="input" style={inputStyle} value={details.expiry} onChange={(e) => { setDetails((current) => ({ ...current, expiry: e.target.value, tradingSymbol: "", scripCode: "", strike: "", optionType: "", lotSize: "" })); setQuery(""); }}><option value="">{loadingExpiries ? "Loading expiries…" : "Select expiry"}</option>{expiries.map((item) => <option key={item.expiry} value={item.expiry}>{item.expiry} · {item.contracts} contracts</option>)}</select></label><label>Lot size<input className="input" style={inputStyle} value={details.lotSize} readOnly /></label></>}
+        {details.segment !== "EQ" && <label>Lot size<input className="input" style={inputStyle} value={details.lotSize} readOnly /></label>}
         <label>Quantity *{details.lotSize && <span style={{ fontWeight: 400 }}> (lot size {details.lotSize})</span>}<input className="input" style={inputStyle} required type="number" min={details.lotSize || "1"} step={details.segment === "EQ" ? "1" : details.lotSize || "1"} value={details.quantity} onChange={(e) => update("quantity", e.target.value)} /></label>
         <label>Price<input className="input" style={inputStyle} required type="number" min="0" step="any" value={details.price} onChange={(e) => update("price", e.target.value)} /></label>
         <label>Order type<select className="input" style={inputStyle} value={details.orderType} onChange={(e) => update("orderType", e.target.value)}>{orderTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
