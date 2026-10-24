@@ -10,7 +10,7 @@ export default function OrderDetailsPage() {
   const params = useParams<{ code: string }>();
   const [details, setDetails] = useState<Details | null>(null);
   const [error, setError] = useState("");
-  const [appUrl, setAppUrl] = useState("https://downloads.sharekhan.com/download/sharemobile/onetap.html");
+  const [appUrl, setAppUrl] = useState("https://newtrade.sharekhan.com/");
   useEffect(() => {
     if (!params.code) return;
     apiGet(`/api/v1/order-intents/${encodeURIComponent(params.code)}`)
