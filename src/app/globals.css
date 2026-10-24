@@ -1264,6 +1264,10 @@ textarea {
 .sharekhan-search-results { position: absolute; z-index: 20; top: 100%; left: 0; right: 0; max-height: 260px; overflow-y: auto; background: white; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 8px 24px #0002; }
 .sharekhan-search-results button { display: block; width: 100%; min-width: 0; padding: 12px; border: 0; background: white; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .sharekhan-order-card { min-width: 0; overflow-wrap: anywhere; }
+.trade-share-card { min-width: 0; }
+.trade-share-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.trade-share-preview { display: flex; justify-content: center; padding: 12px; background: #fff7f0; border-radius: 16px; overflow: auto; }
+.trade-share-preview img { width: min(100%, 420px); height: auto; border-radius: 12px; box-shadow: 0 10px 28px rgba(80, 40, 10, 0.14); }
 @media (max-width: 1120px) { .sharekhan-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 680px) { .sharekhan-form-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; } .sharekhan-link-form { padding: 16px; } }
 

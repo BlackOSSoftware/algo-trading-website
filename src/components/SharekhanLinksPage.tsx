@@ -3,12 +3,90 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { getSharekhanToken } from "@/lib/auth";
+import TradeShareCard, { type TradeCardData } from "@/components/TradeShareCard";
 
-type Details = { stock: string; tradingSymbol: string; scripCode: string; side: string; quantity: string; price: string; exchange: string; segment: string; expiry: string; strike: string; optionType: string; lotSize: string; orderType: string; productType: string; validity: string; triggerPrice: string; notes: string };
+type Details = {
+  stock: string;
+  tradingSymbol: string;
+  scripCode: string;
+  side: string;
+  quantity: string;
+  price: string;
+  exchange: string;
+  segment: string;
+  expiry: string;
+  strike: string;
+  optionType: string;
+  lotSize: string;
+  orderType: string;
+  productType: string;
+  validity: string;
+  triggerPrice: string;
+  notes: string;
+  buyRange: string;
+  target: string;
+  stopLoss: string;
+  timeFrame: string;
+  headline: string;
+};
 type Instrument = { token: string; symbol: string; name?: string; exchange: string; instrumentType?: string; expiry?: string; strike?: string; lotSize?: string };
 type Expiry = { expiry: string; contracts: number };
-type LinkRecord = { code: string; shortUrl: string; kind: string; details: Partial<Details>; active: boolean; clicks: number };
-const blank: Details = { stock: "", tradingSymbol: "", scripCode: "", side: "BUY", quantity: "1", price: "0", exchange: "NSE", segment: "EQ", expiry: "", strike: "", optionType: "", lotSize: "", orderType: "NORMAL", productType: "INVESTMENT", validity: "GFD", triggerPrice: "", notes: "" };
+type LinkRecord = {
+  code: string;
+  shortUrl: string;
+  kind: string;
+  details: Partial<Details> & {
+    card?: Partial<Pick<Details, "buyRange" | "target" | "stopLoss" | "timeFrame" | "headline">>;
+    bracket?: { targetPrice?: number; stopLossPrice?: number; enabled?: boolean };
+  };
+  active: boolean;
+  clicks: number;
+};
+const blank: Details = {
+  stock: "",
+  tradingSymbol: "",
+  scripCode: "",
+  side: "BUY",
+  quantity: "1",
+  price: "0",
+  exchange: "NSE",
+  segment: "EQ",
+  expiry: "",
+  strike: "",
+  optionType: "",
+  lotSize: "",
+  orderType: "NORMAL",
+  productType: "INVESTMENT",
+  validity: "GFD",
+  triggerPrice: "",
+  notes: "",
+  buyRange: "",
+  target: "",
+  stopLoss: "",
+  timeFrame: "",
+  headline: "",
+};
+
+function toCardData(link: LinkRecord): TradeCardData {
+  const d = link.details || {};
+  const card = d.card || {};
+  return {
+    code: link.code,
+    shortUrl: link.shortUrl,
+    tradingSymbol: String(d.tradingSymbol || ""),
+    stock: String(d.stock || ""),
+    side: String(d.side || "BUY"),
+    exchange: String(d.exchange || ""),
+    quantity: d.quantity as string | number | undefined,
+    price: d.price as string | number | undefined,
+    productType: String(d.productType || ""),
+    buyRange: String(card.buyRange || d.buyRange || d.price || ""),
+    target: String(card.target || d.target || d.bracket?.targetPrice || ""),
+    stopLoss: String(card.stopLoss || d.stopLoss || d.bracket?.stopLossPrice || ""),
+    timeFrame: String(card.timeFrame || d.timeFrame || ""),
+    headline: String(card.headline || d.headline || ""),
+  };
+}
 const inputStyle = { width: "100%", marginTop: 6 };
 const orderTypes = [{ value: "NORMAL", label: "Market" }, { value: "LIMIT", label: "Limit" }, { value: "STOPLOSS", label: "Stop loss limit" }, { value: "STOPLOSS_MARKET", label: "Stop loss market" }];
 const productTypes = [{ value: "INVESTMENT", label: "Delivery (Investment)" }, { value: "BIGTRADE", label: "Intraday (BigTrade)" }, { value: "BIGTRADEPLUS", label: "Intraday Plus" }];
@@ -33,6 +111,7 @@ export default function SharekhanLinksPage() {
   const [bracketTarget, setBracketTarget] = useState("");
   const [bracketStop, setBracketStop] = useState("");
   const [bracketTrail, setBracketTrail] = useState("");
+  const [shareCard, setShareCard] = useState<TradeCardData | null>(null);
   const refresh = useCallback(async () => {
     const response = await apiGet("/api/v1/sharekhan/links", getSharekhanToken()) as { links: LinkRecord[] };
     setLinks(response.links);
@@ -84,10 +163,42 @@ export default function SharekhanLinksPage() {
   async function createOrderLink(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setMessage("");
     try {
-      const submitDetails = { ...details, bracket: { enabled: bracketEnabled, targetPrice: bracketTarget, stopLossPrice: bracketStop, trailingStop: bracketTrail } };
+      const submitDetails = {
+        ...details,
+        buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
+        target: details.target || bracketTarget,
+        stopLoss: details.stopLoss || bracketStop,
+        timeFrame:
+          details.timeFrame ||
+          (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
+        card: {
+          buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
+          target: details.target || bracketTarget,
+          stopLoss: details.stopLoss || bracketStop,
+          timeFrame:
+            details.timeFrame ||
+            (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
+          headline: details.headline,
+        },
+        bracket: {
+          enabled: bracketEnabled,
+          targetPrice: bracketTarget,
+          stopLossPrice: bracketStop,
+          trailingStop: bracketTrail,
+        },
+      };
       const result = await apiPost("/api/v1/sharekhan/order-intents", { details: submitDetails }, getSharekhanToken()) as { link: LinkRecord };
-      setCreated(result.link); await refresh();
-      setMessage("Order link created. The recipient can review the details before placing the order in Sharekhan.");
+      setCreated(result.link);
+      setShareCard({
+        ...toCardData(result.link),
+        buyRange: String(submitDetails.card.buyRange || details.price || ""),
+        target: String(submitDetails.card.target || ""),
+        stopLoss: String(submitDetails.card.stopLoss || ""),
+        timeFrame: String(submitDetails.card.timeFrame || ""),
+        headline: String(submitDetails.card.headline || ""),
+      });
+      await refresh();
+      setMessage("Order link + share card ready. Download/share the image with QR.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not create link"); }
     finally { setBusy(false); }
   }
@@ -137,8 +248,21 @@ export default function SharekhanLinksPage() {
         {details.segment === "EQ" && <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={bracketEnabled} onChange={(e) => setBracketEnabled(e.target.checked)} /> Add bracket legs (target + stop loss)</label>}
         {bracketEnabled && <><label>Bracket target price *<input className="input" style={inputStyle} required type="number" min="0.01" step="any" value={bracketTarget} onChange={(e) => setBracketTarget(e.target.value)} /></label><label>Bracket stop-loss price *<input className="input" style={inputStyle} required type="number" min="0.01" step="any" value={bracketStop} onChange={(e) => setBracketStop(e.target.value)} /></label><label>Trailing stop (optional)<input className="input" style={inputStyle} type="number" min="0" step="any" value={bracketTrail} onChange={(e) => setBracketTrail(e.target.value)} /></label></>}
       </div>
+      <div className="card" style={{ marginTop: 18, padding: 16, background: "rgba(255,140,60,0.06)" }}>
+        <strong>Share card (image + QR)</strong>
+        <p className="helper" style={{ marginTop: 4, marginBottom: 12 }}>
+          Yeh fields WhatsApp share image pe dikhenge. QR pe order link rahega — scan se Sharekhan app khulegi.
+        </p>
+        <div className="sharekhan-form-grid">
+          <label>Card headline<input className="input" style={inputStyle} value={details.headline} onChange={(e) => update("headline", e.target.value)} placeholder="Equity Intraday Buy" /></label>
+          <label>Buy range<input className="input" style={inputStyle} value={details.buyRange} onChange={(e) => update("buyRange", e.target.value)} placeholder={Number(details.price) > 0 ? details.price : "1063"} /></label>
+          <label>Target<input className="input" style={inputStyle} value={details.target} onChange={(e) => update("target", e.target.value)} placeholder="1075/1085" /></label>
+          <label>Stop loss (SL)<input className="input" style={inputStyle} value={details.stopLoss} onChange={(e) => update("stopLoss", e.target.value)} placeholder="1050" /></label>
+          <label>Time frame<input className="input" style={inputStyle} value={details.timeFrame} onChange={(e) => update("timeFrame", e.target.value)} placeholder="INTRADAY" /></label>
+        </div>
+      </div>
       <label style={{ display: "block", marginTop: 16 }}>Notes (optional)<input className="input" style={inputStyle} value={details.notes} onChange={(e) => update("notes", e.target.value)} placeholder="Add a short note for the recipient" /></label>
-      <button className="btn btn-primary" type="submit" disabled={busy} style={{ marginTop: 20 }}>{busy ? "Creating..." : "Generate order details link"}</button>
+      <button className="btn btn-primary" type="submit" disabled={busy} style={{ marginTop: 20 }}>{busy ? "Creating..." : "Generate link + share card"}</button>
     </form>
     <details className="card" style={{ padding: 20, marginBottom: 24 }}>
       <summary>Shorten an existing Sharekhan one-tap link</summary>
@@ -150,13 +274,56 @@ export default function SharekhanLinksPage() {
     </details>
     {error && <p role="alert" style={{ color: "#dc2626" }}>{error}</p>}
     {message && <p role="status">{message}</p>}
-    {created && <div className="card sharekhan-order-card" style={{ padding: 20, marginBottom: 24 }}><strong>New order link</strong><p style={{ overflowWrap: "anywhere" }}><a href={created.shortUrl} target="_blank" rel="noreferrer">{created.shortUrl}</a></p><button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(created.shortUrl)}>Copy link</button></div>}
+    {shareCard ? (
+      <div className="card" style={{ padding: 20, marginBottom: 24 }}>
+        <TradeShareCard data={shareCard} onClose={() => setShareCard(null)} />
+      </div>
+    ) : null}
+    {created && !shareCard ? (
+      <div className="card sharekhan-order-card" style={{ padding: 20, marginBottom: 24 }}>
+        <strong>New order link</strong>
+        <p style={{ overflowWrap: "anywhere" }}>
+          <a href={created.shortUrl} target="_blank" rel="noreferrer">
+            {created.shortUrl}
+          </a>
+        </p>
+        <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(created.shortUrl)}>
+          Copy link
+        </button>{" "}
+        <button className="btn btn-primary" type="button" onClick={() => setShareCard(toCardData(created))}>
+          Share image with QR
+        </button>
+      </div>
+    ) : null}
     <h2>Recent links</h2>
-      {links.map((link) => <div className="card sharekhan-order-card" key={link.code} style={{ padding: 18, marginBottom: 12 }}>
-      <strong>{link.details.tradingSymbol || link.details.stock || link.code}</strong> · {link.kind === "order-intent" ? "Order details" : "Sharekhan one-tap"} · {link.active ? "Active" : "Inactive"} · {link.clicks} opens
-      <p style={{ overflowWrap: "anywhere" }}><a href={link.shortUrl} target="_blank" rel="noreferrer">{link.shortUrl}</a></p>
-      <button className="btn btn-secondary" type="button" onClick={() => navigator.clipboard.writeText(link.shortUrl)}>Copy</button>{" "}
-      {link.active && <button className="btn btn-ghost" type="button" onClick={() => deactivate(link.code)}>Deactivate</button>}
-    </div>)}
+    {links.map((link) => (
+      <div className="card sharekhan-order-card" key={link.code} style={{ padding: 18, marginBottom: 12 }}>
+        <strong>{link.details.tradingSymbol || link.details.stock || link.code}</strong> ·{" "}
+        {link.kind === "order-intent" ? "Order details" : "Sharekhan one-tap"} ·{" "}
+        {link.active ? "Active" : "Inactive"} · {link.clicks} opens
+        <p style={{ overflowWrap: "anywhere" }}>
+          <a href={link.shortUrl} target="_blank" rel="noreferrer">
+            {link.shortUrl}
+          </a>
+        </p>
+        <button
+          className="btn btn-secondary"
+          type="button"
+          onClick={() => navigator.clipboard.writeText(link.shortUrl)}
+        >
+          Copy
+        </button>{" "}
+        {link.kind === "order-intent" ? (
+          <button className="btn btn-primary" type="button" onClick={() => setShareCard(toCardData(link))}>
+            Share image with QR
+          </button>
+        ) : null}{" "}
+        {link.active ? (
+          <button className="btn btn-ghost" type="button" onClick={() => deactivate(link.code)}>
+            Deactivate
+          </button>
+        ) : null}
+      </div>
+    ))}
   </div>;
 }
