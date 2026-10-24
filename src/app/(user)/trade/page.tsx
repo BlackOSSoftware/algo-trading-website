@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { getToken, setToken } from "@/lib/auth";
 import {
   type MarketMayaResponse,
   formatMarketMayaResponse,
@@ -11,7 +11,7 @@ import {
   pickExchangeForSegment,
 } from "@/lib/marketMaya";
 
-const SHAREKHAN_CREDENTIALS_KEY = "wt_sharekhan_credentials";
+const SHAREKHAN_CREDENTIALS_KEY = "wt_sharekhan_manual_credentials";
 
 type TradeIcon = "broadcast" | "broker" | "layers" | "target" | "stop" | "play" | "shield";
 
@@ -405,7 +405,7 @@ export default function TradePage() {
     const auth = getToken();
     if (!auth) return;
 
-    apiGet("/api/v1/sharekhan/login-prep", auth)
+    apiGet("/api/v1/sharekhan/login-prep?scope=manual", auth)
       .then((data) => {
         const cfg = (data as { prep?: Partial<SharekhanSavedCredentials> })?.prep;
         if (!cfg) return;
@@ -422,38 +422,6 @@ export default function TradePage() {
       })
       .catch(() => {
         // optional restore
-      });
-
-    apiGet("/api/v1/strategies", auth)
-      .then((data) => {
-        const list = (data as { strategies?: Array<{ marketMaya?: Record<string, unknown> }> })
-          ?.strategies;
-        if (!Array.isArray(list)) return;
-        for (let i = list.length - 1; i >= 0; i -= 1) {
-          const mm = list[i]?.marketMaya;
-          if (!mm) continue;
-          const mapped = {
-            apiKey: String(mm.sharekhanApiKey || ""),
-            secureKey: String(mm.sharekhanSecureKey || ""),
-            customerId: String(mm.sharekhanCustomerId || ""),
-            channelUser: String(mm.sharekhanChannelUser || ""),
-            accessToken: String(mm.sharekhanAccessToken || ""),
-            productType: String(mm.sharekhanProductType || ""),
-          };
-          if (
-            mapped.apiKey ||
-            mapped.accessToken ||
-            mapped.customerId ||
-            mapped.channelUser
-          ) {
-            applyCfg(mapped);
-            saveSharekhanSavedCredentials(mapped);
-            if (mapped.apiKey && mapped.accessToken && mapped.customerId) break;
-          }
-        }
-      })
-      .catch(() => {
-        // optional
       });
   }, []);
 
@@ -476,6 +444,76 @@ export default function TradePage() {
     sharekhanProductType,
   ]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("sk_continue") !== "1") return;
+
+    const handoffAuth = String(url.searchParams.get("sk_auth") || "").trim();
+    if (handoffAuth) setToken(handoffAuth);
+    url.searchParams.delete("sk_continue");
+    url.searchParams.delete("sk_auth");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const auth = handoffAuth || getToken();
+        if (!auth) {
+          setError("Please sign in again, then connect Sharekhan.");
+          return;
+        }
+        const prepData = (await apiGet("/api/v1/sharekhan/login-prep?scope=manual", auth)) as {
+          prep?: {
+            apiKey?: string;
+            secureKey?: string;
+            customerId?: string;
+            channelUser?: string;
+            productType?: string;
+          } | null;
+        };
+        const apiKey = String(prepData.prep?.apiKey || "").trim();
+        if (!apiKey) {
+          setError("Sharekhan login session missing. Enter API Key and try again.");
+          return;
+        }
+        try {
+          sessionStorage.setItem(
+            SHAREKHAN_LOGIN_DRAFT_KEY,
+            JSON.stringify({
+              apiKey,
+              secureKey: prepData.prep?.secureKey || "",
+              customerId: prepData.prep?.customerId || "",
+              channelUser: prepData.prep?.channelUser || "",
+              productType: prepData.prep?.productType || "",
+              scope: "manual",
+              mode: "add",
+              returnTo: "/trade",
+            })
+          );
+        } catch {
+          // ignore
+        }
+        const data = (await apiPost(
+          "/api/v1/sharekhan/login-url",
+          { apiKey, state: "12345" },
+          auth
+        )) as { loginUrl?: string };
+        const loginUrl = String(data.loginUrl || "").trim();
+        if (!loginUrl || cancelled) return;
+        window.location.href = loginUrl;
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to continue Sharekhan login");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const verifySharekhanSession = useCallback(async () => {
     if (!sharekhanReady) {
       setSharekhanSession("missing");
@@ -494,6 +532,7 @@ export default function TradePage() {
       const data = (await apiPost(
         "/api/v1/sharekhan/session-status",
         {
+          scope: "manual",
           apiKey: sharekhanApiKey.trim(),
           accessToken: sharekhanAccessToken.trim(),
           customerId: sharekhanCustomerId.trim(),
@@ -771,7 +810,7 @@ export default function TradePage() {
       return "Market Maya token is required.";
     }
     if (sendSharekhan && !sharekhanReady) {
-      return "Sharekhan credentials missing. Connect Sharekhan from Strategy first, or fill API Key / Access Token / Customer ID / Login ID.";
+      return "Sharekhan login missing. Enter this account's API Key, Secure Key, Customer ID, and Login ID, then login here.";
     }
     if (sendSharekhan && sharekhanSession === "expired") {
       return "Sharekhan access token is expired. Reconnect Sharekhan, then try again.";
@@ -835,6 +874,7 @@ export default function TradePage() {
     const resolvedExchange = pickExchangeForSegment(exchange, normalizedSegment);
     return {
       execute,
+      scope: "manual",
       apiKey: sharekhanApiKey.trim(),
       accessToken: sharekhanAccessToken.trim(),
       customerId: sharekhanCustomerId.trim(),
@@ -955,11 +995,93 @@ export default function TradePage() {
   };
 
   const buildSharekhanCredsPayload = () => ({
+    scope: "manual",
     apiKey: sharekhanApiKey.trim(),
     accessToken: sharekhanAccessToken.trim(),
     customerId: sharekhanCustomerId.trim(),
     channelUser: sharekhanChannelUser.trim(),
   });
+
+  const startManualSharekhanLogin = async () => {
+    const apiKey = sharekhanApiKey.trim();
+    const secureKey = sharekhanSecureKey.trim();
+    const customerId = sharekhanCustomerId.trim();
+    const channelUser = sharekhanChannelUser.trim();
+    const productType = sharekhanProductType.trim();
+    if (!apiKey) {
+      setError("Sharekhan API Key is required before login.");
+      setTradeTab("Route");
+      return;
+    }
+    if (!secureKey) {
+      setError("Sharekhan Secure Key is required before login.");
+      setTradeTab("Route");
+      return;
+    }
+    setSharekhanLoginLoading(true);
+    setError(null);
+    try {
+      const auth = getToken();
+      if (!auth) {
+        throw new Error("Please sign in first.");
+      }
+      await apiPost(
+        "/api/v1/sharekhan/login-prep",
+        {
+          scope: "manual",
+          apiKey,
+          secureKey,
+          customerId,
+          channelUser,
+          productType,
+          accessToken: sharekhanAccessToken.trim(),
+          mode: "add",
+          returnTo: "/trade",
+        },
+        auth
+      );
+      try {
+        sessionStorage.setItem(
+          SHAREKHAN_LOGIN_DRAFT_KEY,
+          JSON.stringify({
+            apiKey,
+            secureKey,
+            customerId,
+            channelUser,
+            productType,
+            scope: "manual",
+            mode: "add",
+            returnTo: "/trade",
+          })
+        );
+      } catch {
+        // ignore storage failures
+      }
+
+      if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+        const port = window.location.port || "3000";
+        const bounce = new URL(`http://127.0.0.1:${port}/trade`);
+        bounce.searchParams.set("sk_continue", "1");
+        bounce.searchParams.set("sk_auth", auth);
+        window.location.href = bounce.toString();
+        return;
+      }
+
+      const data = (await apiPost(
+        "/api/v1/sharekhan/login-url",
+        { apiKey, state: "12345" },
+        auth
+      )) as { loginUrl?: string };
+      const loginUrl = String(data.loginUrl || "").trim();
+      if (!loginUrl) {
+        throw new Error("Sharekhan login URL missing");
+      }
+      window.location.href = loginUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to open Sharekhan login");
+      setSharekhanLoginLoading(false);
+    }
+  };
 
   const fetchSharekhanOrders = async () => {
     setTradeTab("Activity");
@@ -1175,46 +1297,121 @@ export default function TradePage() {
               {sharekhanSession === "checking"
                 ? "Checking Sharekhan session..."
                 : sharekhanSession === "live"
-                  ? `Sharekhan live${sharekhanChannelUser ? ` · ${sharekhanChannelUser}` : ""}.`
+                  ? `Manual account live${sharekhanChannelUser ? ` · ${sharekhanChannelUser}` : ""}. Orders go to this login, not the strategy account.`
                   : sharekhanSession === "expired"
-                    ? `Sharekhan token expired${sharekhanChannelUser ? ` · ${sharekhanChannelUser}` : ""}. Reconnect to continue.`
+                    ? `Sharekhan token expired${sharekhanChannelUser ? ` · ${sharekhanChannelUser}` : ""}. Login again on this page.`
                     : sharekhanSessionError ||
-                      "Sharekhan credentials missing. Login again from Strategy or reconnect here."}
+                      "Log in here with the Sharekhan account this manual order should use."}
             </div>
           ) : null}
           {sendSharekhan ? (
-            <div className="grid-2" style={{ marginTop: "8px" }}>
-              <div className="input-group">
-                <label className="label" htmlFor="sk-product">
-                  Sharekhan product
-                </label>
-                <select
-                  className="select"
-                  id="sk-product"
-                  value={sharekhanProductType}
-                  onChange={(event) => setSharekhanProductType(event.target.value)}
+            <>
+              <div className="helper" style={{ marginTop: "8px" }}>
+                This login is only for manual trades. Enter the Sharekhan account the order should hit.
+              </div>
+              <div className="grid-2" style={{ marginTop: "8px" }}>
+                <div className="input-group">
+                  <label className="label" htmlFor="sk-api-key">
+                    API Key
+                  </label>
+                  <input
+                    className="input"
+                    id="sk-api-key"
+                    type={showSharekhanApiKey ? "text" : "password"}
+                    value={sharekhanApiKey}
+                    onChange={(event) => setSharekhanApiKey(event.target.value)}
+                    placeholder="Sharekhan API Key"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="label" htmlFor="sk-secure-key">
+                    Secure Key
+                  </label>
+                  <input
+                    className="input"
+                    id="sk-secure-key"
+                    type={showSharekhanSecureKey ? "text" : "password"}
+                    value={sharekhanSecureKey}
+                    onChange={(event) => setSharekhanSecureKey(event.target.value)}
+                    placeholder="Secure key from Sharekhan app"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="label" htmlFor="sk-customer">
+                    Customer ID
+                  </label>
+                  <input
+                    className="input"
+                    id="sk-customer"
+                    value={sharekhanCustomerId}
+                    onChange={(event) => setSharekhanCustomerId(event.target.value)}
+                    placeholder="Numeric client ID"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="label" htmlFor="sk-login">
+                    Login ID
+                  </label>
+                  <input
+                    className="input"
+                    id="sk-login"
+                    value={sharekhanChannelUser}
+                    onChange={(event) => setSharekhanChannelUser(event.target.value)}
+                    placeholder="Sharekhan login / channelUser"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="label" htmlFor="sk-product">
+                    Sharekhan product
+                  </label>
+                  <select
+                    className="select"
+                    id="sk-product"
+                    value={sharekhanProductType}
+                    onChange={(event) => setSharekhanProductType(event.target.value)}
+                  >
+                    <option value="INVESTMENT">Delivery (Investment)</option>
+                    <option value="BIGTRADE">Intraday (BigTrade)</option>
+                    <option value="BIGTRADEPLUS">Intraday Plus (BigTrade Plus)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="cta-row" style={{ marginTop: "8px" }}>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => setShowSharekhanApiKey((current) => !current)}
                 >
-                  <option value="INVESTMENT">Delivery (Investment)</option>
-                  <option value="BIGTRADE">Intraday (BigTrade)</option>
-                  <option value="BIGTRADEPLUS">Intraday Plus (BigTrade Plus)</option>
-                </select>
+                  {showSharekhanApiKey ? "Hide API key" : "Show API key"}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => setShowSharekhanSecureKey((current) => !current)}
+                >
+                  {showSharekhanSecureKey ? "Hide secure key" : "Show secure key"}
+                </button>
               </div>
-              <div className="input-group">
-                <label className="label" htmlFor="sk-login">
-                  Login ID
-                </label>
-                <input
-                  className="input"
-                  id="sk-login"
-                  value={sharekhanChannelUser}
-                  onChange={(event) => setSharekhanChannelUser(event.target.value)}
-                  placeholder="Sharekhan login / channelUser"
-                />
-              </div>
-            </div>
+            </>
           ) : null}
           {sendSharekhan ? (
             <div className="cta-row" style={{ marginTop: "10px" }}>
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={sharekhanLoginLoading}
+                onClick={() => startManualSharekhanLogin()}
+              >
+                {sharekhanLoginLoading
+                  ? "Opening login..."
+                  : sharekhanAccessToken.trim()
+                    ? "Reconnect this account"
+                    : "Login with Sharekhan"}
+              </button>
               <button
                 className="btn btn-secondary"
                 type="button"
@@ -1223,11 +1420,6 @@ export default function TradePage() {
               >
                 {sharekhanSession === "checking" ? "Checking..." : "Recheck session"}
               </button>
-              <a className="btn btn-primary" href="/strategy">
-                {sharekhanSession === "expired" || sharekhanSession === "missing"
-                  ? "Reconnect on Strategy"
-                  : "Open Strategy login"}
-              </a>
             </div>
           ) : null}
         </div>

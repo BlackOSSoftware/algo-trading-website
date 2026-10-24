@@ -5,7 +5,7 @@ export type SessionUser = {
   _id: string;
   name: string;
   email: string;
-  role: "user" | "admin";
+  role: "user" | "admin" | "sharekhan";
   phone?: string | null;
   emailVerified?: boolean;
   walletBalance?: number;

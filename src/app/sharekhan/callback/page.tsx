@@ -80,7 +80,7 @@ function SharekhanCallbackInner() {
     async function run() {
       if (!incoming) {
         setStatus("error");
-        setMessage("Sharekhan did not return a request token. Please try login again from Strategy.");
+        setMessage("Sharekhan did not return a request token. Please try login again.");
         return;
       }
 
@@ -92,6 +92,8 @@ function SharekhanCallbackInner() {
       }
 
       const draft = readLocalDraft();
+      const fallbackReturn = String(draft?.returnTo || "/strategy").trim() || "/strategy";
+      setReturnTo(fallbackReturn);
 
       try {
         const data = (await apiPost(
@@ -102,9 +104,11 @@ function SharekhanCallbackInner() {
             apiKey: draft?.apiKey || undefined,
             secureKey: draft?.secureKey || undefined,
             customerId: draft?.customerId || undefined,
+            channelUser: draft?.channelUser || undefined,
+            scope: draft?.scope === "manual" ? "manual" : undefined,
             mode: draft?.mode || undefined,
             formDraft: draft?.formDraft || undefined,
-            returnTo: draft?.returnTo || "/strategy",
+            returnTo: fallbackReturn,
           },
           auth
         )) as {
@@ -119,7 +123,11 @@ function SharekhanCallbackInner() {
         const nextReturn = String(data.returnTo || "/strategy").trim() || "/strategy";
         setReturnTo(nextReturn);
         setStatus("done");
-        setMessage("Sharekhan connected. Restoring your strategy form...");
+        setMessage(
+          fallbackReturn.startsWith("/trade")
+            ? "Sharekhan connected. Returning to manual trade..."
+            : "Sharekhan connected. Restoring your strategy form..."
+        );
         window.setTimeout(() => {
           window.location.href = `${nextReturn}?sharekhan=connected`;
         }, 900);
@@ -129,7 +137,8 @@ function SharekhanCallbackInner() {
         setMessage(errMsg);
         // Still bounce back so Strategy can restore the saved form draft.
         window.setTimeout(() => {
-          window.location.href = `/strategy?sharekhan=error&sk_msg=${encodeURIComponent(errMsg)}`;
+          const back = fallbackReturn.startsWith("/") ? fallbackReturn : "/strategy";
+          window.location.href = `${back}?sharekhan=error&sk_msg=${encodeURIComponent(errMsg)}`;
         }, 1600);
       }
     }
@@ -143,7 +152,7 @@ function SharekhanCallbackInner() {
         <div className="card" style={{ padding: 24 }}>
           <h1 style={{ marginBottom: 8 }}>Sharekhan login</h1>
           <p className="helper" style={{ marginBottom: 16 }}>
-            Finishing connection and restoring your strategy form.
+            Finishing the Sharekhan connection.
           </p>
 
           <div
@@ -155,8 +164,8 @@ function SharekhanCallbackInner() {
 
           {status === "error" ? (
             <div className="cta-row" style={{ gap: 8 }}>
-              <a className="btn btn-primary" href="/strategy?sharekhan=error">
-                Back to Strategy
+              <a className="btn btn-primary" href={`${returnTo}?sharekhan=error`}>
+                {returnTo.startsWith("/trade") ? "Back to Manual trade" : "Back to Strategy"}
               </a>
             </div>
           ) : (

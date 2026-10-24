@@ -27,3 +27,18 @@ export function clearAdminToken() {
   if (typeof window === "undefined") return;
   localStorage.removeItem("wt_admin_token");
 }
+
+export function setSharekhanToken(token: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("wt_sharekhan_token", token);
+}
+
+export function getSharekhanToken() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("wt_sharekhan_token");
+}
+
+export function clearSharekhanToken() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("wt_sharekhan_token");
+}

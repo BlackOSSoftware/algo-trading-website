@@ -940,7 +940,7 @@ textarea {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 260px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -1065,6 +1065,7 @@ textarea {
   padding: 28px 32px 60px;
   min-height: 100vh;
   grid-column: 2 / -1;
+  min-width: 0;
 }
 
 .topbar {
@@ -1250,7 +1251,21 @@ textarea {
 .content {
   display: grid;
   gap: 24px;
+  min-width: 0;
 }
+
+.sharekhan-links-page { width: 100%; max-width: 1120px; min-width: 0; margin: 0 auto; }
+.sharekhan-links-page h1 { margin-bottom: 6px; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.8px; }
+.sharekhan-links-page > p { max-width: 780px; margin-bottom: 20px; color: var(--muted); }
+.sharekhan-link-form { width: 100%; min-width: 0; padding: clamp(16px, 2.5vw, 28px); }
+.sharekhan-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.sharekhan-form-grid > label { min-width: 0; overflow-wrap: anywhere; }
+.sharekhan-form-grid input, .sharekhan-form-grid select, .sharekhan-form-grid button { min-width: 0; max-width: 100%; }
+.sharekhan-search-results { position: absolute; z-index: 20; top: 100%; left: 0; right: 0; max-height: 260px; overflow-y: auto; background: white; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 8px 24px #0002; }
+.sharekhan-search-results button { display: block; width: 100%; min-width: 0; padding: 12px; border: 0; background: white; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.sharekhan-order-card { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 1120px) { .sharekhan-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .sharekhan-form-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; } .sharekhan-link-form { padding: 16px; } }
 
 .page-header {
   display: flex;

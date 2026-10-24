@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
-import { getAdminToken } from "@/lib/auth";
+import { getSharekhanToken } from "@/lib/auth";
 
 type Details = { stock: string; tradingSymbol: string; scripCode: string; side: string; quantity: string; price: string; exchange: string; orderType: string; productType: string; notes: string };
 type LinkRecord = { code: string; shortUrl: string; kind: string; details: Partial<Details>; active: boolean; clicks: number };
@@ -19,7 +19,7 @@ export default function SharekhanLinksPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const refresh = useCallback(async () => {
-    const response = await apiGet("/api/v1/admin/sharekhan-links", getAdminToken()) as { links: LinkRecord[] };
+    const response = await apiGet("/api/v1/sharekhan/links", getSharekhanToken()) as { links: LinkRecord[] };
     setLinks(response.links);
   }, []);
   useEffect(() => { refresh().catch((e) => setError(e.message)); }, [refresh]);
@@ -28,7 +28,7 @@ export default function SharekhanLinksPage() {
   async function createOrderLink(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setMessage("");
     try {
-      const result = await apiPost("/api/v1/admin/order-intents", { details }, getAdminToken()) as { link: LinkRecord };
+      const result = await apiPost("/api/v1/sharekhan/order-intents", { details }, getSharekhanToken()) as { link: LinkRecord };
       setCreated(result.link); await refresh();
       setMessage("Order link created. Phone par yeh Sharekhan app ka order screen kholta hai.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not create link"); }
@@ -38,7 +38,7 @@ export default function SharekhanLinksPage() {
   async function shortenKnownLink(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setMessage("");
     try {
-      const result = await apiPost("/api/v1/admin/sharekhan-links", { payload: existingUrl, details: { stock: name } }, getAdminToken()) as { link: LinkRecord };
+      const result = await apiPost("/api/v1/sharekhan/links", { payload: existingUrl, details: { stock: name } }, getSharekhanToken()) as { link: LinkRecord };
       setCreated(result.link); setExistingUrl(""); setName(""); await refresh();
       setMessage("Existing Sharekhan one-tap link shortened. Check its order screen before sharing.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not shorten link"); }
@@ -46,7 +46,7 @@ export default function SharekhanLinksPage() {
   }
 
   async function deactivate(code: string) {
-    try { await apiPost(`/api/v1/admin/sharekhan-links/${code}/deactivate`, {}, getAdminToken()); await refresh(); }
+    try { await apiPost(`/api/v1/sharekhan/links/${code}/deactivate`, {}, getSharekhanToken()); await refresh(); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not deactivate link"); }
   }
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
-import { getAdminToken } from "@/lib/auth";
+import { getSharekhanToken } from "@/lib/auth";
 import { BrokerIcon, BrokerModal } from "./BrokerUi";
 
 type FeedStatus = {
@@ -17,7 +17,7 @@ type FeedStatus = {
   apiKeyHint?: string;
   tokenStatus?: string;
 };
-const endpoint = "/api/v1/admin/sharekhan-feed";
+const endpoint = "/api/v1/sharekhan/feed";
 
 function requestTokenFromUrl(url: string) {
   const query = url.includes("?") ? url.split("?")[1].split("#")[0] : "";
@@ -46,7 +46,7 @@ export default function SharekhanFeedCard() {
   const callbackStarted = useRef(false);
 
   const refresh = useCallback(async () => {
-    const status = await apiGet(`${endpoint}/status`, getAdminToken()) as FeedStatus;
+    const status = await apiGet(`${endpoint}/status`, getSharekhanToken()) as FeedStatus;
     setFeed(status);
   }, []);
 
@@ -59,9 +59,9 @@ export default function SharekhanFeedCard() {
       const state = parsed.searchParams.get("state");
       const requestToken = requestTokenFromUrl(url);
       if (!state?.startsWith("admin-feed-") || !requestToken) {
-        throw new Error("Paste the full Sharekhan callback URL containing the admin login state and request token.");
+        throw new Error("Paste the full Sharekhan callback URL containing the Sharekhan login state and request token.");
       }
-      await apiPost(`${endpoint}/complete`, { state, requestToken }, getAdminToken());
+      await apiPost(`${endpoint}/complete`, { state, requestToken }, getSharekhanToken());
       setCallbackUrl("");
       setOpen(false);
       setEditKeys(false);
@@ -94,7 +94,7 @@ export default function SharekhanFeedCard() {
     setError("");
     setMessage("");
     try {
-      const result = await apiPost(`${endpoint}/login`, { apiKey, secureKey }, getAdminToken()) as { loginUrl: string };
+      const result = await apiPost(`${endpoint}/login`, { apiKey, secureKey }, getSharekhanToken()) as { loginUrl: string };
       setSecureKey("");
       window.location.assign(result.loginUrl);
     } catch (err) {
@@ -108,7 +108,7 @@ export default function SharekhanFeedCard() {
     setError("");
     setMessage("");
     try {
-      await apiPost(`${endpoint}/${action}`, {}, getAdminToken());
+      await apiPost(`${endpoint}/${action}`, {}, getSharekhanToken());
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to update feed");
