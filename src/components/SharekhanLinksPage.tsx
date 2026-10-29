@@ -292,6 +292,7 @@ export default function SharekhanLinksPage() {
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [segmentFilter, setSegmentFilter] = useState("all");
+  const [formTab, setFormTab] = useState<"instrument" | "order" | "card">("instrument");
 
   const refresh = useCallback(async () => {
     const response = await apiGet("/api/v1/sharekhan/links", getSharekhanToken()) as { links: LinkRecord[] };
@@ -410,6 +411,7 @@ export default function SharekhanLinksPage() {
     }));
     // Keep only the symbol in the search box so we don't re-query "RELIANCE · NSE · ..."
     setQuery(item.symbol);
+    setFormTab("order");
   }
   function setSegment(segment: string) {
     const exchange = segment === "EQ" ? "NSE" : "NFO";
@@ -462,6 +464,7 @@ export default function SharekhanLinksPage() {
     setPinned(null);
     setShareCard(null);
     setReuseFrom("");
+    setFormTab("instrument");
     setError("");
     setMessage("");
   }
@@ -531,6 +534,7 @@ export default function SharekhanLinksPage() {
     });
     setQuery(symbol);
     setReuseFrom(symbol);
+    setFormTab("order");
     setMessage(
       `Loaded ${symbol} from recent links. Edit anything you need, then Generate to create a new link.`
     );
@@ -560,9 +564,29 @@ export default function SharekhanLinksPage() {
 
   async function createOrderLink(event: React.FormEvent) {
     event.preventDefault();
-    setBusy(true);
     setError("");
     setMessage("");
+    if (!details.tradingSymbol.trim() || !details.scripCode.trim()) {
+      setFormTab("instrument");
+      setError("Select an instrument — trading symbol and Sharekhan scrip code required.");
+      return;
+    }
+    if (!details.quantity || Number(details.quantity) < 1) {
+      setFormTab("order");
+      setError("Enter a valid quantity.");
+      return;
+    }
+    if (details.orderType !== "NORMAL" && !(Number(details.price) > 0)) {
+      setFormTab("order");
+      setError("Enter a positive limit price for this order type.");
+      return;
+    }
+    if (details.orderType.startsWith("STOPLOSS") && !(Number(details.triggerPrice) > 0)) {
+      setFormTab("order");
+      setError("Enter a positive trigger price for stop-loss orders.");
+      return;
+    }
+    setBusy(true);
     try {
       const target1 = details.target1 || details.target;
       const target2 = details.target2;
@@ -706,8 +730,8 @@ export default function SharekhanLinksPage() {
       {error ? <p className="sk-banner sk-banner-error" role="alert">{error}</p> : null}
       {message ? <p className="sk-banner" role="status">{message}</p> : null}
 
-      <section className="sk-panel sk-demo-panel">
-        <div className="sk-panel-intro">
+      <details className="sk-panel sk-demo-panel">
+        <summary className="sk-demo-summary">
           <span className="sk-panel-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24">
               <path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.9 7.5 16.8l.9-5.1L4.8 8.2l5-.7L12 3z" />
@@ -715,12 +739,12 @@ export default function SharekhanLinksPage() {
           </span>
           <div>
             <h2>Working F&amp;O examples</h2>
-            <p>
-              Ye verified links preserve kiye gaye hain — phone pe open karke dekho kaise Sharekhan app me order screen
-              prefilled aata hai. Format: <code>131$exchange$scrip$qty$price$side</code> (NFO exchange code = 12).
-            </p>
+            <p>Tap to expand verified Futures / Options one-tap demos.</p>
           </div>
-        </div>
+        </summary>
+        <p className="sk-demo-lead">
+          Format: <code>131$exchange$scrip$qty$price$side</code> (NFO exchange code = 12).
+        </p>
         <div className="sk-demo-grid">
           {demoCards.map((demo) => (
             <article key={demo.code} className="sk-demo-card">
@@ -755,10 +779,21 @@ export default function SharekhanLinksPage() {
             </article>
           ))}
         </div>
-      </section>
+      </details>
 
       <div className="sk-workspace">
-        <form className="sk-panel" ref={formRef} onSubmit={createOrderLink}>
+        <form
+          className="sk-panel sk-create-panel"
+          ref={formRef}
+          onSubmit={createOrderLink}
+          onInvalid={(event) => {
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
+            const pane = target.closest("[data-sk-tab]") as HTMLElement | null;
+            const tab = pane?.dataset.skTab;
+            if (tab === "instrument" || tab === "order" || tab === "card") setFormTab(tab);
+          }}
+        >
           <div className="sk-panel-intro">
             <span className="sk-panel-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24">
@@ -771,19 +806,38 @@ export default function SharekhanLinksPage() {
               <p>
                 {reuseFrom
                   ? "Details loaded from a recent link. Change what you need and generate a new link."
-                  : "Select an instrument, configure order details and create a shareable link with image and QR."}
+                  : "Use the tabs below — less scrolling, same fields."}
               </p>
             </div>
           </div>
 
-          <section className="sk-block">
-            <div className="sk-block-head">
-              <span className="sk-step">1</span>
-              <div>
-                <h3>Instrument</h3>
-                <p>Search and select the instrument for your order.</p>
-              </div>
-            </div>
+          <div className="sk-tabs" role="tablist" aria-label="Create order link steps">
+            {(
+              [
+                { id: "instrument" as const, label: "1 · Instrument", ready: Boolean(details.tradingSymbol && details.scripCode) },
+                { id: "order" as const, label: "2 · Order", ready: Boolean(details.quantity) },
+                { id: "card" as const, label: "3 · Share card", ready: Boolean(details.headline || details.buyRange || details.target1) },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={formTab === tab.id}
+                className={`sk-tab${formTab === tab.id ? " active" : ""}${tab.ready ? " ready" : ""}`}
+                onClick={() => setFormTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <section
+            className={`sk-block sk-tab-pane${formTab === "instrument" ? " active" : ""}`}
+            data-sk-tab="instrument"
+            role="tabpanel"
+            hidden={formTab !== "instrument"}
+          >
             <div className="sk-field">
               <span className="sk-label">Instrument segment</span>
               <div className="sk-pills" role="group" aria-label="Instrument segment">
@@ -945,16 +999,29 @@ export default function SharekhanLinksPage() {
                   : "Derivatives: NFO / BFO / MCX / CDS. Pick expiry, then search the contract."}
               </span>
             </div>
+            <div className="sk-tab-nav">
+              <span className="sk-hint">
+                {details.tradingSymbol && details.scripCode
+                  ? `${details.tradingSymbol} · scrip ${details.scripCode}`
+                  : "Search and select an instrument first."}
+              </span>
+              <button
+                className="sk-btn sk-btn-primary"
+                type="button"
+                disabled={!details.tradingSymbol || !details.scripCode}
+                onClick={() => setFormTab("order")}
+              >
+                Next · Order
+              </button>
+            </div>
           </section>
 
-          <section className="sk-block">
-            <div className="sk-block-head">
-              <span className="sk-step">2</span>
-              <div>
-                <h3>Order configuration</h3>
-                <p>Set the order details for the selected instrument.</p>
-              </div>
-            </div>
+          <section
+            className={`sk-block sk-tab-pane${formTab === "order" ? " active" : ""}`}
+            data-sk-tab="order"
+            role="tabpanel"
+            hidden={formTab !== "order"}
+          >
             <div className="sk-grid-order">
               <div className="sk-field">
                 <span className="sk-label">Buy / Sell *</span>
@@ -1020,20 +1087,26 @@ export default function SharekhanLinksPage() {
                   </button>
                 </div>
                 <span className="sk-hint">
-                  Saved on our order page. Sharekhan one-tap deep-link has no validity field — app always opens as Day (GFD). Agar IOC chahiye to app me confirm se pehle manually IOC select karo.
+                  One-tap opens as Day (GFD). IOC chahiye to app me confirm se pehle manually select karo.
                 </span>
               </div>
             </div>
+            <div className="sk-tab-nav">
+              <button className="sk-btn sk-btn-ghost" type="button" onClick={() => setFormTab("instrument")}>
+                Back
+              </button>
+              <button className="sk-btn sk-btn-primary" type="button" onClick={() => setFormTab("card")}>
+                Next · Share card
+              </button>
+            </div>
           </section>
 
-          <section className="sk-block">
-            <div className="sk-block-head">
-              <span className="sk-step">3</span>
-              <div>
-                <h3>Share card (image + QR)</h3>
-                <p>These fields will be shown on the WhatsApp share image.</p>
-              </div>
-            </div>
+          <section
+            className={`sk-block sk-tab-pane${formTab === "card" ? " active" : ""}`}
+            data-sk-tab="card"
+            role="tabpanel"
+            hidden={formTab !== "card"}
+          >
             <div className="sk-grid-card">
               <label className="sk-field">
                 <span className="sk-label">Card headline</span>
@@ -1064,6 +1137,12 @@ export default function SharekhanLinksPage() {
               <span className="sk-label">Notes (optional)</span>
               <input className="sk-input" value={details.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Add a short note for the recipient" />
             </label>
+            <div className="sk-tab-nav">
+              <button className="sk-btn sk-btn-ghost" type="button" onClick={() => setFormTab("order")}>
+                Back
+              </button>
+              <span className="sk-hint">Generate below when ready.</span>
+            </div>
           </section>
 
           <div className="sk-form-actions">
@@ -1073,7 +1152,7 @@ export default function SharekhanLinksPage() {
             </button>
             <button className="sk-btn sk-btn-primary" type="submit" disabled={busy}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07.07l2.12-2.12a5 5 0 0 0-7.07-7.07L10.5 5.5" /><path d="M14 11a5 5 0 0 0-7.07-.07L4.8 13.05a5 5 0 0 0 7.07 7.07L13.5 18.5" /></svg>
-              {busy ? "Creating..." : reuseFrom ? "Generate new link + share card" : "Generate link + share card"}
+              {busy ? "Creating..." : reuseFrom ? "Generate new link" : "Generate link + share card"}
             </button>
           </div>
         </form>
