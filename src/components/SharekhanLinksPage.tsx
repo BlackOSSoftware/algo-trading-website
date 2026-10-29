@@ -46,27 +46,21 @@ type LinkRecord = {
   clicks: number;
 };
 
-/** Verified live F&O one-tap demos — kept active so users can try / learn the flow. */
+/** Verified live F&O one-tap demos — compact sample chips in UI. */
 const PRESERVED_DEMOS: Array<{
   code: string;
-  title: string;
-  how: string;
   segment: "FUT" | "OPT";
   tradingSymbol: string;
   payload: string;
 }> = [
   {
     code: "1bb9d47de34f074fb2",
-    title: "Futures (working)",
-    how: "Phone pe open → Sharekhan app order screen pe RELIANCE Nov future prefilled (BUY · qty 1 · market). Confirm ke baad hi order lagta hai.",
     segment: "FUT",
     tradingSymbol: "RELIANCE26NOVFUT",
     payload: "131$12$61697$1$$1",
   },
   {
     code: "2345fbe7fe74f8223b",
-    title: "Options (working)",
-    how: "Phone pe open → Sharekhan app order screen pe RELIANCE Nov 1400 CE prefilled (BUY · qty 1 · market). Same one-tap format as futures — scrip code option contract ka hota hai.",
     segment: "OPT",
     tradingSymbol: "RELIANCE26NOV1400CE",
     payload: "131$12$126008$1$$1",
@@ -730,56 +724,18 @@ export default function SharekhanLinksPage() {
       {error ? <p className="sk-banner sk-banner-error" role="alert">{error}</p> : null}
       {message ? <p className="sk-banner" role="status">{message}</p> : null}
 
-      <details className="sk-panel sk-demo-panel">
-        <summary className="sk-demo-summary">
-          <span className="sk-panel-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.9 7.5 16.8l.9-5.1L4.8 8.2l5-.7L12 3z" />
-            </svg>
-          </span>
-          <div>
-            <h2>Working F&amp;O examples</h2>
-            <p>Tap to expand verified Futures / Options one-tap demos.</p>
+      <div className="sk-samples" aria-label="Working F and O samples">
+        {demoCards.map((demo) => (
+          <div key={demo.code} className="sk-sample">
+            <a href={demo.shortUrl} target="_blank" rel="noreferrer">
+              {demo.segment === "FUT" ? "Future sample" : "Option sample"}
+            </a>
+            <button type="button" onClick={() => copyLink(demo.shortUrl)} aria-label={`Copy ${demo.segment === "FUT" ? "future" : "option"} sample link`}>
+              Copy
+            </button>
           </div>
-        </summary>
-        <p className="sk-demo-lead">
-          Format: <code>131$exchange$scrip$qty$price$side</code> (NFO exchange code = 12).
-        </p>
-        <div className="sk-demo-grid">
-          {demoCards.map((demo) => (
-            <article key={demo.code} className="sk-demo-card">
-              <div className="sk-demo-card-top">
-                <span className={`sk-status${demo.active ? " on" : ""}`}>
-                  {demo.active ? "Preserved · Active" : "Preserved · Inactive"}
-                </span>
-                <span className="sk-demo-seg">{demo.segment === "FUT" ? "Futures" : "Options"}</span>
-              </div>
-              <h3>{demo.title}</h3>
-              <p className="sk-demo-symbol">{demo.tradingSymbol}</p>
-              <p className="sk-demo-how">{demo.how}</p>
-              <code className="sk-demo-payload" title="Sharekhan one-tap payload">
-                {demo.payload}
-              </code>
-              <a className="sk-demo-url" href={demo.shortUrl} target="_blank" rel="noreferrer">
-                {demo.shortUrl}
-              </a>
-              <div className="sk-demo-actions">
-                <button className="sk-btn sk-btn-primary" type="button" onClick={() => copyLink(demo.shortUrl)}>
-                  Copy link
-                </button>
-                {demo.link ? (
-                  <button className="sk-btn sk-btn-ghost" type="button" onClick={() => reuseFromLink(demo.link!)}>
-                    Load in form
-                  </button>
-                ) : null}
-                <a className="sk-btn sk-btn-ghost" href={demo.shortUrl} target="_blank" rel="noreferrer">
-                  Open
-                </a>
-              </div>
-            </article>
-          ))}
-        </div>
-      </details>
+        ))}
+      </div>
 
       <div className="sk-workspace">
         <form
