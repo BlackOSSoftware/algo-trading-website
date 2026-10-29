@@ -95,8 +95,8 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
 }
 
 async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
-  const width = 900;
-  const height = 1120;
+  const width = 780;
+  const height = 920;
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
@@ -141,56 +141,54 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
   ctx.fillStyle = page;
   ctx.fillRect(0, 0, width, height);
 
-  const glow = ctx.createRadialGradient(width - 40, 0, 10, width - 40, 20, 380);
-  glow.addColorStop(0, "rgba(255, 168, 92, 0.38)");
+  const glow = ctx.createRadialGradient(width - 40, 0, 10, width - 40, 20, 280);
+  glow.addColorStop(0, "rgba(255, 168, 92, 0.28)");
   glow.addColorStop(1, "rgba(255, 168, 92, 0)");
   ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, width, 360);
+  ctx.fillRect(0, 0, width, 280);
 
-  const pad = 52;
+  const pad = 36;
   const brand = "Emotionless Traders";
   ctx.textAlign = "left";
   ctx.fillStyle = "#e85d04";
-  fitFont(ctx, brand, width - pad * 2 - 140, 32, "800", 18);
-  ctx.fillText(brand, pad, 78);
+  fitFont(ctx, brand, width - pad * 2 - 110, 22, "800", 14);
+  ctx.fillText(brand, pad, 52);
   ctx.textAlign = "right";
   ctx.fillStyle = "#c2410c";
-  ctx.font = "700 15px Arial, Helvetica, sans-serif";
-  ctx.fillText("TRADE IDEA", width - pad, 74);
+  ctx.font = "700 11px Arial, Helvetica, sans-serif";
+  ctx.fillText("TRADE IDEA", width - pad, 50);
 
   ctx.textAlign = "left";
   ctx.fillStyle = "#111827";
-  fitFont(ctx, symbol, width - pad * 2, 68, "800", 32);
-  ctx.fillText(symbol, pad, 168);
+  fitFont(ctx, symbol, width - pad * 2, 36, "800", 20);
+  ctx.fillText(symbol, pad, 104);
   ctx.fillStyle = "#6b7280";
-  ctx.font = "500 24px Arial, Helvetica, sans-serif";
-  fitFont(ctx, stock, width - pad * 2, 24, "500", 16);
-  ctx.fillText(stock, pad, 210);
+  fitFont(ctx, stock, width - pad * 2, 15, "500", 12);
+  ctx.fillText(stock, pad, 128);
 
-  ctx.font = "700 16px Arial, Helvetica, sans-serif";
-  const sideW = Math.max(64, ctx.measureText(side).width + 28);
-  roundRect(ctx, pad, 232, sideW, 32, 16);
+  ctx.font = "700 12px Arial, Helvetica, sans-serif";
+  const sideW = Math.max(52, ctx.measureText(side).width + 20);
+  roundRect(ctx, pad, 144, sideW, 24, 12);
   ctx.fillStyle = side === "SELL" ? "#dc2626" : "#16a34a";
   ctx.fill();
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
-  ctx.fillText(side, pad + sideW / 2, 254);
+  ctx.fillText(side, pad + sideW / 2, 160);
   ctx.textAlign = "left";
   ctx.fillStyle = "#6b7280";
-  ctx.font = "600 18px Arial, Helvetica, sans-serif";
-  ctx.fillText(`${exchange}   ·   ${market}`, pad + sideW + 14, 255);
+  ctx.font = "600 12px Arial, Helvetica, sans-serif";
+  ctx.fillText(`${exchange}   ·   ${market}`, pad + sideW + 10, 161);
 
-  roundRect(ctx, pad, 286, width - pad * 2, 62, 14);
+  roundRect(ctx, pad, 182, width - pad * 2, 42, 10);
   ctx.fillStyle = "#fff4dc";
   ctx.fill();
   ctx.fillStyle = "#92400e";
-  ctx.font = "700 26px Arial, Helvetica, sans-serif";
-  fitFont(ctx, headline, width - pad * 2 - 40, 26, "700", 16);
-  ctx.fillText(headline, pad + 20, 326);
+  fitFont(ctx, headline, width - pad * 2 - 28, 16, "700", 12);
+  ctx.fillText(headline, pad + 14, 208);
 
-  const gap = 12;
+  const gap = 8;
   const boxW = (width - pad * 2 - gap * 4) / 5;
-  const boxY = 372;
+  const boxY = 242;
   const boxes = [
     { label: "Buy Range", value: buyRange, bg: "#eef5ff", fg: "#0f172a" },
     { label: "Target 1", value: target1, bg: "#e8f8ee", fg: "#15803d" },
@@ -200,62 +198,62 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
   ];
   boxes.forEach((box, index) => {
     const x = pad + index * (boxW + gap);
-    roundRect(ctx, x, boxY, boxW, 124, 16);
+    roundRect(ctx, x, boxY, boxW, 84, 12);
     ctx.fillStyle = box.bg;
     ctx.fill();
     ctx.fillStyle = "#64748b";
-    ctx.font = "600 14px Arial, Helvetica, sans-serif";
+    ctx.font = "600 10px Arial, Helvetica, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(box.label, x + 12, boxY + 36);
+    ctx.fillText(box.label, x + 8, boxY + 24);
     ctx.fillStyle = box.fg;
-    fitFont(ctx, box.value, boxW - 24, 24, "800", 12);
-    ctx.fillText(box.value, x + 12, boxY + 84);
+    fitFont(ctx, box.value, boxW - 16, 16, "800", 10);
+    ctx.fillText(box.value, x + 8, boxY + 56);
   });
 
   ctx.fillStyle = "#64748b";
-  ctx.font = "600 16px Arial, Helvetica, sans-serif";
-  ctx.fillText("Time Frame", pad, 556);
+  ctx.font = "600 11px Arial, Helvetica, sans-serif";
+  ctx.fillText("Time Frame", pad, 368);
   ctx.fillStyle = "#111827";
-  fitFont(ctx, timeFrame, 360, 30, "800", 16);
-  ctx.fillText(timeFrame, pad, 598);
+  fitFont(ctx, timeFrame, 280, 18, "800", 12);
+  ctx.fillText(timeFrame, pad, 394);
 
-  const qrSize = 168;
+  const qrSize = 112;
   const qrX = width - pad - qrSize;
-  const qrY = 528;
+  const qrY = 348;
   ctx.fillStyle = "#ffffff";
-  roundRect(ctx, qrX - 12, qrY - 12, qrSize + 24, qrSize + 24, 16);
+  roundRect(ctx, qrX - 8, qrY - 8, qrSize + 16, qrSize + 16, 12);
   ctx.fill();
   ctx.strokeStyle = "#f3e4d6";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.drawImage(qr, qrX, qrY, qrSize, qrSize);
   ctx.fillStyle = "#9ca3af";
-  ctx.font = "500 13px Arial, Helvetica, sans-serif";
+  ctx.font = "500 10px Arial, Helvetica, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Scan to open in Sharekhan", qrX + qrSize / 2, qrY + qrSize + 32);
+  ctx.fillText("Scan to open in Sharekhan", qrX + qrSize / 2, qrY + qrSize + 22);
 
   ctx.textAlign = "left";
   ctx.fillStyle = "#64748b";
-  ctx.font = "600 16px Arial, Helvetica, sans-serif";
-  ctx.fillText("Notes", pad, 760);
+  ctx.font = "600 11px Arial, Helvetica, sans-serif";
+  ctx.fillText("Notes", pad, 520);
   ctx.fillStyle = "#1f2937";
-  ctx.font = "500 22px Arial, Helvetica, sans-serif";
-  wrapText(ctx, notes, pad, 798, width - pad * 2, 30, 3);
+  ctx.font = "500 14px Arial, Helvetica, sans-serif";
+  wrapText(ctx, notes, pad, 546, width - pad * 2, 20, 4);
 
   ctx.strokeStyle = "#f3e6dc";
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(pad, height - 78);
-  ctx.lineTo(width - pad, height - 78);
+  ctx.moveTo(pad, height - 56);
+  ctx.lineTo(width - pad, height - 56);
   ctx.stroke();
   ctx.fillStyle = "#9ca3af";
-  ctx.font = "500 16px Arial, Helvetica, sans-serif";
+  ctx.font = "500 11px Arial, Helvetica, sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("Trade Responsibly   ·   Not a recommendation", pad, height - 42);
+  ctx.fillText("Trade Responsibly   ·   Not a recommendation", pad, height - 30);
   ctx.textAlign = "right";
   ctx.fillStyle = "#e85d04";
-  fitFont(ctx, brand, 320, 18, "800", 12);
-  ctx.fillText(brand, width - pad, height - 42);
+  fitFont(ctx, brand, 260, 13, "800", 10);
+  ctx.fillText(brand, width - pad, height - 30);
 }
 
 type Props = {
