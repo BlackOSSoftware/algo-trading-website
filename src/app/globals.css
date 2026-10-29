@@ -1626,8 +1626,8 @@ textarea {
   border: 1px solid #e7e5e4;
   border-radius: 12px;
   overflow: hidden;
-  background: #fffaf5;
-  max-width: 320px;
+  background: #fff7ed;
+  max-width: 400px;
   margin: 0 auto;
 }
 .sk-canvas-preview-frame img {
