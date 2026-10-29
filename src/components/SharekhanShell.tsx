@@ -1,32 +1,88 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearSharekhanToken, getSharekhanToken } from "@/lib/auth";
 import { fetchSession, type SessionUser } from "@/lib/session";
 
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  const value = parts.map((part) => part[0]?.toUpperCase() || "").join("");
+  return value || "SK";
+}
+
 export default function SharekhanShell({ children }: Readonly<{ children: React.ReactNode }>) {
-  const router = useRouter(); const pathname = usePathname();
-  const [user, setUser] = useState<SessionUser | null>(null); const [ready, setReady] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [ready, setReady] = useState(false);
   const isLogin = pathname === "/sharekhan/login";
+
   useEffect(() => {
-    if (isLogin) { setReady(true); return; }
+    if (isLogin) {
+      setReady(true);
+      return;
+    }
     let active = true;
     fetchSession(getSharekhanToken(), clearSharekhanToken).then((session) => {
       if (!active) return;
-      if (session?.role !== "sharekhan") { clearSharekhanToken(); router.replace("/sharekhan/login"); return; }
-      setUser(session); setReady(true);
+      if (session?.role !== "sharekhan") {
+        clearSharekhanToken();
+        router.replace("/sharekhan/login");
+        return;
+      }
+      setUser(session);
+      setReady(true);
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [isLogin, router]);
+
   if (isLogin) return <>{children}</>;
-  if (!ready) return <div className="auth-page"><div className="card">Loading Sharekhan console...</div></div>;
-  if (!user) return <div className="auth-page"><div className="card">Redirecting to login...</div></div>;
-  return <div className="app-shell">
-    <aside className="sidebar"><div className="sidebar-top"><div className="brand"><div className="brand-mark">SK</div><div><div className="brand-title">Sharekhan</div><div className="brand-sub">Private console</div></div></div></div>
-      <nav className="sidebar-nav"><Link className={`nav-link${pathname === "/sharekhan" ? " active" : ""}`} href="/sharekhan">Broker connections</Link><Link className={`nav-link${pathname === "/sharekhan/links" ? " active" : ""}`} href="/sharekhan/links">Order links</Link></nav>
-      <div className="sidebar-footer"><div className="badge">Sharekhan access</div><div style={{ marginTop: 10, overflowWrap: "anywhere" }}>{user.email}</div><button className="btn btn-ghost" type="button" style={{ marginTop: 16, width: "100%" }} onClick={() => { clearSharekhanToken(); router.replace("/sharekhan/login"); }}>Sign out</button></div>
-    </aside><div className="app-main"><header className="topbar"><div><div className="topbar-title">Sharekhan Console</div><div className="topbar-sub">Welcome, {user.name}</div></div></header><main className="content">{children}</main></div>
-  </div>;
+  if (!ready || !user) {
+    return (
+      <div className="sk-app">
+        <div className="sk-boot">{ready ? "Redirecting to login..." : "Loading Sharekhan console..."}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sk-app">
+      <div className="sk-main">
+        <div className="sk-account">
+          <div className="sk-brand">
+            <span className="sk-logo">SK</span>
+            <span>Sharekhan</span>
+          </div>
+          <div className="sk-account-right">
+            <div className="sk-user">
+              <span className="sk-avatar">{initials(user.name || user.email)}</span>
+              <div>
+                <strong>{user.name || "Operator"}</strong>
+                <span>{user.email}</span>
+              </div>
+            </div>
+            <button
+              className="sk-signout"
+              type="button"
+              onClick={() => {
+                clearSharekhanToken();
+                router.replace("/sharekhan/login");
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10 7V5H5v14h5v-2" />
+                <path d="M10 12h9" />
+                <path d="M16 9l3 3-3 3" />
+              </svg>
+              Sign out
+            </button>
+          </div>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
 }

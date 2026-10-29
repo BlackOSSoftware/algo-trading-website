@@ -50,6 +50,17 @@ export default function SharekhanLinksPage() {
     catch (e) { setError(e instanceof Error ? e.message : "Could not deactivate link"); }
   }
 
+  async function removeLink(code: string, label: string) {
+    if (!window.confirm(`Permanently delete "${label}"? This cannot be undone.`)) return;
+    try {
+      await apiPost(`/api/v1/sharekhan/links/${encodeURIComponent(code)}/delete`, {}, getSharekhanToken());
+      await refresh();
+      setMessage("Link permanently deleted.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete link");
+    }
+  }
+
   return <div style={{ maxWidth: 1000, margin: "0 auto" }}>
     <h1>Shareable Order Links</h1>
     <p>Order details bharo aur link bhejo. Phone par yeh Sharekhan app ke order screen par khulta hai, website par nahi. Trade tabhi place hota hai jab user app mein confirm karta hai.</p>
@@ -89,7 +100,15 @@ export default function SharekhanLinksPage() {
       <strong>{link.details.tradingSymbol || link.details.stock || link.code}</strong> · {link.kind === "order-intent" ? "Order details" : "Sharekhan one-tap"} · {link.active ? "Active" : "Inactive"} · {link.clicks} opens
       <p style={{ overflowWrap: "anywhere" }}><a href={link.shortUrl} target="_blank" rel="noreferrer">{link.shortUrl}</a></p>
       <button className="btn btn-secondary" type="button" onClick={() => navigator.clipboard.writeText(link.shortUrl)}>Copy</button>{" "}
-      {link.active && <button className="btn btn-ghost" type="button" onClick={() => deactivate(link.code)}>Deactivate</button>}
+      {link.active && <button className="btn btn-ghost" type="button" onClick={() => deactivate(link.code)}>Deactivate</button>}{" "}
+      <button
+        className="btn btn-ghost"
+        type="button"
+        style={{ color: "#b42318" }}
+        onClick={() => removeLink(link.code, String(link.details.tradingSymbol || link.details.stock || link.code))}
+      >
+        Delete forever
+      </button>
     </div>)}
   </div>;
 }

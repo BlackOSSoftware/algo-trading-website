@@ -19,7 +19,7 @@ export default function SharekhanLoginPage() {
       const result = await apiPost("/api/v1/auth/sharekhan/login", { email, password }) as { token?: string };
       if (!result.token) throw new Error("Login failed");
       setSharekhanToken(result.token);
-      router.replace("/sharekhan");
+      router.replace("/sharekhan/links");
     } catch (err) { setError(err instanceof Error ? err.message : "Login failed"); }
     finally { setBusy(false); }
   }

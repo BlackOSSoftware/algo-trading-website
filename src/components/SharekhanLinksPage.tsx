@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { apiGet, apiPost } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiGet, apiPost, resolveApiBaseUrl } from "@/lib/api";
 import { getSharekhanToken } from "@/lib/auth";
 import TradeShareCard, { type TradeCardData } from "@/components/TradeShareCard";
 
@@ -25,6 +25,8 @@ type Details = {
   notes: string;
   buyRange: string;
   target: string;
+  target1: string;
+  target2: string;
   stopLoss: string;
   timeFrame: string;
   headline: string;
@@ -36,12 +38,29 @@ type LinkRecord = {
   shortUrl: string;
   kind: string;
   details: Partial<Details> & {
-    card?: Partial<Pick<Details, "buyRange" | "target" | "stopLoss" | "timeFrame" | "headline">>;
+    card?: Partial<Pick<Details, "buyRange" | "target" | "target1" | "target2" | "stopLoss" | "timeFrame" | "headline">>;
     bracket?: { targetPrice?: number; stopLossPrice?: number; enabled?: boolean };
   };
   active: boolean;
   clicks: number;
 };
+type PreviewModel = {
+  tradingSymbol: string;
+  stock: string;
+  side: string;
+  exchange: string;
+  segment: string;
+  headline: string;
+  buyRange: string;
+  target: string;
+  target1: string;
+  target2: string;
+  stopLoss: string;
+  timeFrame: string;
+  notes: string;
+  code?: string;
+};
+
 const blank: Details = {
   stock: "",
   tradingSymbol: "",
@@ -62,10 +81,52 @@ const blank: Details = {
   notes: "",
   buyRange: "",
   target: "",
+  target1: "",
+  target2: "",
   stopLoss: "",
   timeFrame: "",
   headline: "",
 };
+
+const equityExchanges = ["NSE", "BSE"];
+const derivativeExchanges = ["NFO", "BFO", "MCX", "CDS"];
+
+const orderTypes = [
+  { value: "NORMAL", label: "Market" },
+  { value: "LIMIT", label: "Limit" },
+  { value: "STOPLOSS", label: "Stop loss limit" },
+  { value: "STOPLOSS_MARKET", label: "Stop loss market" },
+];
+const productTypes = [
+  { value: "INVESTMENT", label: "Delivery (Investment)" },
+  { value: "BIGTRADE", label: "Intraday (BigTrade)" },
+  { value: "BIGTRADEPLUS", label: "Intraday Plus" },
+];
+const segments = [
+  { value: "EQ", label: "Equity" },
+  { value: "FUT", label: "Futures" },
+  { value: "OPT", label: "Options" },
+];
+
+function segmentLabel(segment?: string) {
+  if (segment === "FUT") return "Futures";
+  if (segment === "OPT") return "Options";
+  return "Equity";
+}
+
+function orderTypeShort(value?: string) {
+  if (value === "LIMIT") return "LMT";
+  if (value === "STOPLOSS") return "SL";
+  if (value === "STOPLOSS_MARKET") return "SL-M";
+  return "MKT";
+}
+
+function productShort(value?: string) {
+  if (value === "BIGTRADE") return "Intraday";
+  if (value === "BIGTRADEPLUS") return "Intraday+";
+  if (value === "INVESTMENT") return "Delivery";
+  return value || "";
+}
 
 function toCardData(link: LinkRecord): TradeCardData {
   const d = link.details || {};
@@ -77,32 +138,125 @@ function toCardData(link: LinkRecord): TradeCardData {
     stock: String(d.stock || ""),
     side: String(d.side || "BUY"),
     exchange: String(d.exchange || ""),
+    segment: String(d.segment || "EQ"),
     quantity: d.quantity as string | number | undefined,
     price: d.price as string | number | undefined,
     productType: String(d.productType || ""),
+    notes: String(d.notes || ""),
     buyRange: String(card.buyRange || d.buyRange || d.price || ""),
     target: String(card.target || d.target || d.bracket?.targetPrice || ""),
+    target1: String(card.target1 || d.target1 || String(card.target || d.target || "").split("/")[0] || "").trim(),
+    target2: String(card.target2 || d.target2 || String(card.target || d.target || "").split("/")[1] || "").trim(),
     stopLoss: String(card.stopLoss || d.stopLoss || d.bracket?.stopLossPrice || ""),
     timeFrame: String(card.timeFrame || d.timeFrame || ""),
     headline: String(card.headline || d.headline || ""),
   };
 }
-const inputStyle = { width: "100%", marginTop: 6 };
-const orderTypes = [{ value: "NORMAL", label: "Market" }, { value: "LIMIT", label: "Limit" }, { value: "STOPLOSS", label: "Stop loss limit" }, { value: "STOPLOSS_MARKET", label: "Stop loss market" }];
-const productTypes = [{ value: "INVESTMENT", label: "Delivery (Investment)" }, { value: "BIGTRADE", label: "Intraday (BigTrade)" }, { value: "BIGTRADEPLUS", label: "Intraday Plus" }];
+
+function previewFromCard(card: TradeCardData): PreviewModel {
+  const side = String(card.side || "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY";
+  const product = String(card.productType || "").includes("BIGTRADE") ? "Equity Intraday" : "Equity Delivery";
+  return {
+    tradingSymbol: card.tradingSymbol || "SYMBOL",
+    stock: card.stock || card.tradingSymbol || "Company name",
+    side,
+    exchange: card.exchange || "NSE",
+    segment: card.segment || "EQ",
+    headline: card.headline || `${product} ${side === "SELL" ? "Sell" : "Buy"}`,
+    buyRange: card.buyRange || "—",
+    target: card.target || "—",
+    target1: card.target1 || String(card.target || "").split("/")[0]?.trim() || "—",
+    target2: card.target2 || String(card.target || "").split("/")[1]?.trim() || "—",
+    stopLoss: card.stopLoss || "—",
+    timeFrame: card.timeFrame || (product.includes("Intraday") ? "INTRADAY" : "DELIVERY"),
+    notes: card.notes || "Follow the plan and manage risk.",
+    code: card.code,
+  };
+}
+
+function OrderPreview({ model }: { model: PreviewModel }) {
+  const side = model.side === "SELL" ? "SELL" : "BUY";
+  const qr = model.code
+    ? `${resolveApiBaseUrl()}/api/v1/order-intents/${encodeURIComponent(model.code)}/qr.png`
+    : "";
+  return (
+    <article className="sk-idea">
+      <div className="sk-idea-top">
+        <span className="sk-idea-brand">Sharekhan</span>
+        <span className="sk-idea-kicker">TRADE IDEA</span>
+      </div>
+      <h3>{model.tradingSymbol || "SYMBOL"}</h3>
+      <p className="sk-idea-name">{model.stock || "Company name"}</p>
+      <div className="sk-idea-meta">
+        <span className={`sk-chip sk-chip-${side.toLowerCase()}`}>{side}</span>
+        <span>
+          {model.exchange || "NSE"} · {segmentLabel(model.segment)}
+        </span>
+      </div>
+      <div className="sk-idea-headline">{model.headline}</div>
+      <div className="sk-idea-stats sk-idea-stats-4">
+        <div>
+          <span>Buy Range</span>
+          <strong>{model.buyRange || "—"}</strong>
+        </div>
+        <div className="is-target">
+          <span>Target 1</span>
+          <strong>{model.target1 || "—"}</strong>
+        </div>
+        <div className="is-target">
+          <span>Target 2</span>
+          <strong>{model.target2 || "—"}</strong>
+        </div>
+        <div className="is-stop">
+          <span>Stop Loss</span>
+          <strong>{model.stopLoss || "—"}</strong>
+        </div>
+      </div>
+      <div className="sk-idea-bottom">
+        <div>
+          <span>Time Frame</span>
+          <strong>{model.timeFrame || "—"}</strong>
+          <span className="sk-idea-notes-label">Notes</span>
+          <p>{model.notes || "Follow the plan and manage risk."}</p>
+        </div>
+        <div className="sk-idea-qr">
+          {qr ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={qr} alt="Order QR code" />
+          ) : (
+            <div className="sk-qr-empty">QR</div>
+          )}
+          <small>Scan to open in Sharekhan</small>
+        </div>
+      </div>
+      <footer>
+        <span>Trade Responsibly · Not a recommendation</span>
+        <strong>Sharekhan</strong>
+      </footer>
+    </article>
+  );
+}
+
+function asText(value: unknown, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
 
 export default function SharekhanLinksPage() {
+  const previewRef = useRef<HTMLElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [details, setDetails] = useState<Details>(blank);
+  const [reuseFrom, setReuseFrom] = useState("");
   const [existingUrl, setExistingUrl] = useState("");
   const [name, setName] = useState("");
   const [links, setLinks] = useState<LinkRecord[]>([]);
-  const [created, setCreated] = useState<LinkRecord | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Instrument[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [expiries, setExpiries] = useState<Expiry[]>([]);
   const [loadingExpiries, setLoadingExpiries] = useState(false);
@@ -112,6 +266,11 @@ export default function SharekhanLinksPage() {
   const [bracketStop, setBracketStop] = useState("");
   const [bracketTrail, setBracketTrail] = useState("");
   const [shareCard, setShareCard] = useState<TradeCardData | null>(null);
+  const [pinned, setPinned] = useState<PreviewModel | null>(null);
+  const [tableQuery, setTableQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [segmentFilter, setSegmentFilter] = useState("all");
+
   const refresh = useCallback(async () => {
     const response = await apiGet("/api/v1/sharekhan/links", getSharekhanToken()) as { links: LinkRecord[] };
     setLinks(response.links);
@@ -119,19 +278,63 @@ export default function SharekhanLinksPage() {
   useEffect(() => { refresh().catch((e) => setError(e.message)); }, [refresh]);
   useEffect(() => {
     const term = query.trim();
-    if (term.length < 2 && (details.segment === "EQ" || !details.expiry)) { setSuggestions([]); setSearching(false); return; }
+    // After a result is picked we keep symbol in the box — don't re-search that selection.
+    const alreadySelected =
+      Boolean(details.scripCode) &&
+      (term === details.tradingSymbol ||
+        term.startsWith(`${details.tradingSymbol} ·`) ||
+        term.includes(" · "));
+    if (alreadySelected) {
+      setSuggestions([]);
+      setSearching(false);
+      setSearchError("");
+      return;
+    }
+    if (term.length < 2 && (details.segment === "EQ" || !details.expiry)) {
+      setSuggestions([]);
+      setSearching(false);
+      setSearchError("");
+      return;
+    }
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       setSearching(true);
+      setSearchError("");
       try {
-        const params = new URLSearchParams({ q: term, exchange: details.exchange, segment: details.segment, expiry: details.expiry, limit: "15" });
-        const response = await apiGet(`/api/v1/sharekhan/instruments/search?${params}`, getSharekhanToken()) as { instruments?: Instrument[] };
-        if (!cancelled) setSuggestions(Array.isArray(response.instruments) ? response.instruments : []);
-      } catch { if (!cancelled) setSuggestions([]); }
-      finally { if (!cancelled) setSearching(false); }
+        const token = getSharekhanToken();
+        if (!token) throw new Error("Sharekhan session missing. Sign in again.");
+        const params = new URLSearchParams({
+          q: term,
+          exchange: details.exchange,
+          segment: details.segment,
+          expiry: details.expiry,
+          limit: "15",
+        });
+        const response = await apiGet(`/api/v1/sharekhan/instruments/search?${params}`, token) as {
+          instruments?: Instrument[];
+          hint?: string;
+        };
+        if (cancelled) return;
+        const rows = Array.isArray(response.instruments) ? response.instruments : [];
+        setSuggestions(rows);
+        if (!rows.length) {
+          setSearchError(
+            response.hint ||
+              (details.segment === "EQ"
+                ? `No equity match on ${details.exchange}. Try NSE/BSE symbol like RELIANCE.`
+                : `No ${details.segment === "OPT" ? "option" : "futures"} match on ${details.exchange}${details.expiry ? ` for expiry ${details.expiry}` : ". Select expiry first"}.`)
+          );
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setSuggestions([]);
+        setSearchError(err instanceof Error ? err.message : "Instrument search failed.");
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [query, details.exchange, details.segment, details.expiry]);
+  }, [query, details.exchange, details.segment, details.expiry, details.scripCode, details.tradingSymbol]);
   useEffect(() => {
     if (details.segment === "EQ") { setExpiries([]); return; }
     let cancelled = false;
@@ -145,185 +348,828 @@ export default function SharekhanLinksPage() {
         setExpiries(rows);
         if (!rows.length) setExpiryError("No contract expiries are available for this exchange. Check the instrument master and try again.");
       })
-      .catch((error) => {
+      .catch((err) => {
         if (cancelled) return;
         setExpiries([]);
-        setExpiryError(error instanceof Error ? error.message : "Could not load contract expiries. Please retry.");
+        setExpiryError(err instanceof Error ? err.message : "Could not load contract expiries. Please retry.");
       })
       .finally(() => { if (!cancelled) setLoadingExpiries(false); });
     return () => { cancelled = true; };
   }, [details.exchange, details.segment]);
-  function update(key: keyof Details, value: string) { setDetails((current) => ({ ...current, [key]: value })); }
+
+  function update(key: keyof Details, value: string) {
+    setPinned(null);
+    setDetails((current) => ({ ...current, [key]: value }));
+  }
   function selectInstrument(item: Instrument) {
-    setDetails((current) => ({ ...current, tradingSymbol: item.symbol, scripCode: item.token, stock: item.name || item.symbol, exchange: item.exchange, expiry: item.expiry || "", strike: item.strike || "", lotSize: item.lotSize || "", optionType: /CE$/i.test(item.symbol) ? "CE" : /PE$/i.test(item.symbol) ? "PE" : "" }));
-    setQuery(`${item.symbol} · ${item.exchange}${item.name ? ` · ${item.name}` : ""}`);
-    setShowSuggestions(false); setSuggestions([]);
+    const type = String(item.instrumentType || "").toUpperCase();
+    const nextSegment = /OPT|CE|PE|OI|OS/.test(type)
+      ? "OPT"
+      : /FUT|FS|FI/.test(type)
+        ? "FUT"
+        : equityExchanges.includes(String(item.exchange || "").toUpperCase())
+          ? "EQ"
+          : details.segment;
+    setPinned(null);
+    setSearchError("");
+    setShowSuggestions(false);
+    setSuggestions([]);
+    setDetails((current) => ({
+      ...current,
+      segment: nextSegment,
+      tradingSymbol: item.symbol,
+      scripCode: item.token,
+      stock: item.name || item.symbol,
+      exchange: item.exchange,
+      expiry: item.expiry || current.expiry,
+      strike: item.strike || "",
+      lotSize: item.lotSize || "",
+      optionType: /CE$/i.test(item.symbol) ? "CE" : /PE$/i.test(item.symbol) ? "PE" : current.optionType,
+    }));
+    // Keep only the symbol in the search box so we don't re-query "RELIANCE · NSE · ..."
+    setQuery(item.symbol);
+  }
+  function setSegment(segment: string) {
+    const exchange = segment === "EQ" ? "NSE" : "NFO";
+    if (segment !== "EQ") setBracketEnabled(false);
+    setPinned(null);
+    setQuery("");
+    setSuggestions([]);
+    setSearchError("");
+    setDetails((current) => ({
+      ...current,
+      segment,
+      exchange,
+      tradingSymbol: "",
+      scripCode: "",
+      stock: "",
+      expiry: "",
+      strike: "",
+      optionType: "",
+      lotSize: "",
+    }));
+  }
+  function setExchange(exchange: string) {
+    const nextSegment = equityExchanges.includes(exchange)
+      ? "EQ"
+      : details.segment === "EQ"
+        ? "FUT"
+        : details.segment;
+    if (nextSegment !== "EQ") setBracketEnabled(false);
+    setPinned(null);
+    setQuery("");
+    setSuggestions([]);
+    setSearchError("");
+    setDetails((current) => ({
+      ...current,
+      exchange,
+      segment: nextSegment,
+      tradingSymbol: "",
+      scripCode: "",
+      stock: "",
+      expiry: "",
+      strike: "",
+      optionType: "",
+      lotSize: "",
+    }));
+  }
+  function resetForm() {
+    setDetails(blank);
+    setQuery("");
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setSearchError("");
+    setBracketEnabled(false);
+    setBracketTarget("");
+    setBracketStop("");
+    setBracketTrail("");
+    setPinned(null);
+    setShareCard(null);
+    setReuseFrom("");
+    setError("");
+    setMessage("");
+  }
+  function pinCard(card: TradeCardData) {
+    setShareCard(card);
+    setPinned(previewFromCard(card));
+    previewRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function reuseFromLink(link: LinkRecord) {
+    const d = link.details || {};
+    const card = d.card || {};
+    const bracket = d.bracket || {};
+    const segment = asText(d.segment, "EQ").toUpperCase() || "EQ";
+    const exchangeRaw = asText(d.exchange, segment === "EQ" ? "NSE" : "NFO").toUpperCase();
+    const exchange =
+      segment === "EQ"
+        ? equityExchanges.includes(exchangeRaw)
+          ? exchangeRaw
+          : "NSE"
+        : derivativeExchanges.includes(exchangeRaw)
+          ? exchangeRaw
+          : "NFO";
+    const targetCombined = asText(card.target || d.target);
+    const target1 = asText(card.target1 || d.target1 || targetCombined.split("/")[0]).trim();
+    const target2 = asText(card.target2 || d.target2 || targetCombined.split("/")[1]).trim();
+    const symbol = asText(d.tradingSymbol || d.stock || link.code).toUpperCase();
+    setPinned(null);
+    setShareCard(null);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setSearchError("");
+    setError("");
+    setDetails({
+      ...blank,
+      stock: asText(d.stock),
+      tradingSymbol: symbol,
+      scripCode: asText(d.scripCode),
+      side: asText(d.side, "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY",
+      quantity: asText(d.quantity, "1"),
+      price: asText(d.price, "0"),
+      exchange,
+      segment,
+      expiry: asText(d.expiry),
+      strike: asText(d.strike),
+      optionType: asText(d.optionType),
+      lotSize: asText(d.lotSize),
+      orderType: asText(d.orderType, "NORMAL").toUpperCase() || "NORMAL",
+      productType: asText(d.productType, "INVESTMENT").toUpperCase() || "INVESTMENT",
+      validity: asText(d.validity, "GFD").toUpperCase() || "GFD",
+      triggerPrice: asText(d.triggerPrice),
+      notes: asText(d.notes),
+      buyRange: asText(card.buyRange || d.buyRange || (Number(d.price) > 0 ? d.price : "")),
+      target: targetCombined,
+      target1,
+      target2,
+      stopLoss: asText(card.stopLoss || d.stopLoss || bracket.stopLossPrice),
+      timeFrame: asText(card.timeFrame || d.timeFrame),
+      headline: asText(card.headline || d.headline),
+    });
+    const bracketOn = Boolean(bracket.enabled) && segment === "EQ";
+    setBracketEnabled(bracketOn);
+    setBracketTarget(bracketOn ? asText(bracket.targetPrice) : "");
+    setBracketStop(bracketOn ? asText(bracket.stopLossPrice) : "");
+    setBracketTrail(bracketOn ? asText(bracket.trailingStop) : "");
+    setQuery(symbol);
+    setReuseFrom(symbol);
+    setMessage(
+      `Loaded ${symbol} from recent links. Edit anything you need, then Generate to create a new link.`
+    );
+    window.requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
+  const livePreview: PreviewModel = {
+    tradingSymbol: details.tradingSymbol || "SYMBOL",
+    stock: details.stock || "Company name",
+    side: details.side || "BUY",
+    exchange: details.exchange || "NSE",
+    segment: details.segment || "EQ",
+    headline:
+      details.headline ||
+      `${details.productType === "INVESTMENT" ? "Equity Delivery" : "Equity Intraday"} ${details.side === "SELL" ? "Sell" : "Buy"}`,
+    buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : "—"),
+    target: [details.target1, details.target2].filter(Boolean).join(" / ") || details.target || bracketTarget || "—",
+    target1: details.target1 || "—",
+    target2: details.target2 || "—",
+    stopLoss: details.stopLoss || bracketStop || "—",
+    timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
+    notes: details.notes || "Follow the plan and manage risk.",
+  };
+  const shown = pinned || livePreview;
+
   async function createOrderLink(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true); setError(""); setMessage("");
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setMessage("");
     try {
+      const target1 = details.target1 || details.target || bracketTarget;
+      const target2 = details.target2;
       const submitDetails = {
         ...details,
         buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
-        target: details.target || bracketTarget,
+        target1,
+        target2,
+        target: [target1, target2].filter(Boolean).join(" / "),
         stopLoss: details.stopLoss || bracketStop,
-        timeFrame:
-          details.timeFrame ||
-          (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
+        timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
         card: {
           buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
-          target: details.target || bracketTarget,
+          target1,
+          target2,
+          target: [target1, target2].filter(Boolean).join(" / "),
           stopLoss: details.stopLoss || bracketStop,
-          timeFrame:
-            details.timeFrame ||
-            (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
+          timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
           headline: details.headline,
         },
         bracket: {
-          enabled: bracketEnabled,
+          enabled: details.segment === "EQ" && bracketEnabled,
           targetPrice: bracketTarget,
           stopLossPrice: bracketStop,
           trailingStop: bracketTrail,
         },
       };
       const result = await apiPost("/api/v1/sharekhan/order-intents", { details: submitDetails }, getSharekhanToken()) as { link: LinkRecord };
-      setCreated(result.link);
-      setShareCard({
+      const card: TradeCardData = {
         ...toCardData(result.link),
+        tradingSymbol: details.tradingSymbol,
+        stock: details.stock,
+        side: details.side,
+        exchange: details.exchange,
+        segment: details.segment,
+        productType: details.productType,
+        notes: details.notes,
         buyRange: String(submitDetails.card.buyRange || details.price || ""),
         target: String(submitDetails.card.target || ""),
+        target1: String(submitDetails.card.target1 || ""),
+        target2: String(submitDetails.card.target2 || ""),
         stopLoss: String(submitDetails.card.stopLoss || ""),
         timeFrame: String(submitDetails.card.timeFrame || ""),
         headline: String(submitDetails.card.headline || ""),
-      });
+      };
+      pinCard(card);
+      setReuseFrom("");
       await refresh();
-      setMessage("Order link + share card ready. Download/share the image with QR.");
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not create link"); }
-    finally { setBusy(false); }
+      setMessage("Order link and share card are ready. Download or share the image with the QR.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create link");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function shortenKnownLink(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true); setError(""); setMessage("");
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setMessage("");
     try {
-      const result = await apiPost("/api/v1/sharekhan/links", { payload: existingUrl, details: { stock: name } }, getSharekhanToken()) as { link: LinkRecord };
-      setCreated(result.link); setExistingUrl(""); setName(""); await refresh();
+      await apiPost("/api/v1/sharekhan/links", { payload: existingUrl, details: { stock: name } }, getSharekhanToken());
+      setExistingUrl("");
+      setName("");
+      await refresh();
       setMessage("Existing Sharekhan one-tap link shortened. Check its order screen before sharing.");
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not shorten link"); }
-    finally { setBusy(false); }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not shorten link");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function deactivate(code: string) {
-    try { await apiPost(`/api/v1/sharekhan/links/${code}/deactivate`, {}, getSharekhanToken()); await refresh(); setMessage("Link deactivated."); }
-    catch (e) { setError(e instanceof Error ? e.message : "Could not deactivate link"); }
+    try {
+      await apiPost(`/api/v1/sharekhan/links/${code}/deactivate`, {}, getSharekhanToken());
+      await refresh();
+      setMessage("Link deactivated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not deactivate link");
+    }
   }
 
-  return <div className="sharekhan-links-page">
-    <h1>Sharekhan order links</h1>
-    <p>Create a link with a selected instrument and order details. Recipients can review the information before continuing to Sharekhan.</p>
-    <div className="card" style={{ padding: 20, marginBottom: 20 }}>
-      <strong>Review before placing an order</strong>
-      <p>Shared links show the selected instrument, side, quantity, and order settings for the recipient to review.</p>
-    </div>
-    <form className="card sharekhan-link-form" onSubmit={createOrderLink} style={{ marginBottom: 22 }}>
-      <h2 style={{ marginBottom: 18 }}>Create an order link</h2>
-      <div className="sharekhan-form-grid">
-        <label>Instrument segment<select className="input" style={inputStyle} value={details.segment} onChange={(e) => { const segment = e.target.value; const exchange = segment === "EQ" ? "NSE" : segment === "OPT" || segment === "FUT" ? "NFO" : "NSE"; setDetails((current) => ({ ...current, segment, exchange, tradingSymbol: "", scripCode: "", stock: "", expiry: "", strike: "", optionType: "", lotSize: "" })); setQuery(""); }}><option value="EQ">Equity</option><option value="FUT">Futures</option><option value="OPT">Options</option></select></label>
-        {details.segment !== "EQ" && <label>Contract expiry<select className="input" style={inputStyle} value={details.expiry} onChange={(e) => { setDetails((current) => ({ ...current, expiry: e.target.value, tradingSymbol: "", scripCode: "", strike: "", optionType: "", lotSize: "" })); setQuery(""); }}><option value="">{loadingExpiries ? "Loading expiries…" : "Select expiry"}</option>{expiries.map((item) => <option key={item.expiry} value={item.expiry}>{item.expiry} ({item.contracts} contracts)</option>)}</select>{expiryError && <span role="alert" style={{ display: "block", marginTop: 5, color: "#b42318", fontSize: 12 }}>{expiryError}</span>}</label>}
-        <label style={{ position: "relative" }}>Search {details.segment === "OPT" ? "underlying or option contract" : details.segment === "FUT" ? "underlying or futures contract" : "share or symbol"}<input className="input" style={inputStyle} value={query} onFocus={() => setShowSuggestions(true)} onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); setDetails((current) => ({ ...current, tradingSymbol: e.target.value.toUpperCase(), scripCode: "", stock: "" })); }} placeholder={details.segment === "EQ" ? "RELIANCE or company name" : "NIFTY, BANKNIFTY, RELIANCE"} autoComplete="off" />{showSuggestions && (query.trim().length >= 2 || (details.segment !== "EQ" && details.expiry)) && <div role="listbox" className="sharekhan-search-results">{searching ? <div style={{ padding: 12 }}>Searching instruments…</div> : suggestions.length ? suggestions.map((item) => <button type="button" role="option" key={`${item.exchange}-${item.token}`} onMouseDown={(e) => e.preventDefault()} onClick={() => selectInstrument(item)}><strong>{item.symbol}</strong> · {item.exchange}<div style={{ fontSize: 13, opacity: 0.7 }}>{item.expiry ? `Expiry ${item.expiry} · ` : ""}{item.strike ? `Strike ${item.strike} · ` : ""}{item.lotSize ? `Lot ${item.lotSize} · ` : ""}{item.instrumentType} · Scrip {item.token}</div></button>) : <div style={{ padding: 12 }}>No matching contracts found. Check the exchange and instrument master.</div>}</div>}</label>
-        <label>Trading symbol *<input className="input" style={inputStyle} required value={details.tradingSymbol} onChange={(e) => { update("tradingSymbol", e.target.value.toUpperCase()); if (query) setQuery(""); }} placeholder="RELIANCE" /></label>
-        <label>Sharekhan scrip code *<input className="input" style={inputStyle} required value={details.scripCode} onChange={(e) => update("scripCode", e.target.value)} placeholder="Select a search result" /></label>
-        <label>Stock name<input className="input" style={inputStyle} value={details.stock} onChange={(e) => update("stock", e.target.value)} placeholder="Reliance Industries" /></label>
-        <label>Buy / Sell *<select className="input" style={inputStyle} value={details.side} onChange={(e) => update("side", e.target.value)}><option>BUY</option><option>SELL</option></select></label>
-        <label>Exchange *<select className="input" style={inputStyle} value={details.exchange} onChange={(e) => { setDetails((current) => ({ ...current, exchange: e.target.value, tradingSymbol: "", scripCode: "", stock: "", expiry: "", strike: "", optionType: "", lotSize: "" })); setQuery(""); }}><option value="NSE">NSE</option><option value="BSE">BSE</option><option value="NFO">NFO</option><option value="BFO">BFO</option><option value="MCX">MCX</option><option value="CDS">CDS</option></select></label>
-        {details.segment === "OPT" && <><label>Strike price<input className="input" style={inputStyle} value={details.strike} onChange={(e) => update("strike", e.target.value)} /></label><label>Option type<select className="input" style={inputStyle} value={details.optionType} onChange={(e) => update("optionType", e.target.value)}><option value="">Select CE / PE</option><option value="CE">Call (CE)</option><option value="PE">Put (PE)</option></select></label></>}
-        {details.segment !== "EQ" && <label>Lot size<input className="input" style={inputStyle} value={details.lotSize} readOnly /></label>}
-        <label>Quantity *{details.lotSize && <span style={{ fontWeight: 400 }}> (lot size {details.lotSize})</span>}<input className="input" style={inputStyle} required type="number" min={details.lotSize || "1"} step={details.segment === "EQ" ? "1" : details.lotSize || "1"} value={details.quantity} onChange={(e) => update("quantity", e.target.value)} /></label>
-        <label>Price<input className="input" style={inputStyle} required type="number" min="0" step="any" value={details.price} onChange={(e) => update("price", e.target.value)} /></label>
-        <label>Order type<select className="input" style={inputStyle} value={details.orderType} onChange={(e) => update("orderType", e.target.value)}>{orderTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-        <label>Product type<select className="input" style={inputStyle} value={details.productType} onChange={(e) => update("productType", e.target.value)}>{productTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-        {details.orderType !== "NORMAL" && <label>Limit price *<input className="input" style={inputStyle} required type="number" min="0.01" step="any" value={details.price} onChange={(e) => update("price", e.target.value)} /></label>}
-        {details.orderType.startsWith("STOPLOSS") && <label>Trigger price *<input className="input" style={inputStyle} required type="number" min="0.01" step="any" value={details.triggerPrice} onChange={(e) => update("triggerPrice", e.target.value)} /></label>}
-        <label>Validity<select className="input" style={inputStyle} value={details.validity} onChange={(e) => update("validity", e.target.value)}><option value="GFD">Day (GFD)</option><option value="IOC">Immediate or cancel (IOC)</option></select></label>
-        {details.segment === "EQ" && <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={bracketEnabled} onChange={(e) => setBracketEnabled(e.target.checked)} /> Add bracket legs (target + stop loss)</label>}
-        {bracketEnabled && <><label>Bracket target price *<input className="input" style={inputStyle} required type="number" min="0.01" step="any" value={bracketTarget} onChange={(e) => setBracketTarget(e.target.value)} /></label><label>Bracket stop-loss price *<input className="input" style={inputStyle} required type="number" min="0.01" step="any" value={bracketStop} onChange={(e) => setBracketStop(e.target.value)} /></label><label>Trailing stop (optional)<input className="input" style={inputStyle} type="number" min="0" step="any" value={bracketTrail} onChange={(e) => setBracketTrail(e.target.value)} /></label></>}
-      </div>
-      <div className="card" style={{ marginTop: 18, padding: 16, background: "rgba(255,140,60,0.06)" }}>
-        <strong>Share card (image + QR)</strong>
-        <p className="helper" style={{ marginTop: 4, marginBottom: 12 }}>
-          Yeh fields WhatsApp share image pe dikhenge. QR pe order link rahega — scan se Sharekhan app khulegi.
-        </p>
-        <div className="sharekhan-form-grid">
-          <label>Card headline<input className="input" style={inputStyle} value={details.headline} onChange={(e) => update("headline", e.target.value)} placeholder="Equity Intraday Buy" /></label>
-          <label>Buy range<input className="input" style={inputStyle} value={details.buyRange} onChange={(e) => update("buyRange", e.target.value)} placeholder={Number(details.price) > 0 ? details.price : "1063"} /></label>
-          <label>Target<input className="input" style={inputStyle} value={details.target} onChange={(e) => update("target", e.target.value)} placeholder="1075/1085" /></label>
-          <label>Stop loss (SL)<input className="input" style={inputStyle} value={details.stopLoss} onChange={(e) => update("stopLoss", e.target.value)} placeholder="1050" /></label>
-          <label>Time frame<input className="input" style={inputStyle} value={details.timeFrame} onChange={(e) => update("timeFrame", e.target.value)} placeholder="INTRADAY" /></label>
+  async function removeLink(code: string, label: string) {
+    const ok = window.confirm(`Permanently delete "${label}"?\nThis cannot be undone. The order URL will stop working.`);
+    if (!ok) return;
+    try {
+      await apiPost(`/api/v1/sharekhan/links/${encodeURIComponent(code)}/delete`, {}, getSharekhanToken());
+      if (shareCard?.code === code) {
+        setShareCard(null);
+        setPinned(null);
+      }
+      await refresh();
+      setMessage("Link permanently deleted.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete link");
+    }
+  }
+
+  async function copyLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setMessage("Link copied.");
+    } catch {
+      setError("Could not copy the link.");
+    }
+  }
+
+  const visibleLinks = links.filter((link) => {
+    const text = `${link.details.tradingSymbol || ""} ${link.details.stock || ""}`.toLowerCase();
+    if (tableQuery.trim() && !text.includes(tableQuery.trim().toLowerCase())) return false;
+    if (statusFilter === "active" && !link.active) return false;
+    if (statusFilter === "inactive" && link.active) return false;
+    const segment = String(link.details.segment || "EQ");
+    if (segmentFilter !== "all" && segment !== segmentFilter) return false;
+    return true;
+  });
+
+  const searchOpen = showSuggestions && (query.trim().length >= 2 || (details.segment !== "EQ" && Boolean(details.expiry)));
+
+  return (
+    <div className="sk-page">
+      {error ? <p className="sk-banner sk-banner-error" role="alert">{error}</p> : null}
+      {message ? <p className="sk-banner" role="status">{message}</p> : null}
+
+      <div className="sk-workspace">
+        <form className="sk-panel" ref={formRef} onSubmit={createOrderLink}>
+          <div className="sk-panel-intro">
+            <span className="sk-panel-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M10 13a5 5 0 0 0 7.07.07l2.12-2.12a5 5 0 0 0-7.07-7.07L10.5 5.5" />
+                <path d="M14 11a5 5 0 0 0-7.07-.07L4.8 13.05a5 5 0 0 0 7.07 7.07L13.5 18.5" />
+              </svg>
+            </span>
+            <div>
+              <h2>{reuseFrom ? `Edit / reuse · ${reuseFrom}` : "Create an order link"}</h2>
+              <p>
+                {reuseFrom
+                  ? "Details loaded from a recent link. Change what you need and generate a new link."
+                  : "Select an instrument, configure order details and create a shareable link with image and QR."}
+              </p>
+            </div>
+          </div>
+
+          <section className="sk-block">
+            <div className="sk-block-head">
+              <span className="sk-step">1</span>
+              <div>
+                <h3>Instrument</h3>
+                <p>Search and select the instrument for your order.</p>
+              </div>
+            </div>
+            <div className="sk-field">
+              <span className="sk-label">Instrument segment</span>
+              <div className="sk-pills" role="group" aria-label="Instrument segment">
+                {segments.map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    className={details.segment === item.value ? "active" : ""}
+                    aria-pressed={details.segment === item.value}
+                    onClick={() => setSegment(item.value)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {details.segment !== "EQ" ? (
+              <label className="sk-field">
+                <span className="sk-label">Contract expiry</span>
+                <select
+                  className="sk-input"
+                  value={details.expiry}
+                  onChange={(event) => {
+                    setPinned(null);
+                    setQuery("");
+                    setDetails((current) => ({
+                      ...current,
+                      expiry: event.target.value,
+                      tradingSymbol: "",
+                      scripCode: "",
+                      strike: "",
+                      optionType: "",
+                      lotSize: "",
+                    }));
+                  }}
+                >
+                  <option value="">{loadingExpiries ? "Loading expiries…" : "Select expiry"}</option>
+                  {expiries.map((item) => (
+                    <option key={item.expiry} value={item.expiry}>
+                      {item.expiry} ({item.contracts} contracts)
+                    </option>
+                  ))}
+                </select>
+                {expiryError ? <span className="sk-field-error" role="alert">{expiryError}</span> : null}
+              </label>
+            ) : null}
+            <label className="sk-field sk-search">
+              <span className="sk-label">
+                Search {details.segment === "OPT" ? "underlying or option contract" : details.segment === "FUT" ? "underlying or futures contract" : "share or symbol"}
+              </span>
+              <span className="sk-search-box">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6" />
+                  <path d="M16 16l4 4" />
+                </svg>
+                <input
+                  className="sk-input"
+                  value={query}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setShowSuggestions(false)}
+                  onChange={(event) => {
+                    setPinned(null);
+                    setQuery(event.target.value);
+                    setShowSuggestions(true);
+                    setDetails((current) => ({ ...current, tradingSymbol: event.target.value.toUpperCase(), scripCode: "", stock: "" }));
+                  }}
+                  placeholder={details.segment === "EQ" ? "RELIANCE or company name" : "NIFTY, BANKNIFTY, RELIANCE"}
+                  autoComplete="off"
+                />
+              </span>
+              {searchOpen ? (
+                <div role="listbox" className="sk-results">
+                  {searching ? (
+                    <div className="sk-result-empty">Searching instruments…</div>
+                  ) : suggestions.length ? (
+                    suggestions.map((item) => (
+                      <button
+                        type="button"
+                        role="option"
+                        key={`${item.exchange}-${item.token}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectInstrument(item)}
+                      >
+                        <strong>{item.symbol}</strong>
+                        <span> · {item.exchange}</span>
+                        <small>
+                          {item.expiry ? `Expiry ${item.expiry} · ` : ""}
+                          {item.strike ? `Strike ${item.strike} · ` : ""}
+                          {item.lotSize ? `Lot ${item.lotSize} · ` : ""}
+                          {item.instrumentType} · Scrip {item.token}
+                        </small>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="sk-result-empty">{searchError || "No matching contracts found. Check the exchange and instrument master."}</div>
+                  )}
+                </div>
+              ) : null}
+              {searchError && !searchOpen ? <span className="sk-field-error" role="alert">{searchError}</span> : null}
+            </label>
+            <div className="sk-grid-3">
+              <label className="sk-field">
+                <span className="sk-label">Trading symbol *</span>
+                <input className="sk-input" required value={details.tradingSymbol} onChange={(event) => { update("tradingSymbol", event.target.value.toUpperCase()); if (query) setQuery(""); }} placeholder="RELIANCE" />
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">Sharekhan scrip code *</span>
+                <input className="sk-input" required value={details.scripCode} onChange={(event) => update("scripCode", event.target.value)} placeholder="Select a search result" />
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">Stock name</span>
+                <input className="sk-input" value={details.stock} onChange={(event) => update("stock", event.target.value)} placeholder="Reliance Industries" />
+              </label>
+            </div>
+            {details.segment === "OPT" ? (
+              <div className="sk-grid-3">
+                <label className="sk-field">
+                  <span className="sk-label">Strike price</span>
+                  <input className="sk-input" value={details.strike} onChange={(event) => update("strike", event.target.value)} />
+                </label>
+                <label className="sk-field">
+                  <span className="sk-label">Option type</span>
+                  <select className="sk-input" value={details.optionType} onChange={(event) => update("optionType", event.target.value)}>
+                    <option value="">Select CE / PE</option>
+                    <option value="CE">Call (CE)</option>
+                    <option value="PE">Put (PE)</option>
+                  </select>
+                </label>
+                <label className="sk-field">
+                  <span className="sk-label">Lot size</span>
+                  <input className="sk-input" value={details.lotSize} readOnly />
+                </label>
+              </div>
+            ) : null}
+            {details.segment === "FUT" ? (
+              <label className="sk-field">
+                <span className="sk-label">Lot size</span>
+                <input className="sk-input" value={details.lotSize} readOnly />
+              </label>
+            ) : null}
+            <div className="sk-field">
+              <span className="sk-label">Exchange</span>
+              <div className="sk-pills" role="group" aria-label="Exchange">
+                {(details.segment === "EQ" ? equityExchanges : derivativeExchanges).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={details.exchange === item ? "active" : ""}
+                    aria-pressed={details.exchange === item}
+                    onClick={() => setExchange(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+              <span className="sk-hint">
+                {details.segment === "EQ"
+                  ? "Equity cash: NSE / BSE only. For MCX or CDS switch to Futures or Options."
+                  : "Derivatives: NFO / BFO / MCX / CDS. Pick expiry, then search the contract."}
+              </span>
+            </div>
+          </section>
+
+          <section className="sk-block">
+            <div className="sk-block-head">
+              <span className="sk-step">2</span>
+              <div>
+                <h3>Order configuration</h3>
+                <p>Set the order details for the selected instrument.</p>
+              </div>
+            </div>
+            <div className="sk-grid-order">
+              <div className="sk-field">
+                <span className="sk-label">Buy / Sell *</span>
+                <div className="sk-pills sk-pills-side" role="group" aria-label="Buy or sell">
+                  <button type="button" className={details.side === "BUY" ? "active buy" : ""} aria-pressed={details.side === "BUY"} onClick={() => update("side", "BUY")}>BUY</button>
+                  <button type="button" className={details.side === "SELL" ? "active sell" : ""} aria-pressed={details.side === "SELL"} onClick={() => update("side", "SELL")}>SELL</button>
+                </div>
+              </div>
+              <label className="sk-field">
+                <span className="sk-label">Quantity *{details.lotSize ? ` (lot ${details.lotSize})` : ""}</span>
+                <input className="sk-input" required type="number" min={details.lotSize || "1"} step={details.segment === "EQ" ? "1" : details.lotSize || "1"} value={details.quantity} onChange={(event) => update("quantity", event.target.value)} />
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">{details.orderType === "NORMAL" ? "Price" : "Limit price"} *</span>
+                <input className="sk-input" required type="number" min={details.orderType === "NORMAL" ? "0" : "0.01"} step="any" value={details.price} onChange={(event) => update("price", event.target.value)} />
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">Order type</span>
+                <select className="sk-input" value={details.orderType} onChange={(event) => update("orderType", event.target.value)}>
+                  {orderTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </label>
+            </div>
+            {details.orderType.startsWith("STOPLOSS") ? (
+              <label className="sk-field">
+                <span className="sk-label">Trigger price *</span>
+                <input className="sk-input" required type="number" min="0.01" step="any" value={details.triggerPrice} onChange={(event) => update("triggerPrice", event.target.value)} />
+              </label>
+            ) : null}
+            <div className="sk-grid-2">
+              <label className="sk-field">
+                <span className="sk-label">Product type</span>
+                <select className="sk-input" value={details.productType} onChange={(event) => update("productType", event.target.value)}>
+                  {productTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">Validity</span>
+                <select className="sk-input" value={details.validity} onChange={(event) => update("validity", event.target.value)}>
+                  <option value="GFD">Day (GFD)</option>
+                  <option value="IOC">Immediate or cancel (IOC)</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section className="sk-block">
+            <div className="sk-block-head sk-block-head-row">
+              <span className="sk-step">3</span>
+              <div>
+                <h3>Bracket legs (target + stop loss)</h3>
+                <p>
+                  {details.segment === "EQ"
+                    ? "Saved on our order page and share card. Sharekhan one-tap opens only a normal entry order — target/SL must be placed in Sharekhan’s Bracket Order screen."
+                    : "Bracket legs are available for equity NSE/BSE orders only."}
+                </p>
+              </div>
+              <label className="sk-switch">
+                <input
+                  type="checkbox"
+                  checked={details.segment === "EQ" && bracketEnabled}
+                  disabled={details.segment !== "EQ"}
+                  onChange={(event) => {
+                    setPinned(null);
+                    setBracketEnabled(event.target.checked);
+                  }}
+                />
+                <span />
+                Enable bracket legs
+              </label>
+            </div>
+            {details.segment === "EQ" && bracketEnabled ? (
+              <div className="sk-grid-3">
+                <label className="sk-field">
+                  <span className="sk-label">Bracket target price *</span>
+                  <input className="sk-input" required type="number" min="0.01" step="any" value={bracketTarget} onChange={(event) => { setPinned(null); setBracketTarget(event.target.value); }} />
+                </label>
+                <label className="sk-field">
+                  <span className="sk-label">Bracket stop-loss price *</span>
+                  <input className="sk-input" required type="number" min="0.01" step="any" value={bracketStop} onChange={(event) => { setPinned(null); setBracketStop(event.target.value); }} />
+                </label>
+                <label className="sk-field">
+                  <span className="sk-label">Trailing stop (optional)</span>
+                  <input className="sk-input" type="number" min="0" step="any" value={bracketTrail} onChange={(event) => { setPinned(null); setBracketTrail(event.target.value); }} />
+                </label>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="sk-block">
+            <div className="sk-block-head">
+              <span className="sk-step">4</span>
+              <div>
+                <h3>Share card (image + QR)</h3>
+                <p>These fields will be shown on the WhatsApp share image.</p>
+              </div>
+            </div>
+            <div className="sk-grid-card">
+              <label className="sk-field">
+                <span className="sk-label">Card headline</span>
+                <input className="sk-input" value={details.headline} onChange={(event) => update("headline", event.target.value)} placeholder="Equity Intraday Buy" />
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">Buy range</span>
+                <input className="sk-input" value={details.buyRange} onChange={(event) => update("buyRange", event.target.value)} placeholder={Number(details.price) > 0 ? details.price : "1063"} />
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">First target</span>
+                <input className="sk-input" value={details.target1} onChange={(event) => update("target1", event.target.value)} placeholder="1075" />
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">Second target</span>
+                <input className="sk-input" value={details.target2} onChange={(event) => update("target2", event.target.value)} placeholder="1085" />
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">Stop loss (SL)</span>
+                <input className="sk-input" value={details.stopLoss} onChange={(event) => update("stopLoss", event.target.value)} placeholder="1050" />
+              </label>
+              <label className="sk-field">
+                <span className="sk-label">Time frame</span>
+                <input className="sk-input" value={details.timeFrame} onChange={(event) => update("timeFrame", event.target.value)} placeholder="INTRADAY" />
+              </label>
+            </div>
+            <label className="sk-field">
+              <span className="sk-label">Notes (optional)</span>
+              <input className="sk-input" value={details.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Add a short note for the recipient" />
+            </label>
+          </section>
+
+          <div className="sk-form-actions">
+            <button className="sk-btn sk-btn-ghost" type="button" onClick={resetForm}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.2-5.5" /><path d="M4 4v5h5" /></svg>
+              Reset
+            </button>
+            <button className="sk-btn sk-btn-primary" type="submit" disabled={busy}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07.07l2.12-2.12a5 5 0 0 0-7.07-7.07L10.5 5.5" /><path d="M14 11a5 5 0 0 0-7.07-.07L4.8 13.05a5 5 0 0 0 7.07 7.07L13.5 18.5" /></svg>
+              {busy ? "Creating..." : reuseFrom ? "Generate new link + share card" : "Generate link + share card"}
+            </button>
+          </div>
+        </form>
+
+        <div className="sk-rail">
+          <section className="sk-panel sk-preview-panel" ref={previewRef}>
+            <div className="sk-panel-intro">
+              <span className="sk-panel-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" /><circle cx="12" cy="12" r="2.5" /></svg>
+              </span>
+              <div>
+                <h2>Share card preview</h2>
+                <p>{pinned ? `Saved card for ${shown.tradingSymbol}. Edit the form to return to the live draft.` : "This is how your WhatsApp share image will look."}</p>
+              </div>
+            </div>
+            <OrderPreview model={shown} />
+            {pinned && shareCard ? (
+              <TradeShareCard data={shareCard} variant="toolbar" />
+            ) : (
+              <div className="sk-toolbar">
+                <div className="sk-share-actions">
+                  <button className="sk-btn sk-btn-ghost" type="button" disabled>Download PNG</button>
+                  <button className="sk-btn sk-btn-ghost" type="button" disabled>Copy image</button>
+                  <button className="sk-btn sk-btn-ghost" type="button" disabled>Share</button>
+                </div>
+                <p className="sk-hint">Generate a link to download the QR card.</p>
+              </div>
+            )}
+          </section>
+
+          <form className="sk-panel sk-shorten" onSubmit={shortenKnownLink}>
+            <div className="sk-panel-intro">
+              <span className="sk-panel-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07.07l2.12-2.12a5 5 0 0 0-7.07-7.07L10.5 5.5" /><path d="M14 11a5 5 0 0 0-7.07-.07L4.8 13.05a5 5 0 0 0 7.07 7.07L13.5 18.5" /></svg>
+              </span>
+              <div>
+                <h2>Shorten an existing Sharekhan one-tap link</h2>
+                <p>Create a short link from an existing Sharekhan one-tap URL.</p>
+              </div>
+            </div>
+            <label className="sk-field">
+              <span className="sk-label">Verified one-tap URL or payload</span>
+              <input className="sk-input" required value={existingUrl} onChange={(event) => setExistingUrl(event.target.value)} placeholder="Paste your Sharekhan one-tap link here..." />
+            </label>
+            <label className="sk-field">
+              <span className="sk-label">Name (optional)</span>
+              <input className="sk-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Display name" />
+            </label>
+            <button className="sk-btn sk-btn-primary" disabled={busy} type="submit">Shorten link</button>
+          </form>
         </div>
       </div>
-      <label style={{ display: "block", marginTop: 16 }}>Notes (optional)<input className="input" style={inputStyle} value={details.notes} onChange={(e) => update("notes", e.target.value)} placeholder="Add a short note for the recipient" /></label>
-      <button className="btn btn-primary" type="submit" disabled={busy} style={{ marginTop: 20 }}>{busy ? "Creating..." : "Generate link + share card"}</button>
-    </form>
-    <details className="card" style={{ padding: 20, marginBottom: 24 }}>
-      <summary>Shorten an existing Sharekhan one-tap link</summary>
-      <form onSubmit={shortenKnownLink} style={{ marginTop: 16 }}>
-        <label>Verified one-tap URL or payload<input className="input" style={inputStyle} required value={existingUrl} onChange={(e) => setExistingUrl(e.target.value)} /></label>
-        <label style={{ display: "block", marginTop: 12 }}>Name (optional)<input className="input" style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} /></label>
-        <button className="btn btn-secondary" disabled={busy} type="submit" style={{ marginTop: 16 }}>Shorten existing link</button>
-      </form>
-    </details>
-    {error && <p role="alert" style={{ color: "#dc2626" }}>{error}</p>}
-    {message && <p role="status">{message}</p>}
-    {shareCard ? (
-      <div className="card" style={{ padding: 20, marginBottom: 24 }}>
-        <TradeShareCard data={shareCard} onClose={() => setShareCard(null)} />
-      </div>
-    ) : null}
-    {created && !shareCard ? (
-      <div className="card sharekhan-order-card" style={{ padding: 20, marginBottom: 24 }}>
-        <strong>New order link</strong>
-        <p style={{ overflowWrap: "anywhere" }}>
-          <a href={created.shortUrl} target="_blank" rel="noreferrer">
-            {created.shortUrl}
-          </a>
-        </p>
-        <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(created.shortUrl)}>
-          Copy link
-        </button>{" "}
-        <button className="btn btn-primary" type="button" onClick={() => setShareCard(toCardData(created))}>
-          Share image with QR
-        </button>
-      </div>
-    ) : null}
-    <h2>Recent links</h2>
-    {links.map((link) => (
-      <div className="card sharekhan-order-card" key={link.code} style={{ padding: 18, marginBottom: 12 }}>
-        <strong>{link.details.tradingSymbol || link.details.stock || link.code}</strong> ·{" "}
-        {link.kind === "order-intent" ? "Order details" : "Sharekhan one-tap"} ·{" "}
-        {link.active ? "Active" : "Inactive"} · {link.clicks} opens
-        <p style={{ overflowWrap: "anywhere" }}>
-          <a href={link.shortUrl} target="_blank" rel="noreferrer">
-            {link.shortUrl}
-          </a>
-        </p>
-        <button
-          className="btn btn-secondary"
-          type="button"
-          onClick={() => navigator.clipboard.writeText(link.shortUrl)}
-        >
-          Copy
-        </button>{" "}
-        {link.kind === "order-intent" ? (
-          <button className="btn btn-primary" type="button" onClick={() => setShareCard(toCardData(link))}>
-            Share image with QR
-          </button>
-        ) : null}{" "}
-        {link.active ? (
-          <button className="btn btn-ghost" type="button" onClick={() => deactivate(link.code)}>
-            Deactivate
-          </button>
-        ) : null}
-      </div>
-    ))}
-  </div>;
+
+      <section className="sk-panel sk-table-panel">
+        <div className="sk-table-head">
+          <div className="sk-panel-intro">
+            <span className="sk-panel-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M8 7h12M8 12h12M8 17h12" /><path d="M4 7h.01M4 12h.01M4 17h.01" /></svg>
+            </span>
+            <div>
+              <h2>Recent links</h2>
+              <p>Click a row or Edit to load it into the form, then generate a new link.</p>
+            </div>
+          </div>
+          <div className="sk-filters">
+            <label className="sk-search-box sk-filter-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="M16 16l4 4" /></svg>
+              <input className="sk-input" value={tableQuery} onChange={(event) => setTableQuery(event.target.value)} placeholder="Search by symbol or stock name..." />
+            </label>
+            <select className="sk-input" aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">All status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <select className="sk-input" aria-label="Filter by segment" value={segmentFilter} onChange={(event) => setSegmentFilter(event.target.value)}>
+              <option value="all">All segments</option>
+              <option value="EQ">Equity</option>
+              <option value="FUT">Futures</option>
+              <option value="OPT">Options</option>
+            </select>
+          </div>
+        </div>
+        <div className="sk-table-wrap">
+          <table className="sk-table">
+            <thead>
+              <tr>
+                <th>Instrument</th>
+                <th>Segment</th>
+                <th>Side</th>
+                <th>Order details</th>
+                <th>Status</th>
+                <th>Opens</th>
+                <th>Link</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleLinks.length ? visibleLinks.map((link) => {
+                const symbol = String(link.details.tradingSymbol || link.details.stock || link.code);
+                const segment = String(link.details.segment || "EQ");
+                const side = String(link.details.side || "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY";
+                const product = productShort(link.details.productType);
+                const canEdit = link.kind === "order-intent";
+                return (
+                  <tr
+                    key={link.code}
+                    className={canEdit ? "sk-row-clickable" : undefined}
+                    onClick={canEdit ? () => reuseFromLink(link) : undefined}
+                    title={canEdit ? "Click to edit / reuse in the form" : undefined}
+                  >
+                    <td>
+                      <div className="sk-instrument">
+                        <span className={`sk-mark${segment === "EQ" ? "" : " alt"}`}>{symbol.slice(0, 1)}</span>
+                        <div>
+                          <strong>{symbol}</strong>
+                          <small>{link.details.stock || (link.kind === "order-intent" ? "Order details" : "One-tap link")}</small>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{segmentLabel(segment)}</td>
+                    <td><span className={`sk-chip sk-chip-${side.toLowerCase()}`}>{side}</span></td>
+                    <td>{link.kind === "order-intent" ? `Qty ${link.details.quantity || "—"} · ${orderTypeShort(link.details.orderType)}${product ? ` · ${product}` : ""}` : "One-tap"}</td>
+                    <td><span className={`sk-status${link.active ? " on" : ""}`}>{link.active ? "Active" : "Inactive"}</span></td>
+                    <td>{link.clicks}</td>
+                    <td>
+                      <a
+                        className="sk-url"
+                        href={link.shortUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {link.shortUrl}
+                      </a>
+                    </td>
+                    <td>
+                      <div className="sk-row-actions" onClick={(event) => event.stopPropagation()}>
+                        {canEdit ? (
+                          <button className="sk-btn sk-btn-tiny" type="button" onClick={() => reuseFromLink(link)}>Edit</button>
+                        ) : null}
+                        <button className="sk-btn sk-btn-tiny" type="button" onClick={() => copyLink(link.shortUrl)}>Copy</button>
+                        {canEdit ? (
+                          <button className="sk-btn sk-btn-tiny" type="button" onClick={() => pinCard(toCardData(link))}>Share image</button>
+                        ) : null}
+                        {link.active ? (
+                          <button className="sk-btn sk-btn-tiny" type="button" onClick={() => deactivate(link.code)}>Deactivate</button>
+                        ) : null}
+                        <button className="sk-btn sk-btn-tiny sk-btn-danger" type="button" aria-label={`Delete ${symbol}`} onClick={() => removeLink(link.code, symbol)}>
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14" /><path d="M9 7V5h6v2" /><path d="M8 7l1 12h6l1-12" /></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td className="sk-empty" colSpan={8}>
+                    {links.length ? "No links match these filters." : "No links yet. Generate one above."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
 }

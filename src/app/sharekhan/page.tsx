@@ -1,5 +1,5 @@
-import BrokerConnections from "@/components/admin/BrokerConnections";
+import { redirect } from "next/navigation";
 
 export default function SharekhanPage() {
-  return <BrokerConnections />;
+  redirect("/sharekhan/links");
 }

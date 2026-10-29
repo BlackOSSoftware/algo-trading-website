@@ -192,13 +192,16 @@ export default function OrderDetailsPage() {
                 </div>
               ) : null}
               {details.bracket?.enabled ? (
-                <div>
-                  Bracket
+                <div style={{ gridColumn: "1 / -1" }}>
+                  Bracket (for review)
                   <br />
                   <strong>
                     Target {details.bracket.targetPrice}; stop {details.bracket.stopLossPrice}
                     {details.bracket.trailingStop ? `; trail ${details.bracket.trailingStop}` : ""}
                   </strong>
+                  <p style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
+                    Sharekhan app one-tap opens a normal entry order only. Enter target and stop-loss in Sharekhan Bracket Order after the app opens.
+                  </p>
                 </div>
               ) : null}
             </div>
