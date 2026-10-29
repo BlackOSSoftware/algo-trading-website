@@ -219,26 +219,22 @@ function OrderPreview({ model, theme }: { model: PreviewModel; theme: CardThemeI
         </span>
       </div>
       <div className="sk-idea-headline">{model.headline}</div>
-      <div className="sk-idea-stats sk-idea-stats-5">
+      <div className="sk-idea-stats sk-idea-stats-4">
         <div>
           <span>Buy Range</span>
           <strong>{model.buyRange || "—"}</strong>
         </div>
         <div className="is-target">
-          <span>Target 1</span>
+          <span>Target</span>
           <strong>{model.target1 || "—"}</strong>
-        </div>
-        <div className="is-target">
-          <span>Target 2</span>
-          <strong>{model.target2 || "—"}</strong>
-        </div>
-        <div className="is-target">
-          <span>Target 3</span>
-          <strong>{model.target3 || "—"}</strong>
         </div>
         <div className="is-stop">
           <span>Stop Loss</span>
           <strong>{model.stopLoss || "—"}</strong>
+        </div>
+        <div>
+          <span>Time Frame</span>
+          <strong>{model.timeFrame || "—"}</strong>
         </div>
       </div>
       <div className="sk-idea-bottom">
@@ -596,23 +592,21 @@ export default function SharekhanLinksPage() {
     setBusy(true);
     try {
       const target1 = details.target1 || details.target;
-      const target2 = details.target2;
-      const target3 = details.target3;
       const submitDetails = {
         ...details,
         buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
         target1,
-        target2,
-        target3,
-        target: [target1, target2, target3].filter(Boolean).join(" / "),
+        target2: "",
+        target3: "",
+        target: target1 || "",
         stopLoss: details.stopLoss,
         timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
         card: {
           buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
           target1,
-          target2,
-          target3,
-          target: [target1, target2, target3].filter(Boolean).join(" / "),
+          target2: "",
+          target3: "",
+          target: target1 || "",
           stopLoss: details.stopLoss,
           timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
           headline: details.headline,
@@ -631,8 +625,8 @@ export default function SharekhanLinksPage() {
         buyRange: String(submitDetails.card.buyRange || details.price || ""),
         target: String(submitDetails.card.target || ""),
         target1: String(submitDetails.card.target1 || ""),
-        target2: String(submitDetails.card.target2 || ""),
-        target3: String(submitDetails.card.target3 || ""),
+        target2: "",
+        target3: "",
         stopLoss: String(submitDetails.card.stopLoss || ""),
         timeFrame: String(submitDetails.card.timeFrame || ""),
         headline: String(submitDetails.card.headline || ""),
@@ -1119,16 +1113,8 @@ export default function SharekhanLinksPage() {
                 <input className="sk-input" value={details.buyRange} onChange={(event) => update("buyRange", event.target.value)} placeholder={Number(details.price) > 0 ? details.price : "1063"} />
               </label>
               <label className="sk-field">
-                <span className="sk-label">First target</span>
-                <input className="sk-input" value={details.target1} onChange={(event) => update("target1", event.target.value)} placeholder="1075" />
-              </label>
-              <label className="sk-field">
-                <span className="sk-label">Second target</span>
-                <input className="sk-input" value={details.target2} onChange={(event) => update("target2", event.target.value)} placeholder="1085" />
-              </label>
-              <label className="sk-field">
-                <span className="sk-label">Third target</span>
-                <input className="sk-input" value={details.target3} onChange={(event) => update("target3", event.target.value)} placeholder="1095" />
+                <span className="sk-label">Target</span>
+                <input className="sk-input" value={details.target1} onChange={(event) => update("target1", event.target.value)} placeholder="2500" />
               </label>
               <label className="sk-field">
                 <span className="sk-label">Stop loss (SL)</span>
