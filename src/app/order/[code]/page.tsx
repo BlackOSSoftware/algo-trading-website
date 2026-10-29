@@ -21,15 +21,6 @@ type Details = {
   productType: string;
   validity?: string;
   triggerPrice?: number;
-  openMode?: string;
-  bracket?: {
-    enabled?: boolean;
-    mode?: string;
-    targetPrice?: number;
-    stopLossPrice?: number;
-    trailingStop?: number;
-  };
-  bracketWebUrl?: string;
   notes: string;
 };
 
@@ -39,16 +30,6 @@ function isMobileUa(ua: string) {
 
 function isIosUa(ua: string) {
   return /iPhone|iPad|iPod/i.test(ua);
-}
-
-function isBigTradePlus(details: Details | null) {
-  if (!details) return false;
-  return (
-    details.openMode === "brackettsl" ||
-    details.orderType === "BRACKET" ||
-    details.productType === "BIGTRADEPLUS" ||
-    Boolean(details.bracket?.enabled)
-  );
 }
 
 export default function OrderDetailsPage() {
@@ -65,9 +46,6 @@ export default function OrderDetailsPage() {
     if (isIosUa(navigator.userAgent)) return iosAppUrl || androidAppUrl;
     return androidAppUrl || iosAppUrl;
   }, [androidAppUrl, iosAppUrl]);
-
-  const btp = isBigTradePlus(details);
-  const webUrl = String(details?.bracketWebUrl || "").trim();
 
   useEffect(() => {
     if (!params.code) return;
@@ -89,8 +67,7 @@ export default function OrderDetailsPage() {
   }, [params.code]);
 
   useEffect(() => {
-    // BigTrade+/Bracket: do NOT auto-open one-tap (normal entry without product/SL).
-    if (btp || !mobileUrl || opened) return;
+    if (!mobileUrl || opened) return;
     if (typeof navigator === "undefined" || !isMobileUa(navigator.userAgent)) return;
     setOpened(true);
     if (schemeUrl) {
@@ -109,7 +86,7 @@ export default function OrderDetailsPage() {
       return;
     }
     window.location.href = mobileUrl;
-  }, [btp, mobileUrl, schemeUrl, opened]);
+  }, [mobileUrl, schemeUrl, opened]);
 
   const openApp = () => {
     if (schemeUrl) {
@@ -125,19 +102,13 @@ export default function OrderDetailsPage() {
   const summary = details
     ? `${details.side} ${details.quantity} ${details.tradingSymbol} on ${details.exchange}; ${
         details.price === 0 ? "Market" : `Limit price ${details.price}`
-      }; ${details.orderType}; Product ${details.productType}; Validity ${details.validity || "GFD"}${
-        details.bracket?.enabled
-          ? `; SL ${details.bracket.stopLossPrice}${
-              details.bracket.targetPrice ? `; book-profit ${details.bracket.targetPrice}` : ""
-            }`
-          : ""
-      }`
+      }; ${details.orderType}; Product ${details.productType}; Validity ${details.validity || "GFD"}`
     : "";
 
   return (
     <main style={{ maxWidth: 650, margin: "48px auto", padding: "0 18px" }}>
       <div className="card" style={{ padding: 28 }}>
-        <h1>{btp ? "BigTrade+ / Bracket order" : "Order details to review"}</h1>
+        <h1>Order details to review</h1>
         {error && <p role="alert">{error}</p>}
         {!error && !details && <p>Loading order details...</p>}
         {details && (
@@ -162,7 +133,7 @@ export default function OrderDetailsPage() {
               <div>
                 Product / Action
                 <br />
-                <strong>{details.productType === "BIGTRADEPLUS" ? "BigTrade+ (Bracket)" : details.productType}</strong>
+                <strong>{details.productType}</strong>
               </div>
               <div>
                 Exchange
@@ -217,42 +188,17 @@ export default function OrderDetailsPage() {
                   <strong>{details.triggerPrice}</strong>
                 </div>
               ) : null}
-              {btp ? (
-                <div style={{ gridColumn: "1 / -1" }}>
-                  BigTrade+ legs (fill these in Sharekhan BTP form)
-                  <br />
-                  <strong>
-                    SL {details.bracket?.stopLossPrice || "—"}
-                    {details.bracket?.targetPrice
-                      ? `; book-profit ${details.bracket.targetPrice}`
-                      : ""}
-                    {details.bracket?.trailingStop ? `; trail ${details.bracket.trailingStop}` : ""}
-                  </strong>
-                  <p style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
-                    Sharekhan one-tap cannot set product BigTrade+ or SL/target. Use “Open BigTrade+ (web)” —
-                    Sharekhan me product/action BigTrade+ select hoga (bracket/TSL screen). Phir SL + optional
-                    book-profit enter karke confirm karo.
-                  </p>
-                </div>
-              ) : null}
             </div>
             {details.notes && (
               <p>
                 <strong>Notes:</strong> {details.notes}
               </p>
             )}
-            {btp ? (
-              <p>
-                <strong>Primary path:</strong> Open BigTrade+ web form, login if needed, set product BigTrade+,
-                fill SL (and book-profit if shown above), then place.
-              </p>
-            ) : (
-              <p>
-                <strong>Phone par yeh Sharekhan app ka order screen kholta hai</strong> — scrip, buy/sell,
-                qty aur price pehle se bhari hui. Order tabhi lagta hai jab aap app mein confirm karte ho.
-              </p>
-            )}
-            {!mobileUrl && !btp ? (
+            <p>
+              <strong>Phone par yeh Sharekhan app ka order screen kholta hai</strong> — scrip, buy/sell,
+              qty aur price pehle se bhari hui. Order tabhi lagta hai jab aap app mein confirm karte ho.
+            </p>
+            {!mobileUrl ? (
               <p role="status">
                 Is contract ke liye Sharekhan mobile deep-link available nahi hai. Details copy karke app
                 mein manually enter karein.
@@ -265,22 +211,10 @@ export default function OrderDetailsPage() {
             >
               Copy order details
             </button>{" "}
-            {btp && webUrl ? (
-              <a className="btn btn-primary" href={webUrl} target="_blank" rel="noreferrer">
-                Open BigTrade+ (web)
-              </a>
-            ) : null}
             {mobileUrl ? (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  className={btp ? "btn btn-secondary" : "btn btn-primary"}
-                  onClick={openApp}
-                >
-                  {btp ? "Open app (entry only)" : "Open Sharekhan app"}
-                </button>
-              </>
+              <button type="button" className="btn btn-primary" onClick={openApp}>
+                Open Sharekhan app
+              </button>
             ) : null}
           </>
         )}
