@@ -54,7 +54,7 @@ const PRESERVED_DEMOS: Array<{
   code: string;
   title: string;
   how: string;
-  segment: "FUT" | "OPT";
+  segment: "EQ" | "FUT" | "OPT";
   tradingSymbol: string;
   payload: string;
 }> = [
@@ -73,6 +73,14 @@ const PRESERVED_DEMOS: Array<{
     segment: "OPT",
     tradingSymbol: "RELIANCE26NOV1400CE",
     payload: "131$12$126008$1$$1",
+  },
+  {
+    code: "d238140ce365352252",
+    title: "Bracket / BigTrade+ (working)",
+    how: "Order page Sharekhan web brackettsl kholta hai (product BigTrade+). RELIANCE BUY · entry 1400 · SL 1350 · target 1450. One-tap me product/SL nahi jaata — isliye web bracket form use hota hai.",
+    segment: "EQ",
+    tradingSymbol: "RELIANCE",
+    payload: "131$11$2885$1$1400$1",
   },
 ];
 type PreviewModel = {
@@ -759,10 +767,11 @@ export default function SharekhanLinksPage() {
             </svg>
           </span>
           <div>
-            <h2>Working F&amp;O examples</h2>
+            <h2>Working examples</h2>
             <p>
-              Ye verified links preserve kiye gaye hain — phone pe open karke dekho kaise Sharekhan app me order screen
-              prefilled aata hai. Format: <code>131$exchange$scrip$qty$price$side</code> (NFO exchange code = 12).
+              Ye verified links preserve kiye gaye hain — phone pe open karke flow dekho. Futures/Options app one-tap
+              use karte hain (<code>131$exchange$scrip$qty$price$side</code>). Bracket / BigTrade+ Sharekhan web
+              brackettsl form kholta hai kyunki one-tap me product + SL nahi jaata.
             </p>
           </div>
         </div>
@@ -773,7 +782,9 @@ export default function SharekhanLinksPage() {
                 <span className={`sk-status${demo.active ? " on" : ""}`}>
                   {demo.active ? "Preserved · Active" : "Preserved · Inactive"}
                 </span>
-                <span className="sk-demo-seg">{demo.segment === "FUT" ? "Futures" : "Options"}</span>
+                <span className="sk-demo-seg">
+                  {demo.segment === "FUT" ? "Futures" : demo.segment === "OPT" ? "Options" : "Bracket"}
+                </span>
               </div>
               <h3>{demo.title}</h3>
               <p className="sk-demo-symbol">{demo.tradingSymbol}</p>
