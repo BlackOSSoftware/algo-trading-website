@@ -222,11 +222,12 @@ export async function drawTradeCard(
     String(data.buyRange || "").trim() ||
     (Number(data.price) > 0 ? String(data.price) : "Market");
   const quantity = String(data.quantity ?? "1").trim() || "1";
-  // Card shows a single target only (no T2 / T3)
-  const target =
-    String(data.target1 || "").trim() ||
-    String(data.target || "").split("/")[0]?.trim() ||
-    "—";
+  const targetParts = [
+    String(data.target1 || "").trim() || String(data.target || "").split("/")[0]?.trim() || "",
+    String(data.target2 || "").trim() || String(data.target || "").split("/")[1]?.trim() || "",
+    String(data.target3 || "").trim() || String(data.target || "").split("/")[2]?.trim() || "",
+  ].filter(Boolean);
+  const target = targetParts.join(" / ") || "—";
   const stopLoss = String(data.stopLoss || "").trim() || "—";
   const timeFrame = (
     String(data.timeFrame || "").trim() ||
