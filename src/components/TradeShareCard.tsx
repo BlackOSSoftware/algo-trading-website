@@ -274,14 +274,14 @@ export async function drawTradeCard(
   ctx.fillStyle = page;
   ctx.fillRect(0, 0, width, height);
 
-  // Brand header (outside card) — matches reference
-  ctx.textAlign = "left";
+  // Brand header (outside card) — centered
+  ctx.textAlign = "center";
   ctx.fillStyle = theme.title;
   setFont(ctx, "700", 32);
-  ctx.fillText("Emotionless Traders", 48, 44);
+  ctx.fillText("Emotionless Traders", width / 2, 44);
   ctx.fillStyle = theme.subtitle;
   setFont(ctx, "400", 17);
-  ctx.fillText("Sharekhan order card", 48, 72);
+  ctx.fillText("Sharekhan order card", width / 2, 72);
 
   const cardX = 40;
   const cardY = headerH;
