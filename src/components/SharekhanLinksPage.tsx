@@ -520,8 +520,10 @@ export default function SharekhanLinksPage() {
     const orderTypeReuse = asText(d.orderType, "NORMAL").toUpperCase() || "NORMAL";
     const productReuse = asText(d.productType, "INVESTMENT").toUpperCase() || "INVESTMENT";
     const bracketOn =
-      segment === "EQ" &&
-      (Boolean(bracket.enabled) || orderTypeReuse === "BRACKET" || productReuse === "BIGTRADEPLUS" || String(d.openMode || "") === "brackettsl");
+      Boolean(bracket.enabled) ||
+      orderTypeReuse === "BRACKET" ||
+      productReuse === "BIGTRADEPLUS" ||
+      String(d.openMode || "") === "brackettsl";
     if (bracketOn) {
       setDetails((prev) => ({ ...prev, orderType: "BRACKET", productType: "BIGTRADEPLUS" }));
     }
@@ -584,9 +586,7 @@ export default function SharekhanLinksPage() {
           headline: details.headline,
         },
         bracket: {
-          enabled:
-            details.segment === "EQ" &&
-            (bracketEnabled || details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS"),
+          enabled: bracketEnabled || details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS",
           mode: "BIGTRADEPLUS",
           targetPrice: bracketTarget,
           stopLossPrice: bracketStop,
@@ -1003,18 +1003,16 @@ export default function SharekhanLinksPage() {
               <div>
                 <h3>BigTrade+ legs (SL + book-profit)</h3>
                 <p>
-                  {details.segment === "EQ"
-                    ? details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS"
-                      ? "Stop-loss mandatory, book-profit optional. Saved for review on the order page — fill the same values in Sharekhan’s BigTrade+ web form."
-                      : "Enable to force product BigTrade+ and save SL + target. Primary open path becomes web bracket/TSL (not app one-tap)."
-                    : "Bracket / BigTrade+ legs are available for equity NSE/BSE only."}
+                  {details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS" || bracketEnabled
+                    ? "Product/action = BigTrade+. Stop-loss mandatory, book-profit optional. Order page opens Sharekhan web bracket/TSL first (one-tap cannot set product/SL)."
+                    : "Enable for Sharekhan BigTrade+ / Bracket (equity + F&O). Forces product BigTrade+; primary open = web brackettsl."}
                 </p>
               </div>
               <label className="sk-switch">
                 <input
                   type="checkbox"
-                  checked={details.segment === "EQ" && (bracketEnabled || details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS")}
-                  disabled={details.segment !== "EQ" || details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS"}
+                  checked={bracketEnabled || details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS"}
+                  disabled={details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS"}
                   onChange={(event) => {
                     setPinned(null);
                     const on = event.target.checked;
@@ -1028,7 +1026,7 @@ export default function SharekhanLinksPage() {
                 BigTrade+
               </label>
             </div>
-            {details.segment === "EQ" && (bracketEnabled || details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS") ? (
+            {bracketEnabled || details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS" ? (
               <div className="sk-grid-3">
                 <label className="sk-field">
                   <span className="sk-label">Stop-loss price *</span>
