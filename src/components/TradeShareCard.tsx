@@ -200,8 +200,8 @@ export async function drawTradeCard(
   themeId: CardThemeId = "classic"
 ) {
   const theme = THEME_COLORS[themeId] || THEME_COLORS.classic;
-  const width = 720;
-  const height = 980;
+  const width = 540;
+  const height = 700;
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
@@ -215,9 +215,12 @@ export async function drawTradeCard(
     String(data.buyRange || "").trim() ||
     (Number(data.price) > 0 ? String(data.price) : "Market");
   const quantity = String(data.quantity ?? "1").trim() || "1";
-  const target1 = String(data.target1 || "").trim() || String(data.target || "").split("/")[0]?.trim() || "—";
-  const target2 = String(data.target2 || "").trim() || String(data.target || "").split("/")[1]?.trim() || "—";
-  const target3 = String(data.target3 || "").trim() || String(data.target || "").split("/")[2]?.trim() || "—";
+  const targetParts = [
+    String(data.target1 || "").trim() || String(data.target || "").split("/")[0]?.trim() || "",
+    String(data.target2 || "").trim() || String(data.target || "").split("/")[1]?.trim() || "",
+    String(data.target3 || "").trim() || String(data.target || "").split("/")[2]?.trim() || "",
+  ].filter(Boolean);
+  const target = targetParts.join(" / ") || "—";
   const stopLoss = String(data.stopLoss || "").trim() || "—";
   const timeFrame =
     String(data.timeFrame || "").trim() ||
@@ -232,40 +235,40 @@ export async function drawTradeCard(
   // Header outside card
   ctx.textAlign = "left";
   ctx.fillStyle = theme.title;
-  ctx.font = "800 34px Arial, Helvetica, sans-serif";
-  ctx.fillText("Emotionless Traders", 48, 58);
+  ctx.font = "800 22px Arial, Helvetica, sans-serif";
+  ctx.fillText("Emotionless Traders", 28, 36);
   ctx.fillStyle = theme.subtitle;
-  ctx.font = "500 18px Arial, Helvetica, sans-serif";
-  ctx.fillText("Sharekhan order card", 48, 86);
+  ctx.font = "500 12px Arial, Helvetica, sans-serif";
+  ctx.fillText("Sharekhan order card", 28, 54);
 
   // Card
-  const cardX = 36;
-  const cardY = 112;
-  const cardW = width - 72;
-  const cardH = 760;
+  const cardX = 22;
+  const cardY = 70;
+  const cardW = width - 44;
+  const cardH = 560;
   ctx.save();
   ctx.shadowColor = theme.shadow;
-  ctx.shadowBlur = 28;
-  ctx.shadowOffsetY = 10;
-  roundRect(ctx, cardX, cardY, cardW, cardH, 22);
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetY = 6;
+  roundRect(ctx, cardX, cardY, cardW, cardH, 16);
   ctx.fillStyle = theme.card;
   ctx.fill();
   ctx.restore();
-  roundRect(ctx, cardX, cardY, cardW, cardH, 22);
+  roundRect(ctx, cardX, cardY, cardW, cardH, 16);
   ctx.strokeStyle = theme.cardBorder;
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  const pad = 36;
+  const pad = 22;
   const left = cardX + pad;
   const right = cardX + cardW - pad;
   const contentW = cardW - pad * 2;
 
   // QR top-right
-  const qrSize = 148;
+  const qrSize = 96;
   const qrX = right - qrSize;
-  const qrY = cardY + 34;
-  roundRect(ctx, qrX - 8, qrY - 8, qrSize + 16, qrSize + 16, 14);
+  const qrY = cardY + 20;
+  roundRect(ctx, qrX - 5, qrY - 5, qrSize + 10, qrSize + 10, 10);
   ctx.fillStyle = theme.qrBox;
   ctx.fill();
   ctx.strokeStyle = theme.rowLine;
@@ -279,82 +282,80 @@ export async function drawTradeCard(
       ctx.drawImage(qr, qrX, qrY, qrSize, qrSize);
     } catch {
       ctx.fillStyle = theme.muted;
-      ctx.font = "600 13px Arial, Helvetica, sans-serif";
+      ctx.font = "600 10px Arial, Helvetica, sans-serif";
       ctx.textAlign = "center";
       ctx.fillText("QR unavailable", qrX + qrSize / 2, qrY + qrSize / 2);
     }
   } else {
     ctx.fillStyle = theme.muted;
-    ctx.font = "600 12px Arial, Helvetica, sans-serif";
+    ctx.font = "600 10px Arial, Helvetica, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("Generate link", qrX + qrSize / 2, qrY + qrSize / 2 - 6);
-    ctx.fillText("for QR", qrX + qrSize / 2, qrY + qrSize / 2 + 12);
+    ctx.fillText("Generate link", qrX + qrSize / 2, qrY + qrSize / 2 - 4);
+    ctx.fillText("for QR", qrX + qrSize / 2, qrY + qrSize / 2 + 10);
   }
 
   // Call + side
-  const textMax = contentW - qrSize - 28;
+  const textMax = contentW - qrSize - 16;
   ctx.textAlign = "left";
   ctx.fillStyle = theme.call;
-  fitFont(ctx, call, textMax - 70, 22, "500", 14);
+  fitFont(ctx, call, textMax - 48, 14, "500", 11);
   const callW = ctx.measureText(call).width;
-  ctx.fillText(call, left, cardY + 58);
+  ctx.fillText(call, left, cardY + 36);
   ctx.fillStyle = sideColor;
-  ctx.font = "800 22px Arial, Helvetica, sans-serif";
-  ctx.fillText(side, left + callW + 10, cardY + 58);
+  ctx.font = "800 14px Arial, Helvetica, sans-serif";
+  ctx.fillText(side, left + callW + 6, cardY + 36);
 
   // Big stock name
   ctx.fillStyle = theme.text;
-  const nameSize = fitFont(ctx, name, textMax, 56, "800", 28);
-  ctx.fillText(name, left, cardY + 128);
+  fitFont(ctx, name, textMax, 34, "800", 20);
+  ctx.fillText(name, left, cardY + 78);
   const nameW = Math.min(ctx.measureText(name).width, textMax);
   ctx.strokeStyle = theme.underline;
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 3;
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(left, cardY + 138);
-  ctx.lineTo(left + Math.max(nameW * 0.55, 72), cardY + 138);
+  ctx.moveTo(left, cardY + 86);
+  ctx.lineTo(left + Math.max(nameW * 0.55, 48), cardY + 86);
   ctx.stroke();
 
-  // Rows
+  // Rows — same as reference image
   const rows: Array<{ label: string; value: string }> = [
     { label: "BUY RANGE", value: buyRange },
     { label: "QUANTITY", value: quantity },
-    { label: "TARGET 1", value: target1 },
-    { label: "TARGET 2", value: target2 },
-    { label: "TARGET 3", value: target3 },
+    { label: "TARGET", value: target },
     { label: "SL", value: stopLoss },
     { label: "TIME FRAME", value: timeFrame.toUpperCase() },
   ];
 
-  let rowY = cardY + 220;
-  const rowH = 68;
+  let rowY = cardY + 150;
+  const rowH = 58;
   rows.forEach((row, index) => {
-    if (index > 0) dashedLine(ctx, left, right, rowY - 18, theme.rowLine);
+    if (index > 0) dashedLine(ctx, left, right, rowY - 14, theme.rowLine);
     ctx.textAlign = "left";
     ctx.fillStyle = theme.muted;
-    ctx.font = "600 15px Arial, Helvetica, sans-serif";
-    ctx.fillText(row.label, left, rowY + 8);
+    ctx.font = "600 11px Arial, Helvetica, sans-serif";
+    ctx.fillText(row.label, left, rowY + 4);
     ctx.textAlign = "right";
     ctx.fillStyle = theme.text;
-    fitFont(ctx, row.value, contentW * 0.55, 34, "800", 18);
-    ctx.fillText(row.value, right, rowY + 12);
+    fitFont(ctx, row.value, contentW * 0.55, 22, "800", 13);
+    ctx.fillText(row.value, right, rowY + 6);
     rowY += rowH;
   });
 
   // Timestamp
   ctx.textAlign = "right";
   ctx.fillStyle = theme.muted;
-  ctx.font = "500 14px Arial, Helvetica, sans-serif";
-  ctx.fillText(formatStamp(), right, cardY + cardH - 28);
+  ctx.font = "500 10px Arial, Helvetica, sans-serif";
+  ctx.fillText(formatStamp(), right, cardY + cardH - 18);
 
   // Disclaimer
   ctx.textAlign = "left";
   ctx.fillStyle = theme.disclaimer;
-  ctx.font = "500 13px Arial, Helvetica, sans-serif";
+  ctx.font = "500 9px Arial, Helvetica, sans-serif";
   ctx.fillText(
     "* Investments in securities market are subject to market risk. Scan the QR to open this order in Sharekhan.",
-    48,
-    height - 28
+    28,
+    height - 18
   );
 }
 
