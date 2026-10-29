@@ -94,13 +94,14 @@ const derivativeExchanges = ["NFO", "BFO", "MCX", "CDS"];
 const orderTypes = [
   { value: "NORMAL", label: "Market" },
   { value: "LIMIT", label: "Limit" },
+  { value: "BRACKET", label: "Bracket (BigTrade+)" },
   { value: "STOPLOSS", label: "Stop loss limit" },
   { value: "STOPLOSS_MARKET", label: "Stop loss market" },
 ];
 const productTypes = [
   { value: "INVESTMENT", label: "Delivery (Investment)" },
   { value: "BIGTRADE", label: "Intraday (BigTrade)" },
-  { value: "BIGTRADEPLUS", label: "Intraday Plus" },
+  { value: "BIGTRADEPLUS", label: "BigTrade+ (Bracket)" },
 ];
 const segments = [
   { value: "EQ", label: "Equity" },
@@ -505,10 +506,11 @@ export default function SharekhanLinksPage() {
       timeFrame: asText(card.timeFrame || d.timeFrame),
       headline: asText(card.headline || d.headline),
     });
-    const bracketOn = Boolean(bracket.enabled) && segment === "EQ";
+    const orderTypeReuse = asText(d.orderType, "NORMAL").toUpperCase() || "NORMAL";
+    const bracketOn = segment === "EQ" && (Boolean(bracket.enabled) || orderTypeReuse === "BRACKET");
     setBracketEnabled(bracketOn);
-    setBracketTarget(bracketOn ? asText(bracket.targetPrice) : "");
-    setBracketStop(bracketOn ? asText(bracket.stopLossPrice) : "");
+    setBracketTarget(bracketOn ? asText(bracket.targetPrice || card.target1 || d.target1) : "");
+    setBracketStop(bracketOn ? asText(bracket.stopLossPrice || card.stopLoss || d.stopLoss) : "");
     setBracketTrail(bracketOn ? asText(bracket.trailingStop) : "");
     setQuery(symbol);
     setReuseFrom(symbol);
@@ -565,7 +567,8 @@ export default function SharekhanLinksPage() {
           headline: details.headline,
         },
         bracket: {
-          enabled: details.segment === "EQ" && bracketEnabled,
+          enabled: details.segment === "EQ" && (bracketEnabled || details.orderType === "BRACKET"),
+          mode: "BIGTRADEPLUS",
           targetPrice: bracketTarget,
           stopLossPrice: bracketStop,
           trailingStop: bracketTrail,
@@ -886,11 +889,31 @@ export default function SharekhanLinksPage() {
               </label>
               <label className="sk-field">
                 <span className="sk-label">Order type</span>
-                <select className="sk-input" value={details.orderType} onChange={(event) => update("orderType", event.target.value)}>
+                <select
+                  className="sk-input"
+                  value={details.orderType}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setPinned(null);
+                    setDetails((prev) => ({
+                      ...prev,
+                      orderType: next,
+                      ...(next === "BRACKET"
+                        ? { productType: "BIGTRADEPLUS", price: prev.price || "0" }
+                        : {}),
+                    }));
+                    if (next === "BRACKET") setBracketEnabled(true);
+                  }}
+                >
                   {orderTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
               </label>
             </div>
+            {details.orderType === "BRACKET" ? (
+              <p className="sk-hint" style={{ marginTop: "-0.35rem" }}>
+                Bracket maps to Sharekhan BigTrade+: entry + mandatory stop-loss + optional book-profit. One-tap deep-link still opens entry only; web trade opens the bracket/TSL screen.
+              </p>
+            ) : null}
             {details.orderType.startsWith("STOPLOSS") ? (
               <label className="sk-field">
                 <span className="sk-label">Trigger price *</span>
@@ -900,7 +923,12 @@ export default function SharekhanLinksPage() {
             <div className="sk-grid-2">
               <label className="sk-field">
                 <span className="sk-label">Product type</span>
-                <select className="sk-input" value={details.productType} onChange={(event) => update("productType", event.target.value)}>
+                <select
+                  className="sk-input"
+                  value={details.productType}
+                  disabled={details.orderType === "BRACKET"}
+                  onChange={(event) => update("productType", event.target.value)}
+                >
                   {productTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
               </label>
@@ -918,36 +946,38 @@ export default function SharekhanLinksPage() {
             <div className="sk-block-head sk-block-head-row">
               <span className="sk-step">3</span>
               <div>
-                <h3>Bracket legs (target + stop loss)</h3>
+                <h3>BigTrade+ / Bracket legs</h3>
                 <p>
                   {details.segment === "EQ"
-                    ? "Saved on our order page and share card. Sharekhan one-tap opens only a normal entry order — target/SL must be placed in Sharekhan’s Bracket Order screen."
-                    : "Bracket legs are available for equity NSE/BSE orders only."}
+                    ? details.orderType === "BRACKET" || details.productType === "BIGTRADEPLUS"
+                      ? "Stop-loss is mandatory. Book-profit is optional. Deep-link opens entry only; use “Open in Sharekhan (web)” for the bracket/TSL form."
+                      : "Enable to save SL + target on the order page / share card. Maps to Sharekhan BigTrade+ when you pick Bracket order type."
+                    : "Bracket / BigTrade+ legs are available for equity NSE/BSE only."}
                 </p>
               </div>
               <label className="sk-switch">
                 <input
                   type="checkbox"
-                  checked={details.segment === "EQ" && bracketEnabled}
-                  disabled={details.segment !== "EQ"}
+                  checked={details.segment === "EQ" && (bracketEnabled || details.orderType === "BRACKET")}
+                  disabled={details.segment !== "EQ" || details.orderType === "BRACKET"}
                   onChange={(event) => {
                     setPinned(null);
                     setBracketEnabled(event.target.checked);
                   }}
                 />
                 <span />
-                Enable bracket legs
+                Enable legs
               </label>
             </div>
-            {details.segment === "EQ" && bracketEnabled ? (
+            {details.segment === "EQ" && (bracketEnabled || details.orderType === "BRACKET") ? (
               <div className="sk-grid-3">
                 <label className="sk-field">
-                  <span className="sk-label">Bracket target price *</span>
-                  <input className="sk-input" required type="number" min="0.01" step="any" value={bracketTarget} onChange={(event) => { setPinned(null); setBracketTarget(event.target.value); }} />
+                  <span className="sk-label">Stop-loss price *</span>
+                  <input className="sk-input" required type="number" min="0.01" step="any" value={bracketStop} onChange={(event) => { setPinned(null); setBracketStop(event.target.value); }} />
                 </label>
                 <label className="sk-field">
-                  <span className="sk-label">Bracket stop-loss price *</span>
-                  <input className="sk-input" required type="number" min="0.01" step="any" value={bracketStop} onChange={(event) => { setPinned(null); setBracketStop(event.target.value); }} />
+                  <span className="sk-label">Book-profit target (optional)</span>
+                  <input className="sk-input" type="number" min="0" step="any" value={bracketTarget} onChange={(event) => { setPinned(null); setBracketTarget(event.target.value); }} />
                 </label>
                 <label className="sk-field">
                   <span className="sk-label">Trailing stop (optional)</span>

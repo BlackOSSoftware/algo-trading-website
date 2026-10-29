@@ -23,10 +23,12 @@ type Details = {
   triggerPrice?: number;
   bracket?: {
     enabled?: boolean;
+    mode?: string;
     targetPrice?: number;
     stopLossPrice?: number;
     trailingStop?: number;
   };
+  bracketWebUrl?: string;
   notes: string;
 };
 
@@ -193,14 +195,18 @@ export default function OrderDetailsPage() {
               ) : null}
               {details.bracket?.enabled ? (
                 <div style={{ gridColumn: "1 / -1" }}>
-                  Bracket (for review)
+                  BigTrade+ / Bracket legs
                   <br />
                   <strong>
-                    Target {details.bracket.targetPrice}; stop {details.bracket.stopLossPrice}
+                    SL {details.bracket.stopLossPrice}
+                    {details.bracket.targetPrice
+                      ? `; book-profit ${details.bracket.targetPrice}`
+                      : ""}
                     {details.bracket.trailingStop ? `; trail ${details.bracket.trailingStop}` : ""}
                   </strong>
                   <p style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
-                    Sharekhan app one-tap opens a normal entry order only. Enter target and stop-loss in Sharekhan Bracket Order after the app opens.
+                    App one-tap fills entry only (qty/price/side). SL + target are not in Sharekhan’s public
+                    deep-link — use “Open BigTrade+ (web)” or enter legs in the app after entry opens.
                   </p>
                 </div>
               ) : null}
@@ -231,6 +237,19 @@ export default function OrderDetailsPage() {
               <button type="button" className="btn btn-primary" onClick={openApp}>
                 Open Sharekhan app
               </button>
+            ) : null}
+            {details.bracket?.enabled && details.bracketWebUrl ? (
+              <>
+                {" "}
+                <a
+                  className="btn btn-secondary"
+                  href={details.bracketWebUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open BigTrade+ (web)
+                </a>
+              </>
             ) : null}
           </>
         )}
