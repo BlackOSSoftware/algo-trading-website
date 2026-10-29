@@ -25,6 +25,9 @@ export type TradeCardData = {
   headline?: string;
   notes?: string;
   segment?: string;
+  expiry?: string;
+  strike?: string;
+  optionType?: string;
 };
 
 export const CARD_THEMES: Array<{ id: CardThemeId; label: string; blurb: string }> = [
@@ -112,16 +115,92 @@ function productLabel(productType?: string, segment?: string) {
   return "Equity Delivery";
 }
 
-function segmentBadge(segment?: string, symbol?: string) {
-  const seg = String(segment || "").toUpperCase();
-  const s = String(symbol || "").toUpperCase();
-  if (seg === "FUT") return "FUTURES";
-  if (seg === "OPT") {
-    if (/\bCE\b/.test(s) || s.endsWith("CE")) return "OPTIONS · CE";
-    if (/\bPE\b/.test(s) || s.endsWith("PE")) return "OPTIONS · PE";
-    return "OPTIONS";
+type FnoInfo = {
+  segment: "EQ" | "FUT" | "OPT";
+  underlying: string;
+  expiryLabel: string;
+  strike: string;
+  optionType: string; // CE | PE | ""
+  typeLabel: string; // FUTURES | OPTIONS CE | EQUITY
+};
+
+function parseFnoFromSymbol(symbol: string): Partial<FnoInfo> {
+  const s = String(symbol || "").toUpperCase().replace(/[\s_-]+/g, "");
+  const months = "JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC";
+  const fut = s.match(new RegExp(`^([A-Z]+)(\\d{2})(${months})FUT$`));
+  if (fut) {
+    return {
+      segment: "FUT",
+      underlying: fut[1],
+      expiryLabel: `${fut[2]} ${fut[3]}`,
+      typeLabel: "FUTURES",
+    };
   }
-  return "EQUITY";
+  const opt = s.match(new RegExp(`^([A-Z]+)(\\d{2})(${months})(\\d+(?:\\.\\d+)?)(CE|PE)$`));
+  if (opt) {
+    return {
+      segment: "OPT",
+      underlying: opt[1],
+      expiryLabel: `${opt[2]} ${opt[3]}`,
+      strike: opt[4],
+      optionType: opt[5],
+      typeLabel: `OPTIONS ${opt[5]}`,
+    };
+  }
+  return {};
+}
+
+function formatExpiryLabel(raw?: string) {
+  const value = String(raw || "").trim().toUpperCase();
+  if (!value) return "";
+  // Already like 26NOV / 26 NOV
+  const m1 = value.match(/^(\d{2})\s*(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)/);
+  if (m1) return `${m1[1]} ${m1[2]}`;
+  // ISO 2026-11-25
+  const m2 = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m2) {
+    const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    const mon = months[Number(m2[2]) - 1] || "";
+    return `${m2[1].slice(-2)} ${mon}`.trim();
+  }
+  return value;
+}
+
+function resolveFno(data: TradeCardData): FnoInfo {
+  const parsed = parseFnoFromSymbol(data.tradingSymbol || "");
+  const segRaw = String(data.segment || parsed.segment || "EQ").toUpperCase();
+  const segment = segRaw === "FUT" || segRaw === "OPT" ? segRaw : "EQ";
+  const optionType = (
+    String(data.optionType || parsed.optionType || "").toUpperCase() ||
+    (String(data.tradingSymbol || "").toUpperCase().endsWith("CE")
+      ? "CE"
+      : String(data.tradingSymbol || "").toUpperCase().endsWith("PE")
+        ? "PE"
+        : "")
+  ).replace(/[^A-Z]/]/g, "");
+  const strike =
+    String(data.strike || parsed.strike || "")
+      .trim()
+      .replace(/\.0+$/, "") || "";
+  const expiryLabel =
+    formatExpiryLabel(data.expiry) || String(parsed.expiryLabel || "").trim();
+  const underlying =
+    String(parsed.underlying || "").trim() ||
+    String(data.stock || "")
+      .trim()
+      .toUpperCase()
+      .replace(/-EQ$/i, "") ||
+    String(data.tradingSymbol || "")
+      .toUpperCase()
+      .replace(/\d{2}(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC).*$/i, "")
+      .replace(/-EQ$/i, "") ||
+    "SYMBOL";
+
+  let typeLabel = "EQUITY";
+  if (segment === "FUT") typeLabel = "FUTURES";
+  if (segment === "OPT") typeLabel = optionType ? `OPTIONS ${optionType}` : "OPTIONS";
+
+  return { segment, underlying, expiryLabel, strike, optionType, typeLabel };
 }
 
 function loadImage(src: string) {
@@ -187,12 +266,14 @@ function formatStamp(date = new Date()) {
 }
 
 function displayName(data: TradeCardData) {
+  const fno = resolveFno(data);
+  if (fno.segment === "FUT" || fno.segment === "OPT") return fno.underlying;
   const stock = String(data.stock || "").trim();
   const symbol = String(data.tradingSymbol || "").trim().toUpperCase();
   if (stock && stock.length <= 18 && !/\d{2}(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)/i.test(stock)) {
-    return stock.toUpperCase();
+    return stock.toUpperCase().replace(/-EQ$/i, "");
   }
-  return symbol || "SYMBOL";
+  return symbol.replace(/-EQ$/i, "") || "SYMBOL";
 }
 
 function dashedLine(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number, color: string) {
@@ -225,30 +306,38 @@ export async function drawTradeCard(
   const t3 =
     String(data.target3 || "").trim() || String(data.target || "").split("/")[2]?.trim() || "";
 
+  const fno = resolveFno(data);
   const side = String(data.side || "BUY").toUpperCase() === "SELL" ? "Sell" : "Buy";
   const sideColor = side === "Sell" ? "#c53030" : "#2f855a";
   const name = displayName(data);
   const call =
     String(data.headline || "").trim() ||
     `${productLabel(data.productType, data.segment)} idea`;
-  const buyRange =
-    String(data.buyRange || "").trim() ||
-    (Number(data.price) > 0 ? String(data.price) : "Market");
+  const buyRange = String(data.buyRange || "").trim() || "—";
+  const entryPrice =
+    Number(data.price) > 0 ? String(data.price) : String(data.price || "").trim() === "0" ? "Market" : String(data.price || "").trim() || "Market";
   const quantity = String(data.quantity ?? "1").trim() || "1";
   const stopLoss = String(data.stopLoss || "").trim() || "—";
   const timeFrame = (
     String(data.timeFrame || "").trim() ||
     (String(data.productType || "").toUpperCase().includes("INVEST") ? "DELIVERY" : "INTRADAY")
   ).toUpperCase();
-  const instrument = segmentBadge(data.segment, data.tradingSymbol);
   const exchange = String(data.exchange || "NSE").toUpperCase();
+  const instrument = fno.typeLabel;
 
   const rows: Array<{ label: string; value: string }> = [
-    { label: "BUY RANGE", value: buyRange },
-    { label: "QUANTITY", value: quantity },
+    { label: "TYPE", value: instrument },
   ];
-  if (t1) rows.push({ label: "TARGET 1", value: t1 });
-  else rows.push({ label: "TARGET 1", value: "—" });
+  if (fno.segment === "FUT" || fno.segment === "OPT") {
+    rows.push({ label: "EXPIRY", value: fno.expiryLabel || "—" });
+  }
+  if (fno.segment === "OPT") {
+    rows.push({ label: "STRIKE", value: fno.strike || "—" });
+  }
+  rows.push({ label: "ENTRY PRICE", value: entryPrice });
+  rows.push({ label: "BUY RANGE", value: buyRange });
+  rows.push({ label: "QUANTITY", value: quantity });
+  rows.push({ label: "TARGET 1", value: t1 || "—" });
   if (t2) rows.push({ label: "TARGET 2", value: t2 });
   if (t3) rows.push({ label: "TARGET 3", value: t3 });
   rows.push({ label: "SL", value: stopLoss });
@@ -347,9 +436,16 @@ export async function drawTradeCard(
   ctx.fillText(side, left + callW, cardY + 48);
 
   // Instrument type — Futures / Options / Equity (clearly visible)
-  ctx.fillStyle = theme.subtitle;
-  setFont(ctx, "700", 15);
-  ctx.fillText(`${exchange}  ·  ${instrument}`, left, cardY + 74);
+  const typeLine =
+    fno.segment === "OPT" && fno.expiryLabel
+      ? `${exchange}  ·  ${instrument}  ·  ${fno.expiryLabel}${fno.strike ? `  ·  ${fno.strike}` : ""}`
+      : fno.segment === "FUT" && fno.expiryLabel
+        ? `${exchange}  ·  ${instrument}  ·  ${fno.expiryLabel}`
+        : `${exchange}  ·  ${instrument}`;
+  ctx.fillStyle = themeId === "classic" ? "#c2410c" : theme.subtitle;
+  setFont(ctx, "800", 16);
+  fitFont(ctx, typeLine, textMax, 16, "800", 12);
+  ctx.fillText(typeLine, left, cardY + 76);
 
   // Dominant symbol + orange underline
   ctx.fillStyle = theme.text;
