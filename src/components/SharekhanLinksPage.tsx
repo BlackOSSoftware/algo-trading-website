@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost, resolveApiBaseUrl } from "@/lib/api";
 import { getSharekhanToken } from "@/lib/auth";
-import TradeShareCard, { type TradeCardData } from "@/components/TradeShareCard";
+import TradeShareCard, { CARD_THEMES, type CardThemeId, type TradeCardData } from "@/components/TradeShareCard";
 
 type Details = {
   stock: string;
@@ -199,13 +199,13 @@ function previewFromCard(card: TradeCardData): PreviewModel {
   };
 }
 
-function OrderPreview({ model }: { model: PreviewModel }) {
+function OrderPreview({ model, theme }: { model: PreviewModel; theme: CardThemeId }) {
   const side = model.side === "SELL" ? "SELL" : "BUY";
   const qr = model.code
     ? `${resolveApiBaseUrl()}/api/v1/order-intents/${encodeURIComponent(model.code)}/qr.png`
     : "";
   return (
-    <article className="sk-idea">
+    <article className={`sk-idea sk-idea-${theme}`}>
       <div className="sk-idea-top">
         <span className="sk-idea-brand">Emotionless Traders</span>
         <span className="sk-idea-kicker">TRADE IDEA</span>
@@ -292,6 +292,7 @@ export default function SharekhanLinksPage() {
   const [expiryError, setExpiryError] = useState("");
   const [shareCard, setShareCard] = useState<TradeCardData | null>(null);
   const [pinned, setPinned] = useState<PreviewModel | null>(null);
+  const [cardTheme, setCardTheme] = useState<CardThemeId>("classic");
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [segmentFilter, setSegmentFilter] = useState("all");
@@ -1170,12 +1171,28 @@ export default function SharekhanLinksPage() {
               </span>
               <div>
                 <h2>Share card preview</h2>
-                <p>{pinned ? `Saved card for ${shown.tradingSymbol}. Edit the form to return to the live draft.` : "This is how your WhatsApp share image will look."}</p>
+                <p>{pinned ? `Saved card for ${shown.tradingSymbol}. Edit the form to return to the live draft.` : "Pick a card style, then generate to download / share."}</p>
               </div>
             </div>
-            <OrderPreview model={shown} />
+            <div className="sk-card-themes" role="radiogroup" aria-label="Share card style">
+              {CARD_THEMES.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={cardTheme === item.id}
+                  className={`sk-card-theme sk-card-theme-${item.id}${cardTheme === item.id ? " active" : ""}`}
+                  onClick={() => setCardTheme(item.id)}
+                >
+                  <span className="sk-card-theme-swatch" aria-hidden="true" />
+                  <strong>{item.label}</strong>
+                  <small>{item.blurb}</small>
+                </button>
+              ))}
+            </div>
+            <OrderPreview model={shown} theme={cardTheme} />
             {pinned && shareCard ? (
-              <TradeShareCard data={shareCard} variant="toolbar" />
+              <TradeShareCard data={shareCard} theme={cardTheme} variant="toolbar" />
             ) : (
               <div className="sk-toolbar">
                 <div className="sk-share-actions">

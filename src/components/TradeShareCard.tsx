@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveApiBaseUrl } from "@/lib/api";
 
+export type CardThemeId = "classic" | "night" | "mint" | "bold";
+
 export type TradeCardData = {
   code: string;
   shortUrl: string;
@@ -23,6 +25,124 @@ export type TradeCardData = {
   headline?: string;
   notes?: string;
   segment?: string;
+};
+
+export const CARD_THEMES: Array<{ id: CardThemeId; label: string; blurb: string }> = [
+  { id: "classic", label: "Classic", blurb: "Warm cream" },
+  { id: "night", label: "Night", blurb: "Dark slate" },
+  { id: "mint", label: "Mint", blurb: "Clean green" },
+  { id: "bold", label: "Bold", blurb: "High contrast" },
+];
+
+type ThemePalette = {
+  bg0: string;
+  bg1: string;
+  bg2: string;
+  glow: string;
+  brand: string;
+  kicker: string;
+  text: string;
+  muted: string;
+  headlineBg: string;
+  headlineFg: string;
+  buyBg: string;
+  buyFg: string;
+  targetBg: string;
+  targetFg: string;
+  stopBg: string;
+  stopFg: string;
+  qrBorder: string;
+  footerLine: string;
+  footerMuted: string;
+  accentBar?: string;
+};
+
+const THEMES: Record<CardThemeId, ThemePalette> = {
+  classic: {
+    bg0: "#fffdfb",
+    bg1: "#fff6ee",
+    bg2: "#ffefe3",
+    glow: "rgba(255, 168, 92, 0.28)",
+    brand: "#e85d04",
+    kicker: "#c2410c",
+    text: "#111827",
+    muted: "#6b7280",
+    headlineBg: "#fff4dc",
+    headlineFg: "#92400e",
+    buyBg: "#eef5ff",
+    buyFg: "#0f172a",
+    targetBg: "#e8f8ee",
+    targetFg: "#15803d",
+    stopBg: "#fff0f0",
+    stopFg: "#dc2626",
+    qrBorder: "#f3e4d6",
+    footerLine: "#f3e6dc",
+    footerMuted: "#9ca3af",
+  },
+  night: {
+    bg0: "#0b1220",
+    bg1: "#111827",
+    bg2: "#1e293b",
+    glow: "rgba(56, 189, 248, 0.18)",
+    brand: "#38bdf8",
+    kicker: "#7dd3fc",
+    text: "#f8fafc",
+    muted: "#94a3b8",
+    headlineBg: "#1e293b",
+    headlineFg: "#e2e8f0",
+    buyBg: "#172554",
+    buyFg: "#bfdbfe",
+    targetBg: "#052e16",
+    targetFg: "#86efac",
+    stopBg: "#450a0a",
+    stopFg: "#fca5a5",
+    qrBorder: "#334155",
+    footerLine: "#334155",
+    footerMuted: "#64748b",
+  },
+  mint: {
+    bg0: "#f7fdf9",
+    bg1: "#ecfdf5",
+    bg2: "#d1fae5",
+    glow: "rgba(16, 185, 129, 0.18)",
+    brand: "#047857",
+    kicker: "#059669",
+    text: "#064e3b",
+    muted: "#6b7280",
+    headlineBg: "#d1fae5",
+    headlineFg: "#065f46",
+    buyBg: "#eff6ff",
+    buyFg: "#1e3a8a",
+    targetBg: "#dcfce7",
+    targetFg: "#166534",
+    stopBg: "#fee2e2",
+    stopFg: "#b91c1c",
+    qrBorder: "#a7f3d0",
+    footerLine: "#a7f3d0",
+    footerMuted: "#6b7280",
+  },
+  bold: {
+    bg0: "#ffffff",
+    bg1: "#f8fafc",
+    bg2: "#f1f5f9",
+    glow: "rgba(15, 23, 42, 0.08)",
+    brand: "#0f172a",
+    kicker: "#334155",
+    text: "#0f172a",
+    muted: "#64748b",
+    headlineBg: "#0f172a",
+    headlineFg: "#ffffff",
+    buyBg: "#e2e8f0",
+    buyFg: "#0f172a",
+    targetBg: "#dcfce7",
+    targetFg: "#14532d",
+    stopBg: "#fee2e2",
+    stopFg: "#991b1b",
+    qrBorder: "#cbd5e1",
+    footerLine: "#e2e8f0",
+    footerMuted: "#64748b",
+    accentBar: "#16a34a",
+  },
 };
 
 function productLabel(productType?: string) {
@@ -94,7 +214,8 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
   if (line && lineCount < maxLines) ctx.fillText(line, x, y);
 }
 
-async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
+async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData, themeId: CardThemeId = "classic") {
+  const theme = THEMES[themeId] || THEMES.classic;
   const width = 780;
   const height = 920;
   canvas.width = width;
@@ -135,34 +256,39 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
   const qr = await loadImage(qrUrl);
 
   const page = ctx.createLinearGradient(0, 0, width, height);
-  page.addColorStop(0, "#fffdfb");
-  page.addColorStop(0.55, "#fff6ee");
-  page.addColorStop(1, "#ffefe3");
+  page.addColorStop(0, theme.bg0);
+  page.addColorStop(0.55, theme.bg1);
+  page.addColorStop(1, theme.bg2);
   ctx.fillStyle = page;
   ctx.fillRect(0, 0, width, height);
 
+  if (theme.accentBar) {
+    ctx.fillStyle = theme.accentBar;
+    ctx.fillRect(0, 0, 10, height);
+  }
+
   const glow = ctx.createRadialGradient(width - 40, 0, 10, width - 40, 20, 280);
-  glow.addColorStop(0, "rgba(255, 168, 92, 0.28)");
-  glow.addColorStop(1, "rgba(255, 168, 92, 0)");
+  glow.addColorStop(0, theme.glow);
+  glow.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, 280);
 
-  const pad = 36;
+  const pad = theme.accentBar ? 42 : 36;
   const brand = "Emotionless Traders";
   ctx.textAlign = "left";
-  ctx.fillStyle = "#e85d04";
+  ctx.fillStyle = theme.brand;
   fitFont(ctx, brand, width - pad * 2 - 110, 22, "800", 14);
   ctx.fillText(brand, pad, 52);
   ctx.textAlign = "right";
-  ctx.fillStyle = "#c2410c";
+  ctx.fillStyle = theme.kicker;
   ctx.font = "700 11px Arial, Helvetica, sans-serif";
   ctx.fillText("TRADE IDEA", width - pad, 50);
 
   ctx.textAlign = "left";
-  ctx.fillStyle = "#111827";
+  ctx.fillStyle = theme.text;
   fitFont(ctx, symbol, width - pad * 2, 36, "800", 20);
   ctx.fillText(symbol, pad, 104);
-  ctx.fillStyle = "#6b7280";
+  ctx.fillStyle = theme.muted;
   fitFont(ctx, stock, width - pad * 2, 15, "500", 12);
   ctx.fillText(stock, pad, 128);
 
@@ -175,14 +301,14 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
   ctx.textAlign = "center";
   ctx.fillText(side, pad + sideW / 2, 160);
   ctx.textAlign = "left";
-  ctx.fillStyle = "#6b7280";
+  ctx.fillStyle = theme.muted;
   ctx.font = "600 12px Arial, Helvetica, sans-serif";
   ctx.fillText(`${exchange}   ·   ${market}`, pad + sideW + 10, 161);
 
   roundRect(ctx, pad, 182, width - pad * 2, 42, 10);
-  ctx.fillStyle = "#fff4dc";
+  ctx.fillStyle = theme.headlineBg;
   ctx.fill();
-  ctx.fillStyle = "#92400e";
+  ctx.fillStyle = theme.headlineFg;
   fitFont(ctx, headline, width - pad * 2 - 28, 16, "700", 12);
   ctx.fillText(headline, pad + 14, 208);
 
@@ -190,18 +316,18 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
   const boxW = (width - pad * 2 - gap * 4) / 5;
   const boxY = 242;
   const boxes = [
-    { label: "Buy Range", value: buyRange, bg: "#eef5ff", fg: "#0f172a" },
-    { label: "Target 1", value: target1, bg: "#e8f8ee", fg: "#15803d" },
-    { label: "Target 2", value: target2, bg: "#e8f8ee", fg: "#15803d" },
-    { label: "Target 3", value: target3, bg: "#e8f8ee", fg: "#15803d" },
-    { label: "Stop Loss", value: stopLoss, bg: "#fff0f0", fg: "#dc2626" },
+    { label: "Buy Range", value: buyRange, bg: theme.buyBg, fg: theme.buyFg },
+    { label: "Target 1", value: target1, bg: theme.targetBg, fg: theme.targetFg },
+    { label: "Target 2", value: target2, bg: theme.targetBg, fg: theme.targetFg },
+    { label: "Target 3", value: target3, bg: theme.targetBg, fg: theme.targetFg },
+    { label: "Stop Loss", value: stopLoss, bg: theme.stopBg, fg: theme.stopFg },
   ];
   boxes.forEach((box, index) => {
     const x = pad + index * (boxW + gap);
     roundRect(ctx, x, boxY, boxW, 84, 12);
     ctx.fillStyle = box.bg;
     ctx.fill();
-    ctx.fillStyle = "#64748b";
+    ctx.fillStyle = theme.muted;
     ctx.font = "600 10px Arial, Helvetica, sans-serif";
     ctx.textAlign = "left";
     ctx.fillText(box.label, x + 8, boxY + 24);
@@ -210,54 +336,55 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
     ctx.fillText(box.value, x + 8, boxY + 56);
   });
 
-  ctx.fillStyle = "#64748b";
+  ctx.fillStyle = theme.muted;
   ctx.font = "600 11px Arial, Helvetica, sans-serif";
   ctx.fillText("Time Frame", pad, 368);
-  ctx.fillStyle = "#111827";
+  ctx.fillStyle = theme.text;
   fitFont(ctx, timeFrame, 280, 18, "800", 12);
   ctx.fillText(timeFrame, pad, 394);
 
   const qrSize = 112;
   const qrX = width - pad - qrSize;
   const qrY = 348;
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = themeId === "night" ? "#0f172a" : "#ffffff";
   roundRect(ctx, qrX - 8, qrY - 8, qrSize + 16, qrSize + 16, 12);
   ctx.fill();
-  ctx.strokeStyle = "#f3e4d6";
+  ctx.strokeStyle = theme.qrBorder;
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.drawImage(qr, qrX, qrY, qrSize, qrSize);
-  ctx.fillStyle = "#9ca3af";
+  ctx.fillStyle = theme.footerMuted;
   ctx.font = "500 10px Arial, Helvetica, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("Scan to open in Sharekhan", qrX + qrSize / 2, qrY + qrSize + 22);
 
   ctx.textAlign = "left";
-  ctx.fillStyle = "#64748b";
+  ctx.fillStyle = theme.muted;
   ctx.font = "600 11px Arial, Helvetica, sans-serif";
   ctx.fillText("Notes", pad, 520);
-  ctx.fillStyle = "#1f2937";
+  ctx.fillStyle = theme.text;
   ctx.font = "500 14px Arial, Helvetica, sans-serif";
   wrapText(ctx, notes, pad, 546, width - pad * 2, 20, 4);
 
-  ctx.strokeStyle = "#f3e6dc";
+  ctx.strokeStyle = theme.footerLine;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(pad, height - 56);
   ctx.lineTo(width - pad, height - 56);
   ctx.stroke();
-  ctx.fillStyle = "#9ca3af";
+  ctx.fillStyle = theme.footerMuted;
   ctx.font = "500 11px Arial, Helvetica, sans-serif";
   ctx.textAlign = "left";
   ctx.fillText("Trade Responsibly   ·   Not a recommendation", pad, height - 30);
   ctx.textAlign = "right";
-  ctx.fillStyle = "#e85d04";
+  ctx.fillStyle = theme.brand;
   fitFont(ctx, brand, 260, 13, "800", 10);
   ctx.fillText(brand, width - pad, height - 30);
 }
 
 type Props = {
   data: TradeCardData;
+  theme?: CardThemeId;
   onClose?: () => void;
   variant?: "panel" | "toolbar";
 };
@@ -290,7 +417,7 @@ function ActionIcon({ name }: { name: "download" | "copy" | "share" }) {
   );
 }
 
-export default function TradeShareCard({ data, onClose, variant = "panel" }: Props) {
+export default function TradeShareCard({ data, theme = "classic", onClose, variant = "panel" }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -302,14 +429,14 @@ export default function TradeShareCard({ data, onClose, variant = "panel" }: Pro
     setBusy(true);
     setError("");
     try {
-      await drawTradeCard(canvasRef.current, data);
+      await drawTradeCard(canvasRef.current, data, theme);
       setPreviewUrl(canvasRef.current.toDataURL("image/png"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not build share image");
     } finally {
       setBusy(false);
     }
-  }, [data]);
+  }, [data, theme]);
 
   useEffect(() => {
     renderCard();
