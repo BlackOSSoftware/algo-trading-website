@@ -27,6 +27,7 @@ export type TradeCardData = {
   segment?: string;
 };
 
+/** Kept for page compatibility — card look is the fixed classic style from 29 Oct. */
 export const CARD_THEMES: Array<{ id: CardThemeId; label: string; blurb: string }> = [
   { id: "classic", label: "Classic", blurb: "Warm cream" },
   { id: "night", label: "Night", blurb: "Dark slate" },
@@ -34,121 +35,7 @@ export const CARD_THEMES: Array<{ id: CardThemeId; label: string; blurb: string 
   { id: "bold", label: "Bold", blurb: "High contrast" },
 ];
 
-type ThemePalette = {
-  bg0: string;
-  bg1: string;
-  bg2: string;
-  glow: string;
-  brand: string;
-  kicker: string;
-  text: string;
-  muted: string;
-  headlineBg: string;
-  headlineFg: string;
-  buyBg: string;
-  buyFg: string;
-  targetBg: string;
-  targetFg: string;
-  stopBg: string;
-  stopFg: string;
-  qrBorder: string;
-  footerLine: string;
-  footerMuted: string;
-  accentBar?: string;
-};
-
-const THEMES: Record<CardThemeId, ThemePalette> = {
-  classic: {
-    bg0: "#fffdfb",
-    bg1: "#fff6ee",
-    bg2: "#ffefe3",
-    glow: "rgba(255, 168, 92, 0.28)",
-    brand: "#e85d04",
-    kicker: "#c2410c",
-    text: "#111827",
-    muted: "#6b7280",
-    headlineBg: "#fff4dc",
-    headlineFg: "#92400e",
-    buyBg: "#eef5ff",
-    buyFg: "#0f172a",
-    targetBg: "#e8f8ee",
-    targetFg: "#15803d",
-    stopBg: "#fff0f0",
-    stopFg: "#dc2626",
-    qrBorder: "#f3e4d6",
-    footerLine: "#f3e6dc",
-    footerMuted: "#9ca3af",
-  },
-  night: {
-    bg0: "#0b1220",
-    bg1: "#111827",
-    bg2: "#1e293b",
-    glow: "rgba(56, 189, 248, 0.18)",
-    brand: "#38bdf8",
-    kicker: "#7dd3fc",
-    text: "#f8fafc",
-    muted: "#94a3b8",
-    headlineBg: "#1e293b",
-    headlineFg: "#e2e8f0",
-    buyBg: "#172554",
-    buyFg: "#bfdbfe",
-    targetBg: "#052e16",
-    targetFg: "#86efac",
-    stopBg: "#450a0a",
-    stopFg: "#fca5a5",
-    qrBorder: "#334155",
-    footerLine: "#334155",
-    footerMuted: "#64748b",
-  },
-  mint: {
-    bg0: "#f7fdf9",
-    bg1: "#ecfdf5",
-    bg2: "#d1fae5",
-    glow: "rgba(16, 185, 129, 0.18)",
-    brand: "#047857",
-    kicker: "#059669",
-    text: "#064e3b",
-    muted: "#6b7280",
-    headlineBg: "#d1fae5",
-    headlineFg: "#065f46",
-    buyBg: "#eff6ff",
-    buyFg: "#1e3a8a",
-    targetBg: "#dcfce7",
-    targetFg: "#166534",
-    stopBg: "#fee2e2",
-    stopFg: "#b91c1c",
-    qrBorder: "#a7f3d0",
-    footerLine: "#a7f3d0",
-    footerMuted: "#6b7280",
-  },
-  bold: {
-    bg0: "#ffffff",
-    bg1: "#f8fafc",
-    bg2: "#f1f5f9",
-    glow: "rgba(15, 23, 42, 0.08)",
-    brand: "#0f172a",
-    kicker: "#334155",
-    text: "#0f172a",
-    muted: "#64748b",
-    headlineBg: "#0f172a",
-    headlineFg: "#ffffff",
-    buyBg: "#e2e8f0",
-    buyFg: "#0f172a",
-    targetBg: "#dcfce7",
-    targetFg: "#14532d",
-    stopBg: "#fee2e2",
-    stopFg: "#991b1b",
-    qrBorder: "#cbd5e1",
-    footerLine: "#e2e8f0",
-    footerMuted: "#64748b",
-    accentBar: "#16a34a",
-  },
-};
-
-function productLabel(productType?: string, segment?: string) {
-  const seg = String(segment || "").toUpperCase();
-  if (seg === "FUT") return "Futures";
-  if (seg === "OPT") return "Options";
+function productLabel(productType?: string) {
   const value = String(productType || "").toUpperCase();
   if (value.includes("BIGTRADE") || value === "BT" || value === "BT+") return "Equity Intraday";
   return "Equity Delivery";
@@ -158,14 +45,6 @@ function segmentName(segment?: string) {
   if (segment === "FUT") return "Futures";
   if (segment === "OPT") return "Options";
   return "Equity";
-}
-
-function optionKind(symbol?: string, segment?: string) {
-  if (String(segment || "").toUpperCase() !== "OPT") return "";
-  const s = String(symbol || "").toUpperCase();
-  if (/\bCE\b/.test(s) || s.endsWith("CE")) return "Call (CE)";
-  if (/\bPE\b/.test(s) || s.endsWith("PE")) return "Put (PE)";
-  return "Options";
 }
 
 function loadImage(src: string) {
@@ -196,14 +75,7 @@ function roundRect(
   ctx.closePath();
 }
 
-function fitFont(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  size: number,
-  weight: string,
-  min = 16
-) {
+function fitFont(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, size: number, weight: string, min = 16) {
   let next = size;
   ctx.font = `${weight} ${next}px Arial, Helvetica, sans-serif`;
   while (next > min && ctx.measureText(text).width > maxWidth) {
@@ -213,15 +85,7 @@ function fitFont(
   return next;
 }
 
-function wrapText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineHeight: number,
-  maxLines = 3
-) {
+function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines = 3) {
   const words = text.split(/\s+/).filter(Boolean);
   let line = "";
   let lineCount = 0;
@@ -240,14 +104,9 @@ function wrapText(
   if (line && lineCount < maxLines) ctx.fillText(line, x, y);
 }
 
-export async function drawTradeCard(
-  canvas: HTMLCanvasElement,
-  data: TradeCardData,
-  themeId: CardThemeId = "classic"
-) {
-  const theme = THEMES[themeId] || THEMES.classic;
-  const width = 780;
-  const height = 980;
+export async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData, _theme?: CardThemeId) {
+  const width = 900;
+  const height = 1120;
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
@@ -258,12 +117,9 @@ export async function drawTradeCard(
   const stock = String(data.stock || "").trim() || symbol;
   const exchange = String(data.exchange || "NSE").toUpperCase();
   const market = segmentName(data.segment);
-  const kind = optionKind(symbol, data.segment);
-  const marketLine = kind ? `${exchange}  ·  ${market}  ·  ${kind}` : `${exchange}  ·  ${market}`;
   const buyRange =
     String(data.buyRange || "").trim() ||
     (Number(data.price) > 0 ? String(data.price) : "—");
-  const quantity = String(data.quantity ?? "1").trim() || "1";
   const target1 =
     String(data.target1 || "").trim() ||
     String(data.target || "").split("/")[0]?.trim() ||
@@ -272,171 +128,153 @@ export async function drawTradeCard(
     String(data.target2 || "").trim() ||
     String(data.target || "").split("/")[1]?.trim() ||
     "—";
-  const target3 =
-    String(data.target3 || "").trim() ||
-    String(data.target || "").split("/")[2]?.trim() ||
-    "—";
   const stopLoss = String(data.stopLoss || "").trim() || "—";
   const timeFrame =
     String(data.timeFrame || "").trim() ||
-    (productLabel(data.productType, data.segment).includes("Intraday") ? "INTRADAY" : "DELIVERY");
+    (productLabel(data.productType).includes("Intraday") ? "INTRADAY" : "DELIVERY");
   const headline =
     String(data.headline || "").trim() ||
-    `${productLabel(data.productType, data.segment)} ${side === "SELL" ? "Sell" : "Buy"}`;
+    `${productLabel(data.productType)} ${side === "SELL" ? "Sell" : "Buy"}`;
   const notes = String(data.notes || "").trim() || "Follow the plan and manage risk.";
 
+  let qr: HTMLImageElement | null = null;
+  if (data.code) {
+    try {
+      const qrUrl = `${resolveApiBaseUrl()}/api/v1/order-intents/${encodeURIComponent(data.code)}/qr.png?t=${Date.now()}`;
+      qr = await loadImage(qrUrl);
+    } catch {
+      qr = null;
+    }
+  }
+
   const page = ctx.createLinearGradient(0, 0, width, height);
-  page.addColorStop(0, theme.bg0);
-  page.addColorStop(0.55, theme.bg1);
-  page.addColorStop(1, theme.bg2);
+  page.addColorStop(0, "#fffdfb");
+  page.addColorStop(0.55, "#fff6ee");
+  page.addColorStop(1, "#ffefe3");
   ctx.fillStyle = page;
   ctx.fillRect(0, 0, width, height);
 
-  if (theme.accentBar) {
-    ctx.fillStyle = theme.accentBar;
-    ctx.fillRect(0, 0, 10, height);
-  }
-
-  const glow = ctx.createRadialGradient(width - 40, 0, 10, width - 40, 20, 280);
-  glow.addColorStop(0, theme.glow);
-  glow.addColorStop(1, "rgba(0,0,0,0)");
+  const glow = ctx.createRadialGradient(width - 40, 0, 10, width - 40, 20, 380);
+  glow.addColorStop(0, "rgba(255, 168, 92, 0.38)");
+  glow.addColorStop(1, "rgba(255, 168, 92, 0)");
   ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, width, 280);
+  ctx.fillRect(0, 0, width, 360);
 
-  const pad = theme.accentBar ? 42 : 36;
-  const brand = "Emotionless Traders";
+  const pad = 52;
   ctx.textAlign = "left";
-  ctx.fillStyle = theme.brand;
-  fitFont(ctx, brand, width - pad * 2 - 110, 26, "800", 16);
-  ctx.fillText(brand, pad, 54);
+  ctx.fillStyle = "#e85d04";
+  ctx.font = "800 34px Arial, Helvetica, sans-serif";
+  ctx.fillText("Sharekhan", pad, 78);
   ctx.textAlign = "right";
-  ctx.fillStyle = theme.kicker;
-  ctx.font = "700 13px Arial, Helvetica, sans-serif";
-  ctx.fillText("TRADE IDEA", width - pad, 52);
+  ctx.fillStyle = "#c2410c";
+  ctx.font = "700 15px Arial, Helvetica, sans-serif";
+  ctx.fillText("TRADE IDEA", width - pad, 74);
 
   ctx.textAlign = "left";
-  ctx.fillStyle = theme.text;
-  fitFont(ctx, symbol, width - pad * 2, 42, "800", 22);
-  ctx.fillText(symbol, pad, 110);
-  ctx.fillStyle = theme.muted;
-  fitFont(ctx, stock, width - pad * 2, 17, "500", 13);
-  ctx.fillText(stock, pad, 136);
+  ctx.fillStyle = "#111827";
+  fitFont(ctx, symbol, width - pad * 2, 68, "800", 32);
+  ctx.fillText(symbol, pad, 168);
+  ctx.fillStyle = "#6b7280";
+  ctx.font = "500 24px Arial, Helvetica, sans-serif";
+  fitFont(ctx, stock, width - pad * 2, 24, "500", 16);
+  ctx.fillText(stock, pad, 210);
 
-  ctx.font = "700 13px Arial, Helvetica, sans-serif";
-  const sideW = Math.max(58, ctx.measureText(side).width + 24);
-  roundRect(ctx, pad, 152, sideW, 28, 14);
+  ctx.font = "700 16px Arial, Helvetica, sans-serif";
+  const sideW = Math.max(64, ctx.measureText(side).width + 28);
+  roundRect(ctx, pad, 232, sideW, 32, 16);
   ctx.fillStyle = side === "SELL" ? "#dc2626" : "#16a34a";
   ctx.fill();
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
-  ctx.fillText(side, pad + sideW / 2, 171);
+  ctx.fillText(side, pad + sideW / 2, 254);
   ctx.textAlign = "left";
-  ctx.fillStyle = theme.muted;
-  ctx.font = "700 14px Arial, Helvetica, sans-serif";
-  ctx.fillText(marketLine, pad + sideW + 12, 172);
+  ctx.fillStyle = "#6b7280";
+  ctx.font = "600 18px Arial, Helvetica, sans-serif";
+  ctx.fillText(`${exchange}   ·   ${market}`, pad + sideW + 14, 255);
 
-  roundRect(ctx, pad, 196, width - pad * 2, 48, 12);
-  ctx.fillStyle = theme.headlineBg;
+  roundRect(ctx, pad, 286, width - pad * 2, 62, 14);
+  ctx.fillStyle = "#fff4dc";
   ctx.fill();
-  ctx.fillStyle = theme.headlineFg;
-  fitFont(ctx, headline, width - pad * 2 - 28, 18, "700", 13);
-  ctx.fillText(headline, pad + 14, 226);
+  ctx.fillStyle = "#92400e";
+  ctx.font = "700 26px Arial, Helvetica, sans-serif";
+  fitFont(ctx, headline, width - pad * 2 - 40, 26, "700", 16);
+  ctx.fillText(headline, pad + 20, 326);
 
-  // Stats: 3 on top row, 3 on bottom — large readable values
-  const gap = 12;
-  const boxW = (width - pad * 2 - gap * 2) / 3;
-  const boxH = 108;
-  const row1Y = 264;
-  const row2Y = row1Y + boxH + gap;
+  const gap = 14;
+  const boxW = (width - pad * 2 - gap * 3) / 4;
+  const boxY = 372;
   const boxes = [
-    { label: "Buy Range", value: buyRange, bg: theme.buyBg, fg: theme.buyFg, row: 0, col: 0 },
-    { label: "Target 1", value: target1, bg: theme.targetBg, fg: theme.targetFg, row: 0, col: 1 },
-    { label: "Target 2", value: target2, bg: theme.targetBg, fg: theme.targetFg, row: 0, col: 2 },
-    { label: "Target 3", value: target3, bg: theme.targetBg, fg: theme.targetFg, row: 1, col: 0 },
-    { label: "Stop Loss", value: stopLoss, bg: theme.stopBg, fg: theme.stopFg, row: 1, col: 1 },
-    { label: "Quantity", value: quantity, bg: theme.buyBg, fg: theme.buyFg, row: 1, col: 2 },
+    { label: "Buy Range", value: buyRange, bg: "#eef5ff", fg: "#0f172a" },
+    { label: "Target 1", value: target1, bg: "#e8f8ee", fg: "#15803d" },
+    { label: "Target 2", value: target2, bg: "#e8f8ee", fg: "#15803d" },
+    { label: "Stop Loss", value: stopLoss, bg: "#fff0f0", fg: "#dc2626" },
   ];
-  boxes.forEach((box) => {
-    const x = pad + box.col * (boxW + gap);
-    const y = box.row === 0 ? row1Y : row2Y;
-    roundRect(ctx, x, y, boxW, boxH, 14);
+  boxes.forEach((box, index) => {
+    const x = pad + index * (boxW + gap);
+    roundRect(ctx, x, boxY, boxW, 124, 16);
     ctx.fillStyle = box.bg;
     ctx.fill();
-    ctx.fillStyle = theme.muted;
-    ctx.font = "700 14px Arial, Helvetica, sans-serif";
+    ctx.fillStyle = "#64748b";
+    ctx.font = "600 15px Arial, Helvetica, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(box.label, x + 14, y + 32);
+    ctx.fillText(box.label, x + 14, boxY + 36);
     ctx.fillStyle = box.fg;
-    fitFont(ctx, box.value, boxW - 28, 30, "800", 18);
-    ctx.fillText(box.value, x + 14, y + 74);
+    fitFont(ctx, box.value, boxW - 28, 28, "800", 14);
+    ctx.fillText(box.value, x + 14, boxY + 84);
   });
 
-  const metaY = row2Y + boxH + 36;
-  ctx.fillStyle = theme.muted;
-  ctx.font = "700 13px Arial, Helvetica, sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText("Time Frame", pad, metaY);
-  ctx.fillStyle = theme.text;
-  fitFont(ctx, timeFrame, 280, 24, "800", 16);
-  ctx.fillText(timeFrame, pad, metaY + 32);
+  ctx.fillStyle = "#64748b";
+  ctx.font = "600 16px Arial, Helvetica, sans-serif";
+  ctx.fillText("Time Frame", pad, 556);
+  ctx.fillStyle = "#111827";
+  fitFont(ctx, timeFrame, 360, 30, "800", 16);
+  ctx.fillText(timeFrame, pad, 598);
 
-  const qrSize = 128;
+  const qrSize = 168;
   const qrX = width - pad - qrSize;
-  const qrY = metaY - 8;
-  ctx.fillStyle = themeId === "night" ? "#0f172a" : "#ffffff";
-  roundRect(ctx, qrX - 10, qrY - 10, qrSize + 20, qrSize + 20, 14);
+  const qrY = 528;
+  ctx.fillStyle = "#ffffff";
+  roundRect(ctx, qrX - 12, qrY - 12, qrSize + 24, qrSize + 24, 16);
   ctx.fill();
-  ctx.strokeStyle = theme.qrBorder;
-  ctx.lineWidth = 1.5;
-  roundRect(ctx, qrX - 10, qrY - 10, qrSize + 20, qrSize + 20, 14);
+  roundRect(ctx, qrX - 12, qrY - 12, qrSize + 24, qrSize + 24, 16);
+  ctx.strokeStyle = "#f3e4d6";
+  ctx.lineWidth = 2;
   ctx.stroke();
-
-  if (data.code) {
-    try {
-      const qrUrl = `${resolveApiBaseUrl()}/api/v1/order-intents/${encodeURIComponent(data.code)}/qr.png?t=${Date.now()}`;
-      const qr = await loadImage(qrUrl);
-      ctx.drawImage(qr, qrX, qrY, qrSize, qrSize);
-    } catch {
-      ctx.fillStyle = theme.muted;
-      ctx.font = "600 14px Arial, Helvetica, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("QR", qrX + qrSize / 2, qrY + qrSize / 2);
-    }
+  if (qr) {
+    ctx.drawImage(qr, qrX, qrY, qrSize, qrSize);
   } else {
-    ctx.fillStyle = theme.muted;
-    ctx.font = "600 13px Arial, Helvetica, sans-serif";
+    ctx.fillStyle = "#9ca3af";
+    ctx.font = "600 16px Arial, Helvetica, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("QR after", qrX + qrSize / 2, qrY + qrSize / 2 - 8);
-    ctx.fillText("generate", qrX + qrSize / 2, qrY + qrSize / 2 + 12);
+    ctx.fillText(data.code ? "QR" : "QR after generate", qrX + qrSize / 2, qrY + qrSize / 2);
   }
-  ctx.fillStyle = theme.footerMuted;
-  ctx.font = "500 12px Arial, Helvetica, sans-serif";
+  ctx.fillStyle = "#9ca3af";
+  ctx.font = "500 13px Arial, Helvetica, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Scan to open in Sharekhan", qrX + qrSize / 2, qrY + qrSize + 28);
+  ctx.fillText("Scan to open in Sharekhan", qrX + qrSize / 2, qrY + qrSize + 32);
 
-  const notesY = qrY + qrSize + 56;
   ctx.textAlign = "left";
-  ctx.fillStyle = theme.muted;
-  ctx.font = "700 13px Arial, Helvetica, sans-serif";
-  ctx.fillText("Notes", pad, notesY);
-  ctx.fillStyle = theme.text;
-  ctx.font = "500 16px Arial, Helvetica, sans-serif";
-  wrapText(ctx, notes, pad, notesY + 28, width - pad * 2, 24, 3);
+  ctx.fillStyle = "#64748b";
+  ctx.font = "600 16px Arial, Helvetica, sans-serif";
+  ctx.fillText("Notes", pad, 760);
+  ctx.fillStyle = "#1f2937";
+  ctx.font = "500 22px Arial, Helvetica, sans-serif";
+  wrapText(ctx, notes, pad, 798, width - pad * 2, 30, 3);
 
-  ctx.strokeStyle = theme.footerLine;
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#f3e6dc";
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(pad, height - 56);
-  ctx.lineTo(width - pad, height - 56);
+  ctx.moveTo(pad, height - 78);
+  ctx.lineTo(width - pad, height - 78);
   ctx.stroke();
-  ctx.fillStyle = theme.footerMuted;
-  ctx.font = "500 12px Arial, Helvetica, sans-serif";
+  ctx.fillStyle = "#9ca3af";
+  ctx.font = "500 16px Arial, Helvetica, sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("Trade Responsibly   ·   Not a recommendation", pad, height - 28);
+  ctx.fillText("Trade Responsibly   ·   Not a recommendation", pad, height - 42);
   ctx.textAlign = "right";
-  ctx.fillStyle = theme.brand;
-  fitFont(ctx, brand, 280, 14, "800", 11);
-  ctx.fillText(brand, width - pad, height - 28);
+  ctx.fillStyle = "#e85d04";
+  ctx.font = "800 18px Arial, Helvetica, sans-serif";
+  ctx.fillText("Sharekhan", width - pad, height - 42);
 }
 
 type Props = {
@@ -503,7 +341,7 @@ export default function TradeShareCard({ data, theme = "classic", onClose, varia
     if (!previewUrl) return;
     const anchor = document.createElement("a");
     anchor.href = previewUrl;
-    anchor.download = `${data.tradingSymbol || "trade"}-${data.code || "draft"}.png`;
+    anchor.download = `${data.tradingSymbol || "trade"}-${data.code}.png`;
     anchor.click();
     setMessage("Image downloaded.");
   }
@@ -540,7 +378,7 @@ export default function TradeShareCard({ data, theme = "classic", onClose, varia
         await navigator.share({
           files: [file],
           title: `${data.tradingSymbol} ${data.side}`,
-          text: `Scan QR to open this Sharekhan order.\n${data.shortUrl || ""}`,
+          text: `Scan QR to open this Sharekhan order.\n${data.shortUrl}`,
         });
         setMessage("Shared.");
         return;
@@ -553,8 +391,36 @@ export default function TradeShareCard({ data, theme = "classic", onClose, varia
     }
   }
 
-  const actionsDisabled = busy || !previewUrl || !data.code;
+  if (variant === "toolbar") {
+    return (
+      <div className="sk-toolbar">
+        {error ? (
+          <p className="sk-banner sk-banner-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {message ? (
+          <p className="sk-banner" role="status">
+            {message}
+          </p>
+        ) : null}
+        <div className="sk-share-actions">
+          <button className="sk-btn sk-btn-ghost" type="button" disabled={busy || !previewUrl} onClick={downloadImage}>
+            <ActionIcon name="download" /> Download PNG
+          </button>
+          <button className="sk-btn sk-btn-ghost" type="button" disabled={busy || !previewUrl} onClick={copyImage}>
+            <ActionIcon name="copy" /> Copy image
+          </button>
+          <button className="sk-btn sk-btn-ghost" type="button" disabled={busy || !previewUrl} onClick={shareImage}>
+            <ActionIcon name="share" /> Share
+          </button>
+        </div>
+        <canvas ref={canvasRef} style={{ display: "none" }} />
+      </div>
+    );
+  }
 
+  const actionsDisabled = busy || !previewUrl || !data.code;
   const toolbar = (
     <div className="sk-toolbar">
       {error ? (
@@ -582,65 +448,69 @@ export default function TradeShareCard({ data, theme = "classic", onClose, varia
     </div>
   );
 
-  if (variant === "toolbar") {
+  if (variant === "preview") {
     return (
-      <>
+      <div className="sk-canvas-preview">
+        <div className="sk-canvas-preview-frame">
+          {busy && !previewUrl ? <p className="sk-hint">Building card…</p> : null}
+          {previewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={previewUrl} alt="Trade share card preview" />
+          ) : null}
+          <canvas ref={canvasRef} style={{ display: "none" }} />
+        </div>
         {toolbar}
-        <canvas ref={canvasRef} style={{ display: "none" }} />
-      </>
+      </div>
     );
   }
 
   return (
-    <div className={variant === "preview" ? "sk-canvas-preview" : "trade-share-card"}>
-      {variant !== "preview" ? (
-        <div className="trade-share-card-head">
-          <div>
-            <strong>Share image with QR</strong>
-            <p className="helper" style={{ marginTop: 4 }}>
-              Preview and download use the same image.
-            </p>
-          </div>
-          {onClose ? (
-            <button className="btn btn-ghost" type="button" onClick={onClose}>
-              Close
-            </button>
-          ) : null}
+    <div className="trade-share-card">
+      <div className="trade-share-card-head">
+        <div>
+          <strong>Share image with QR</strong>
+          <p className="helper" style={{ marginTop: 4 }}>
+            Send this on WhatsApp. The QR opens the order link, then the Sharekhan app.
+          </p>
         </div>
-      ) : null}
+        {onClose ? (
+          <button className="btn btn-ghost" type="button" onClick={onClose}>
+            Close
+          </button>
+        ) : null}
+      </div>
       {error ? (
-        <p className="sk-banner sk-banner-error" role="alert">
+        <p role="alert" style={{ color: "#dc2626" }}>
           {error}
         </p>
       ) : null}
-      {message && variant !== "preview" ? (
-        <p className="sk-banner" role="status">
-          {message}
-        </p>
-      ) : null}
-      <div className={variant === "preview" ? "sk-canvas-preview-frame" : "trade-share-preview"}>
-        {busy && !previewUrl ? <p className="sk-hint">Building card…</p> : null}
+      {message ? <p role="status">{message}</p> : null}
+      <div className="trade-share-preview">
+        {busy && !previewUrl ? <p>Building card…</p> : null}
         {previewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={previewUrl} alt="Trade share card preview" />
+          <img src={previewUrl} alt="Trade share card" />
         ) : null}
         <canvas ref={canvasRef} style={{ display: "none" }} />
       </div>
-      {variant === "preview" ? (
-        toolbar
-      ) : (
-        <div className="cta-row" style={{ marginTop: 14, flexWrap: "wrap", gap: 8 }}>
-          <button className="btn btn-primary" type="button" disabled={actionsDisabled} onClick={shareImage}>
-            Share image
-          </button>
-          <button className="btn btn-secondary" type="button" disabled={actionsDisabled} onClick={downloadImage}>
-            Download PNG
-          </button>
-          <button className="btn btn-secondary" type="button" disabled={actionsDisabled} onClick={copyImage}>
-            Copy image
-          </button>
-        </div>
-      )}
+      <div className="cta-row" style={{ marginTop: 14, flexWrap: "wrap", gap: 8 }}>
+        <button className="btn btn-primary" type="button" disabled={actionsDisabled} onClick={shareImage}>
+          Share image
+        </button>
+        <button className="btn btn-secondary" type="button" disabled={actionsDisabled} onClick={downloadImage}>
+          Download PNG
+        </button>
+        <button className="btn btn-secondary" type="button" disabled={actionsDisabled} onClick={copyImage}>
+          Copy image
+        </button>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => navigator.clipboard.writeText(data.shortUrl || "")}
+        >
+          Copy link
+        </button>
+      </div>
     </div>
   );
 }
