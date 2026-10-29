@@ -27,6 +27,7 @@ type Details = {
   target: string;
   target1: string;
   target2: string;
+  target3: string;
   stopLoss: string;
   timeFrame: string;
   headline: string;
@@ -39,7 +40,7 @@ type LinkRecord = {
   kind: string;
   payload?: string;
   details: Partial<Details> & {
-    card?: Partial<Pick<Details, "buyRange" | "target" | "target1" | "target2" | "stopLoss" | "timeFrame" | "headline">>;
+    card?: Partial<Pick<Details, "buyRange" | "target" | "target1" | "target2" | "target3" | "stopLoss" | "timeFrame" | "headline">>;
   };
   active: boolean;
   preserved?: boolean;
@@ -77,6 +78,7 @@ type PreviewModel = {
   target: string;
   target1: string;
   target2: string;
+  target3: string;
   stopLoss: string;
   timeFrame: string;
   notes: string;
@@ -105,6 +107,7 @@ const blank: Details = {
   target: "",
   target1: "",
   target2: "",
+  target3: "",
   stopLoss: "",
   timeFrame: "",
   headline: "",
@@ -167,6 +170,7 @@ function toCardData(link: LinkRecord): TradeCardData {
     target: String(card.target || d.target || ""),
     target1: String(card.target1 || d.target1 || String(card.target || d.target || "").split("/")[0] || "").trim(),
     target2: String(card.target2 || d.target2 || String(card.target || d.target || "").split("/")[1] || "").trim(),
+    target3: String(card.target3 || d.target3 || String(card.target || d.target || "").split("/")[2] || "").trim(),
     stopLoss: String(card.stopLoss || d.stopLoss || ""),
     timeFrame: String(card.timeFrame || d.timeFrame || ""),
     headline: String(card.headline || d.headline || ""),
@@ -187,6 +191,7 @@ function previewFromCard(card: TradeCardData): PreviewModel {
     target: card.target || "—",
     target1: card.target1 || String(card.target || "").split("/")[0]?.trim() || "—",
     target2: card.target2 || String(card.target || "").split("/")[1]?.trim() || "—",
+    target3: card.target3 || String(card.target || "").split("/")[2]?.trim() || "—",
     stopLoss: card.stopLoss || "—",
     timeFrame: card.timeFrame || (product.includes("Intraday") ? "INTRADAY" : "DELIVERY"),
     notes: card.notes || "Follow the plan and manage risk.",
@@ -214,7 +219,7 @@ function OrderPreview({ model }: { model: PreviewModel }) {
         </span>
       </div>
       <div className="sk-idea-headline">{model.headline}</div>
-      <div className="sk-idea-stats sk-idea-stats-4">
+      <div className="sk-idea-stats sk-idea-stats-5">
         <div>
           <span>Buy Range</span>
           <strong>{model.buyRange || "—"}</strong>
@@ -226,6 +231,10 @@ function OrderPreview({ model }: { model: PreviewModel }) {
         <div className="is-target">
           <span>Target 2</span>
           <strong>{model.target2 || "—"}</strong>
+        </div>
+        <div className="is-target">
+          <span>Target 3</span>
+          <strong>{model.target3 || "—"}</strong>
         </div>
         <div className="is-stop">
           <span>Stop Loss</span>
@@ -267,12 +276,12 @@ export default function SharekhanLinksPage() {
   const formRef = useRef<HTMLFormElement>(null);
   const [details, setDetails] = useState<Details>(blank);
   const [reuseFrom, setReuseFrom] = useState("");
-  const [existingUrl, setExistingUrl] = useState("");
-  const [name, setName] = useState("");
   const [links, setLinks] = useState<LinkRecord[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [toast, setToast] = useState("");
+  const toastTimer = useRef<number | null>(null);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Instrument[]>([]);
   const [searching, setSearching] = useState(false);
@@ -483,6 +492,7 @@ export default function SharekhanLinksPage() {
     const targetCombined = asText(card.target || d.target);
     const target1 = asText(card.target1 || d.target1 || targetCombined.split("/")[0]).trim();
     const target2 = asText(card.target2 || d.target2 || targetCombined.split("/")[1]).trim();
+    const target3 = asText(card.target3 || d.target3 || targetCombined.split("/")[2]).trim();
     const symbol = asText(d.tradingSymbol || d.stock || link.code).toUpperCase();
     let orderTypeReuse = asText(d.orderType, "NORMAL").toUpperCase() || "NORMAL";
     let productReuse = asText(d.productType, "INVESTMENT").toUpperCase() || "INVESTMENT";
@@ -522,6 +532,7 @@ export default function SharekhanLinksPage() {
       target: targetCombined,
       target1,
       target2,
+      target3,
       stopLoss: asText(card.stopLoss || d.stopLoss),
       timeFrame: asText(card.timeFrame || d.timeFrame),
       headline: asText(card.headline || d.headline),
@@ -547,9 +558,10 @@ export default function SharekhanLinksPage() {
       details.headline ||
       `${details.productType === "INVESTMENT" ? "Equity Delivery" : "Equity Intraday"} ${details.side === "SELL" ? "Sell" : "Buy"}`,
     buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : "—"),
-    target: [details.target1, details.target2].filter(Boolean).join(" / ") || details.target || "—",
+    target: [details.target1, details.target2, details.target3].filter(Boolean).join(" / ") || details.target || "—",
     target1: details.target1 || "—",
     target2: details.target2 || "—",
+    target3: details.target3 || "—",
     stopLoss: details.stopLoss || "—",
     timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
     notes: details.notes || "Follow the plan and manage risk.",
@@ -584,19 +596,22 @@ export default function SharekhanLinksPage() {
     try {
       const target1 = details.target1 || details.target;
       const target2 = details.target2;
+      const target3 = details.target3;
       const submitDetails = {
         ...details,
         buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
         target1,
         target2,
-        target: [target1, target2].filter(Boolean).join(" / "),
+        target3,
+        target: [target1, target2, target3].filter(Boolean).join(" / "),
         stopLoss: details.stopLoss,
         timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
         card: {
           buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
           target1,
           target2,
-          target: [target1, target2].filter(Boolean).join(" / "),
+          target3,
+          target: [target1, target2, target3].filter(Boolean).join(" / "),
           stopLoss: details.stopLoss,
           timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
           headline: details.headline,
@@ -616,6 +631,7 @@ export default function SharekhanLinksPage() {
         target: String(submitDetails.card.target || ""),
         target1: String(submitDetails.card.target1 || ""),
         target2: String(submitDetails.card.target2 || ""),
+        target3: String(submitDetails.card.target3 || ""),
         stopLoss: String(submitDetails.card.stopLoss || ""),
         timeFrame: String(submitDetails.card.timeFrame || ""),
         headline: String(submitDetails.card.headline || ""),
@@ -626,24 +642,6 @@ export default function SharekhanLinksPage() {
       setMessage("Order link and share card are ready. Download or share the image with the QR.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create link");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function shortenKnownLink(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      await apiPost("/api/v1/sharekhan/links", { payload: existingUrl, details: { stock: name } }, getSharekhanToken());
-      setExistingUrl("");
-      setName("");
-      await refresh();
-      setMessage("Existing Sharekhan one-tap link shortened. Check its order screen before sharing.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not shorten link");
     } finally {
       setBusy(false);
     }
@@ -698,12 +696,50 @@ export default function SharekhanLinksPage() {
     };
   });
 
+  function showToast(text: string) {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    setToast(text);
+    toastTimer.current = window.setTimeout(() => setToast(""), 2200);
+  }
+
   async function copyLink(url: string) {
     try {
       await navigator.clipboard.writeText(url);
-      setMessage("Link copied.");
+      showToast("Copied");
     } catch {
       setError("Could not copy the link.");
+    }
+  }
+
+  async function loadSample(demo: (typeof demoCards)[number]) {
+    try {
+      if (demo.link) {
+        reuseFromLink(demo.link);
+        showToast(`${demo.segment === "FUT" ? "Future" : "Option"} sample loaded`);
+        return;
+      }
+      const response = (await apiGet(`/api/v1/order-intents/${encodeURIComponent(demo.code)}`)) as {
+        details?: LinkRecord["details"];
+      };
+      reuseFromLink({
+        code: demo.code,
+        shortUrl: demo.shortUrl,
+        kind: "order-intent",
+        details: response.details || {
+          tradingSymbol: demo.tradingSymbol,
+          segment: demo.segment,
+          exchange: "NFO",
+          side: "BUY",
+          quantity: "1",
+          price: "0",
+        },
+        active: true,
+        preserved: true,
+        clicks: 0,
+      });
+      showToast(`${demo.segment === "FUT" ? "Future" : "Option"} sample loaded`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load sample into form");
     }
   }
 
@@ -721,16 +757,25 @@ export default function SharekhanLinksPage() {
 
   return (
     <div className="sk-page">
+      {toast ? (
+        <div className="sk-toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
       {error ? <p className="sk-banner sk-banner-error" role="alert">{error}</p> : null}
       {message ? <p className="sk-banner" role="status">{message}</p> : null}
 
       <div className="sk-samples" aria-label="Working F and O samples">
         {demoCards.map((demo) => (
           <div key={demo.code} className="sk-sample">
-            <a href={demo.shortUrl} target="_blank" rel="noreferrer">
+            <button type="button" className="sk-sample-load" onClick={() => loadSample(demo)}>
               {demo.segment === "FUT" ? "Future sample" : "Option sample"}
-            </a>
-            <button type="button" onClick={() => copyLink(demo.shortUrl)} aria-label={`Copy ${demo.segment === "FUT" ? "future" : "option"} sample link`}>
+            </button>
+            <button
+              type="button"
+              onClick={() => copyLink(demo.shortUrl)}
+              aria-label={`Copy ${demo.segment === "FUT" ? "future" : "option"} sample link`}
+            >
               Copy
             </button>
           </div>
@@ -1081,6 +1126,10 @@ export default function SharekhanLinksPage() {
                 <input className="sk-input" value={details.target2} onChange={(event) => update("target2", event.target.value)} placeholder="1085" />
               </label>
               <label className="sk-field">
+                <span className="sk-label">Third target</span>
+                <input className="sk-input" value={details.target3} onChange={(event) => update("target3", event.target.value)} placeholder="1095" />
+              </label>
+              <label className="sk-field">
                 <span className="sk-label">Stop loss (SL)</span>
                 <input className="sk-input" value={details.stopLoss} onChange={(event) => update("stopLoss", event.target.value)} placeholder="1050" />
               </label>
@@ -1139,26 +1188,6 @@ export default function SharekhanLinksPage() {
             )}
           </section>
 
-          <form className="sk-panel sk-shorten" onSubmit={shortenKnownLink}>
-            <div className="sk-panel-intro">
-              <span className="sk-panel-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07.07l2.12-2.12a5 5 0 0 0-7.07-7.07L10.5 5.5" /><path d="M14 11a5 5 0 0 0-7.07-.07L4.8 13.05a5 5 0 0 0 7.07 7.07L13.5 18.5" /></svg>
-              </span>
-              <div>
-                <h2>Shorten an existing Sharekhan one-tap link</h2>
-                <p>Create a short link from an existing Sharekhan one-tap URL.</p>
-              </div>
-            </div>
-            <label className="sk-field">
-              <span className="sk-label">Verified one-tap URL or payload</span>
-              <input className="sk-input" required value={existingUrl} onChange={(event) => setExistingUrl(event.target.value)} placeholder="Paste your Sharekhan one-tap link here..." />
-            </label>
-            <label className="sk-field">
-              <span className="sk-label">Name (optional)</span>
-              <input className="sk-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Display name" />
-            </label>
-            <button className="sk-btn sk-btn-primary" disabled={busy} type="submit">Shorten link</button>
-          </form>
         </div>
       </div>
 
@@ -1178,12 +1207,12 @@ export default function SharekhanLinksPage() {
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="M16 16l4 4" /></svg>
               <input className="sk-input" value={tableQuery} onChange={(event) => setTableQuery(event.target.value)} placeholder="Search by symbol or stock name..." />
             </label>
-            <select className="sk-input" aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <select className="sk-input sk-filter-select" aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="all">All status</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
-            <select className="sk-input" aria-label="Filter by segment" value={segmentFilter} onChange={(event) => setSegmentFilter(event.target.value)}>
+            <select className="sk-input sk-filter-select" aria-label="Filter by segment" value={segmentFilter} onChange={(event) => setSegmentFilter(event.target.value)}>
               <option value="all">All segments</option>
               <option value="EQ">Equity</option>
               <option value="FUT">Futures</option>

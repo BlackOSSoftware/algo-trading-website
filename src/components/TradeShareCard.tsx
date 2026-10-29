@@ -17,6 +17,7 @@ export type TradeCardData = {
   target?: string;
   target1?: string;
   target2?: string;
+  target3?: string;
   stopLoss?: string;
   timeFrame?: string;
   headline?: string;
@@ -117,6 +118,10 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
     String(data.target2 || "").trim() ||
     String(data.target || "").split("/")[1]?.trim() ||
     "—";
+  const target3 =
+    String(data.target3 || "").trim() ||
+    String(data.target || "").split("/")[2]?.trim() ||
+    "—";
   const stopLoss = String(data.stopLoss || "").trim() || "—";
   const timeFrame =
     String(data.timeFrame || "").trim() ||
@@ -182,13 +187,14 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
   fitFont(ctx, headline, width - pad * 2 - 40, 26, "700", 16);
   ctx.fillText(headline, pad + 20, 326);
 
-  const gap = 14;
-  const boxW = (width - pad * 2 - gap * 3) / 4;
+  const gap = 12;
+  const boxW = (width - pad * 2 - gap * 4) / 5;
   const boxY = 372;
   const boxes = [
     { label: "Buy Range", value: buyRange, bg: "#eef5ff", fg: "#0f172a" },
     { label: "Target 1", value: target1, bg: "#e8f8ee", fg: "#15803d" },
     { label: "Target 2", value: target2, bg: "#e8f8ee", fg: "#15803d" },
+    { label: "Target 3", value: target3, bg: "#e8f8ee", fg: "#15803d" },
     { label: "Stop Loss", value: stopLoss, bg: "#fff0f0", fg: "#dc2626" },
   ];
   boxes.forEach((box, index) => {
@@ -197,12 +203,12 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
     ctx.fillStyle = box.bg;
     ctx.fill();
     ctx.fillStyle = "#64748b";
-    ctx.font = "600 15px Arial, Helvetica, sans-serif";
+    ctx.font = "600 14px Arial, Helvetica, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(box.label, x + 14, boxY + 36);
+    ctx.fillText(box.label, x + 12, boxY + 36);
     ctx.fillStyle = box.fg;
-    fitFont(ctx, box.value, boxW - 28, 28, "800", 14);
-    ctx.fillText(box.value, x + 14, boxY + 84);
+    fitFont(ctx, box.value, boxW - 24, 24, "800", 12);
+    ctx.fillText(box.value, x + 12, boxY + 84);
   });
 
   ctx.fillStyle = "#64748b";
