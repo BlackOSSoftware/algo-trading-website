@@ -5,7 +5,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { getSharekhanToken } from "@/lib/auth";
 
 type Details = { stock: string; tradingSymbol: string; scripCode: string; side: string; quantity: string; price: string; exchange: string; orderType: string; productType: string; notes: string };
-type LinkRecord = { code: string; shortUrl: string; kind: string; details: Partial<Details>; active: boolean; clicks: number };
+type LinkRecord = { code: string; shortUrl: string; kind: string; details: Partial<Details>; active: boolean; preserved?: boolean; clicks: number };
 const blank: Details = { stock: "", tradingSymbol: "", scripCode: "", side: "BUY", quantity: "1", price: "0", exchange: "NSE", orderType: "NORMAL", productType: "INVESTMENT", notes: "" };
 const inputStyle = { width: "100%", marginTop: 6 };
 
@@ -97,18 +97,22 @@ export default function SharekhanLinksPage() {
     {created && <div className="card" style={{ padding: 20, marginBottom: 24 }}><strong>New link</strong><p style={{ overflowWrap: "anywhere" }}><a href={created.shortUrl} target="_blank" rel="noreferrer">{created.shortUrl}</a></p><button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(created.shortUrl)}>Copy link</button></div>}
     <h2>Recent links</h2>
     {links.map((link) => <div className="card" key={link.code} style={{ padding: 18, marginBottom: 12 }}>
-      <strong>{link.details.tradingSymbol || link.details.stock || link.code}</strong> · {link.kind === "order-intent" ? "Order details" : "Sharekhan one-tap"} · {link.active ? "Active" : "Inactive"} · {link.clicks} opens
+      <strong>{link.details.tradingSymbol || link.details.stock || link.code}</strong> · {link.kind === "order-intent" ? "Order details" : "Sharekhan one-tap"} · {link.preserved ? "Preserved" : link.active ? "Active" : "Inactive"} · {link.clicks} opens
       <p style={{ overflowWrap: "anywhere" }}><a href={link.shortUrl} target="_blank" rel="noreferrer">{link.shortUrl}</a></p>
       <button className="btn btn-secondary" type="button" onClick={() => navigator.clipboard.writeText(link.shortUrl)}>Copy</button>{" "}
-      {link.active && <button className="btn btn-ghost" type="button" onClick={() => deactivate(link.code)}>Deactivate</button>}{" "}
-      <button
-        className="btn btn-ghost"
-        type="button"
-        style={{ color: "#b42318" }}
-        onClick={() => removeLink(link.code, String(link.details.tradingSymbol || link.details.stock || link.code))}
-      >
-        Delete forever
-      </button>
+      {!link.preserved && link.active ? <button className="btn btn-ghost" type="button" onClick={() => deactivate(link.code)}>Deactivate</button> : null}{" "}
+      {!link.preserved ? (
+        <button
+          className="btn btn-ghost"
+          type="button"
+          style={{ color: "#b42318" }}
+          onClick={() => removeLink(link.code, String(link.details.tradingSymbol || link.details.stock || link.code))}
+        >
+          Delete forever
+        </button>
+      ) : (
+        <span style={{ color: "#166534", fontWeight: 700, fontSize: 13 }}>Locked demo</span>
+      )}
     </div>)}
   </div>;
 }

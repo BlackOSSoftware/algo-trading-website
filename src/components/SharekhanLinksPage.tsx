@@ -37,15 +37,44 @@ type LinkRecord = {
   code: string;
   shortUrl: string;
   kind: string;
+  payload?: string;
   details: Partial<Details> & {
     card?: Partial<Pick<Details, "buyRange" | "target" | "target1" | "target2" | "stopLoss" | "timeFrame" | "headline">>;
-    bracket?: { targetPrice?: number; stopLossPrice?: number; enabled?: boolean };
+    bracket?: { targetPrice?: number; stopLossPrice?: number; enabled?: boolean; trailingStop?: string | number };
     openMode?: string;
     bracketWebUrl?: string;
   };
   active: boolean;
+  preserved?: boolean;
   clicks: number;
 };
+
+/** Verified live F&O one-tap demos — kept active so users can try / learn the flow. */
+const PRESERVED_DEMOS: Array<{
+  code: string;
+  title: string;
+  how: string;
+  segment: "FUT" | "OPT";
+  tradingSymbol: string;
+  payload: string;
+}> = [
+  {
+    code: "1bb9d47de34f074fb2",
+    title: "Futures (working)",
+    how: "Phone pe open → Sharekhan app order screen pe RELIANCE Nov future prefilled (BUY · qty 1 · market). Confirm ke baad hi order lagta hai.",
+    segment: "FUT",
+    tradingSymbol: "RELIANCE26NOVFUT",
+    payload: "131$12$61697$1$$1",
+  },
+  {
+    code: "2345fbe7fe74f8223b",
+    title: "Options (working)",
+    how: "Phone pe open → Sharekhan app order screen pe RELIANCE Nov 1400 CE prefilled (BUY · qty 1 · market). Same one-tap format as futures — scrip code option contract ka hota hai.",
+    segment: "OPT",
+    tradingSymbol: "RELIANCE26NOV1400CE",
+    payload: "131$12$126008$1$$1",
+  },
+];
 type PreviewModel = {
   tradingSymbol: string;
   stock: string;
@@ -648,6 +677,10 @@ export default function SharekhanLinksPage() {
   }
 
   async function deactivate(code: string) {
+    if (isPreservedLink(code, links.find((row) => row.code === code))) {
+      setError("Preserved demo links stay active so users can learn the flow.");
+      return;
+    }
     try {
       await apiPost(`/api/v1/sharekhan/links/${code}/deactivate`, {}, getSharekhanToken());
       await refresh();
@@ -658,6 +691,10 @@ export default function SharekhanLinksPage() {
   }
 
   async function removeLink(code: string, label: string) {
+    if (isPreservedLink(code, links.find((row) => row.code === code))) {
+      setError("Preserved demo links cannot be deleted.");
+      return;
+    }
     const ok = window.confirm(`Permanently delete "${label}"?\nThis cannot be undone. The order URL will stop working.`);
     if (!ok) return;
     try {
@@ -672,6 +709,21 @@ export default function SharekhanLinksPage() {
       setError(err instanceof Error ? err.message : "Could not delete link");
     }
   }
+
+  function isPreservedLink(code: string, link?: LinkRecord) {
+    return Boolean(link?.preserved) || PRESERVED_DEMOS.some((demo) => demo.code === code);
+  }
+
+  const demoCards = PRESERVED_DEMOS.map((demo) => {
+    const live = links.find((row) => row.code === demo.code);
+    return {
+      ...demo,
+      shortUrl: live?.shortUrl || `https://www.emotionlesstraders.com/order/${demo.code}`,
+      active: live ? Boolean(live.active) : true,
+      payload: live?.payload || demo.payload,
+      link: live,
+    };
+  });
 
   async function copyLink(url: string) {
     try {
@@ -698,6 +750,57 @@ export default function SharekhanLinksPage() {
     <div className="sk-page">
       {error ? <p className="sk-banner sk-banner-error" role="alert">{error}</p> : null}
       {message ? <p className="sk-banner" role="status">{message}</p> : null}
+
+      <section className="sk-panel sk-demo-panel">
+        <div className="sk-panel-intro">
+          <span className="sk-panel-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5.1L12 14.9 7.5 16.8l.9-5.1L4.8 8.2l5-.7L12 3z" />
+            </svg>
+          </span>
+          <div>
+            <h2>Working F&amp;O examples</h2>
+            <p>
+              Ye verified links preserve kiye gaye hain — phone pe open karke dekho kaise Sharekhan app me order screen
+              prefilled aata hai. Format: <code>131$exchange$scrip$qty$price$side</code> (NFO exchange code = 12).
+            </p>
+          </div>
+        </div>
+        <div className="sk-demo-grid">
+          {demoCards.map((demo) => (
+            <article key={demo.code} className="sk-demo-card">
+              <div className="sk-demo-card-top">
+                <span className={`sk-status${demo.active ? " on" : ""}`}>
+                  {demo.active ? "Preserved · Active" : "Preserved · Inactive"}
+                </span>
+                <span className="sk-demo-seg">{demo.segment === "FUT" ? "Futures" : "Options"}</span>
+              </div>
+              <h3>{demo.title}</h3>
+              <p className="sk-demo-symbol">{demo.tradingSymbol}</p>
+              <p className="sk-demo-how">{demo.how}</p>
+              <code className="sk-demo-payload" title="Sharekhan one-tap payload">
+                {demo.payload}
+              </code>
+              <a className="sk-demo-url" href={demo.shortUrl} target="_blank" rel="noreferrer">
+                {demo.shortUrl}
+              </a>
+              <div className="sk-demo-actions">
+                <button className="sk-btn sk-btn-primary" type="button" onClick={() => copyLink(demo.shortUrl)}>
+                  Copy link
+                </button>
+                {demo.link ? (
+                  <button className="sk-btn sk-btn-ghost" type="button" onClick={() => reuseFromLink(demo.link!)}>
+                    Load in form
+                  </button>
+                ) : null}
+                <a className="sk-btn sk-btn-ghost" href={demo.shortUrl} target="_blank" rel="noreferrer">
+                  Open
+                </a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <div className="sk-workspace">
         <form className="sk-panel" ref={formRef} onSubmit={createOrderLink}>
@@ -1195,18 +1298,19 @@ export default function SharekhanLinksPage() {
                 const side = String(link.details.side || "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY";
                 const product = productShort(link.details.productType);
                 const canEdit = link.kind === "order-intent";
+                const preserved = isPreservedLink(link.code, link);
                 return (
                   <tr
                     key={link.code}
-                    className={canEdit ? "sk-row-clickable" : undefined}
+                    className={canEdit ? `sk-row-clickable${preserved ? " sk-row-preserved" : ""}` : preserved ? "sk-row-preserved" : undefined}
                     onClick={canEdit ? () => reuseFromLink(link) : undefined}
-                    title={canEdit ? "Click to edit / reuse in the form" : undefined}
+                    title={preserved ? "Preserved demo link" : canEdit ? "Click to edit / reuse in the form" : undefined}
                   >
                     <td>
                       <div className="sk-instrument">
                         <span className={`sk-mark${segment === "EQ" ? "" : " alt"}`}>{symbol.slice(0, 1)}</span>
                         <div>
-                          <strong>{symbol}</strong>
+                          <strong>{symbol}{preserved ? " · Demo" : ""}</strong>
                           <small>{link.details.stock || (link.kind === "order-intent" ? "Order details" : "One-tap link")}</small>
                         </div>
                       </div>
@@ -1218,7 +1322,11 @@ export default function SharekhanLinksPage() {
                         ? `Qty ${link.details.quantity || "—"} · ${orderTypeShort(link.details.orderType)}${product ? ` · ${product}` : ""} · ${String(link.details.validity || "GFD").toUpperCase()}`
                         : "One-tap"}
                     </td>
-                    <td><span className={`sk-status${link.active ? " on" : ""}`}>{link.active ? "Active" : "Inactive"}</span></td>
+                    <td>
+                      <span className={`sk-status${link.active ? " on" : ""}`}>
+                        {preserved ? (link.active ? "Preserved" : "Preserved · Off") : link.active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
                     <td>{link.clicks}</td>
                     <td>
                       <a
@@ -1240,12 +1348,16 @@ export default function SharekhanLinksPage() {
                         {canEdit ? (
                           <button className="sk-btn sk-btn-tiny" type="button" onClick={() => pinCard(toCardData(link))}>Share image</button>
                         ) : null}
-                        {link.active ? (
+                        {!preserved && link.active ? (
                           <button className="sk-btn sk-btn-tiny" type="button" onClick={() => deactivate(link.code)}>Deactivate</button>
                         ) : null}
-                        <button className="sk-btn sk-btn-tiny sk-btn-danger" type="button" aria-label={`Delete ${symbol}`} onClick={() => removeLink(link.code, symbol)}>
-                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14" /><path d="M9 7V5h6v2" /><path d="M8 7l1 12h6l1-12" /></svg>
-                        </button>
+                        {!preserved ? (
+                          <button className="sk-btn sk-btn-tiny sk-btn-danger" type="button" aria-label={`Delete ${symbol}`} onClick={() => removeLink(link.code, symbol)}>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14" /><path d="M9 7V5h6v2" /><path d="M8 7l1 12h6l1-12" /></svg>
+                          </button>
+                        ) : (
+                          <span className="sk-preserved-tag">Locked</span>
+                        )}
                       </div>
                     </td>
                   </tr>
