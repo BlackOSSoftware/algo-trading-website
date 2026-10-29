@@ -148,10 +148,11 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
   ctx.fillRect(0, 0, width, 360);
 
   const pad = 52;
+  const brand = "Emotionless Traders";
   ctx.textAlign = "left";
   ctx.fillStyle = "#e85d04";
-  ctx.font = "800 34px Arial, Helvetica, sans-serif";
-  ctx.fillText("Sharekhan", pad, 78);
+  fitFont(ctx, brand, width - pad * 2 - 140, 32, "800", 18);
+  ctx.fillText(brand, pad, 78);
   ctx.textAlign = "right";
   ctx.fillStyle = "#c2410c";
   ctx.font = "700 15px Arial, Helvetica, sans-serif";
@@ -253,8 +254,8 @@ async function drawTradeCard(canvas: HTMLCanvasElement, data: TradeCardData) {
   ctx.fillText("Trade Responsibly   ·   Not a recommendation", pad, height - 42);
   ctx.textAlign = "right";
   ctx.fillStyle = "#e85d04";
-  ctx.font = "800 18px Arial, Helvetica, sans-serif";
-  ctx.fillText("Sharekhan", width - pad, height - 42);
+  fitFont(ctx, brand, 320, 18, "800", 12);
+  ctx.fillText(brand, width - pad, height - 42);
 }
 
 type Props = {

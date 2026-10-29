@@ -1630,7 +1630,13 @@ textarea {
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
 }
 .sk-idea-top, .sk-idea-meta, .sk-idea-bottom, .sk-idea footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.sk-idea-brand, .sk-idea footer strong { color: var(--sk-orange); font-weight: 800; }
+.sk-idea-brand, .sk-idea footer strong {
+  color: var(--sk-orange);
+  font-weight: 800;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+.sk-idea footer strong { font-size: 12px; }
 .sk-idea-kicker { color: #c2410c; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; }
 .sk-idea h3 { margin-top: 12px; font-size: clamp(28px, 3vw, 40px); letter-spacing: -0.04em; line-height: 1; overflow-wrap: anywhere; }
 .sk-idea-name { color: #6b7280; font-size: 14px; margin-top: 4px; }

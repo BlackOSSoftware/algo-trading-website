@@ -207,7 +207,7 @@ function OrderPreview({ model }: { model: PreviewModel }) {
   return (
     <article className="sk-idea">
       <div className="sk-idea-top">
-        <span className="sk-idea-brand">Sharekhan</span>
+        <span className="sk-idea-brand">Emotionless Traders</span>
         <span className="sk-idea-kicker">TRADE IDEA</span>
       </div>
       <h3>{model.tradingSymbol || "SYMBOL"}</h3>
@@ -260,7 +260,7 @@ function OrderPreview({ model }: { model: PreviewModel }) {
       </div>
       <footer>
         <span>Trade Responsibly · Not a recommendation</span>
-        <strong>Sharekhan</strong>
+        <strong>Emotionless Traders</strong>
       </footer>
     </article>
   );
