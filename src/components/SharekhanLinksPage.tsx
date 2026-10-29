@@ -1190,19 +1190,33 @@ export default function SharekhanLinksPage() {
                 </button>
               ))}
             </div>
-            <OrderPreview model={shown} theme={cardTheme} />
-            {pinned && shareCard ? (
-              <TradeShareCard data={shareCard} theme={cardTheme} variant="toolbar" />
-            ) : (
-              <div className="sk-toolbar">
-                <div className="sk-share-actions">
-                  <button className="sk-btn sk-btn-ghost" type="button" disabled>Download PNG</button>
-                  <button className="sk-btn sk-btn-ghost" type="button" disabled>Copy image</button>
-                  <button className="sk-btn sk-btn-ghost" type="button" disabled>Share</button>
-                </div>
-                <p className="sk-hint">Generate a link to download the QR card.</p>
-              </div>
-            )}
+            <TradeShareCard
+              data={
+                shareCard || {
+                  code: "",
+                  shortUrl: "",
+                  tradingSymbol: shown.tradingSymbol,
+                  stock: shown.stock,
+                  side: shown.side,
+                  exchange: shown.exchange,
+                  segment: shown.segment,
+                  quantity: details.quantity,
+                  price: details.price,
+                  productType: details.productType,
+                  buyRange: shown.buyRange === "—" ? "" : shown.buyRange,
+                  target: shown.target === "—" ? "" : shown.target,
+                  target1: shown.target1 === "—" ? "" : shown.target1,
+                  target2: shown.target2 === "—" ? "" : shown.target2,
+                  target3: shown.target3 === "—" ? "" : shown.target3,
+                  stopLoss: shown.stopLoss === "—" ? "" : shown.stopLoss,
+                  timeFrame: shown.timeFrame === "—" ? "" : shown.timeFrame,
+                  headline: shown.headline,
+                  notes: shown.notes,
+                }
+              }
+              theme={cardTheme}
+              variant="preview"
+            />
           </section>
 
         </div>

@@ -1621,6 +1621,18 @@ textarea {
 .sk-hint { margin: 8px 0 0; color: var(--sk-muted); font-size: 12px; }
 .sk-toolbar { display: grid; gap: 8px; margin-top: 12px; }
 .sk-share-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sk-canvas-preview { display: grid; gap: 10px; min-width: 0; }
+.sk-canvas-preview-frame {
+  border: 1px solid #e7e5e4;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff7ed;
+}
+.sk-canvas-preview-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 .sk-card-themes {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
