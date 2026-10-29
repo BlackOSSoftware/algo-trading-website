@@ -177,7 +177,7 @@ function resolveFno(data: TradeCardData): FnoInfo {
       : String(data.tradingSymbol || "").toUpperCase().endsWith("PE")
         ? "PE"
         : "")
-  ).replace(/[^A-Z]/]/g, "");
+  ).replace(/[^A-Z]/g, "");
   const strike =
     String(data.strike || parsed.strike || "")
       .trim()
