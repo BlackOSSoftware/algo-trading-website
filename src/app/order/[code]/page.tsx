@@ -112,7 +112,7 @@ export default function OrderDetailsPage() {
   const summary = details
     ? `${details.side} ${details.quantity} ${details.tradingSymbol} on ${details.exchange}; ${
         details.price === 0 ? "Market" : `Limit price ${details.price}`
-      }; ${details.orderType}; ${details.productType}`
+      }; ${details.orderType}; ${details.productType}; Validity ${details.validity || "GFD"}`
     : "";
 
   return (
@@ -185,6 +185,11 @@ export default function OrderDetailsPage() {
                 Validity
                 <br />
                 <strong>{details.validity || "GFD"}</strong>
+                {String(details.validity || "GFD").toUpperCase() === "IOC" ? (
+                  <p style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+                    App one-tap opens as GFD by default. Confirm se pehle Sharekhan me IOC select karo.
+                  </p>
+                ) : null}
               </div>
               {details.triggerPrice ? (
                 <div>

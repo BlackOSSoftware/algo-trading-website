@@ -117,6 +117,7 @@ function segmentLabel(segment?: string) {
 
 function orderTypeShort(value?: string) {
   if (value === "LIMIT") return "LMT";
+  if (value === "BRACKET") return "BKT";
   if (value === "STOPLOSS") return "SL";
   if (value === "STOPLOSS_MARKET") return "SL-M";
   return "MKT";
@@ -932,13 +933,30 @@ export default function SharekhanLinksPage() {
                   {productTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
               </label>
-              <label className="sk-field">
+              <div className="sk-field">
                 <span className="sk-label">Validity</span>
-                <select className="sk-input" value={details.validity} onChange={(event) => update("validity", event.target.value)}>
-                  <option value="GFD">Day (GFD)</option>
-                  <option value="IOC">Immediate or cancel (IOC)</option>
-                </select>
-              </label>
+                <div className="sk-pills" role="group" aria-label="Validity">
+                  <button
+                    type="button"
+                    className={details.validity === "GFD" ? "active" : ""}
+                    aria-pressed={details.validity === "GFD"}
+                    onClick={() => update("validity", "GFD")}
+                  >
+                    Day (GFD)
+                  </button>
+                  <button
+                    type="button"
+                    className={details.validity === "IOC" ? "active" : ""}
+                    aria-pressed={details.validity === "IOC"}
+                    onClick={() => update("validity", "IOC")}
+                  >
+                    IOC
+                  </button>
+                </div>
+                <span className="sk-hint">
+                  Saved on our order page. Sharekhan one-tap deep-link has no validity field — app always opens as Day (GFD). Agar IOC chahiye to app me confirm se pehle manually IOC select karo.
+                </span>
+              </div>
             </div>
           </section>
 
@@ -1156,7 +1174,11 @@ export default function SharekhanLinksPage() {
                     </td>
                     <td>{segmentLabel(segment)}</td>
                     <td><span className={`sk-chip sk-chip-${side.toLowerCase()}`}>{side}</span></td>
-                    <td>{link.kind === "order-intent" ? `Qty ${link.details.quantity || "—"} · ${orderTypeShort(link.details.orderType)}${product ? ` · ${product}` : ""}` : "One-tap"}</td>
+                    <td>
+                      {link.kind === "order-intent"
+                        ? `Qty ${link.details.quantity || "—"} · ${orderTypeShort(link.details.orderType)}${product ? ` · ${product}` : ""} · ${String(link.details.validity || "GFD").toUpperCase()}`
+                        : "One-tap"}
+                    </td>
                     <td><span className={`sk-status${link.active ? " on" : ""}`}>{link.active ? "Active" : "Inactive"}</span></td>
                     <td>{link.clicks}</td>
                     <td>
