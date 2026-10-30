@@ -4,6 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiGet } from "@/lib/api";
 
+type Leg = {
+  tradingSymbol?: string;
+  scripCode?: string;
+  side?: string;
+  quantity?: number;
+  price?: number;
+  buyRange?: string;
+  expiry?: string;
+  strike?: string;
+  optionType?: string;
+};
+
 type Details = {
   stock: string;
   tradingSymbol: string;
@@ -22,6 +34,9 @@ type Details = {
   validity?: string;
   triggerPrice?: number;
   notes: string;
+  strategyName?: string;
+  approxMargin?: string;
+  legs?: Leg[];
 };
 
 function isMobileUa(ua: string) {
@@ -114,12 +129,45 @@ export default function OrderDetailsPage() {
         {details && (
           <>
             <p>
-              <strong>{details.tradingSymbol}</strong>
+              <strong>{details.strategyName || details.tradingSymbol}</strong>
               {details.stock ? ` · ${details.stock}` : ""}
+              {details.approxMargin ? ` · Approx margin ₹${details.approxMargin}` : ""}
             </p>
+            {Array.isArray(details.legs) && details.legs.length >= 2 ? (
+              <div style={{ display: "grid", gap: 14, margin: "20px 0" }}>
+                {details.legs.map((leg, index) => {
+                  const legSide = String(leg.side || "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY";
+                  const range = leg.buyRange || (Number(leg.price) > 0 ? leg.price : "Market");
+                  return (
+                    <div key={`${leg.scripCode || index}`} className="card" style={{ padding: 16, margin: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                        <strong>Leg {index + 1}</strong>
+                        <span>{legSide}</span>
+                      </div>
+                      <p style={{ margin: "0 0 8px" }}>
+                        <strong>{leg.tradingSymbol}</strong>
+                        {leg.strike ? ` · ${leg.strike} ${leg.optionType || ""}` : ""}
+                      </p>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <div>
+                          {legSide === "SELL" ? "Sell range" : "Buy range"}
+                          <br />
+                          <strong>{range}</strong>
+                        </div>
+                        <div>
+                          Quantity
+                          <br />
+                          <strong>{leg.quantity}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
             <div
               style={{
-                display: "grid",
+                display: Array.isArray(details.legs) && details.legs.length >= 2 ? "none" : "grid",
                 gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                 gap: 14,
                 margin: "20px 0",
@@ -146,7 +194,7 @@ export default function OrderDetailsPage() {
                 <strong>{details.quantity}</strong>
               </div>
               <div>
-                Entry price
+                {String(details.side || "").toUpperCase() === "SELL" ? "Sell range" : "Buy range"}
                 <br />
                 <strong>{details.price === 0 ? "Market" : details.price}</strong>
               </div>

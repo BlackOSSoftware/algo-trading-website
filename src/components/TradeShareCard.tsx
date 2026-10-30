@@ -313,9 +313,13 @@ export async function drawTradeCard(
   const call =
     String(data.headline || "").trim() ||
     `${productLabel(data.productType, data.segment)} idea`;
-  const buyRange = String(data.buyRange || "").trim() || "—";
-  const entryPrice =
-    Number(data.price) > 0 ? String(data.price) : String(data.price || "").trim() === "0" ? "Market" : String(data.price || "").trim() || "Market";
+  const rangeFromPrice =
+    Number(data.price) > 0
+      ? String(data.price)
+      : String(data.price || "").trim() === "0"
+        ? "Market"
+        : String(data.price || "").trim();
+  const buyRange = String(data.buyRange || "").trim() || rangeFromPrice || "—";
   const quantity = String(data.quantity ?? "1").trim() || "1";
   const stopLoss = String(data.stopLoss || "").trim() || "—";
   const timeFrame = (
@@ -324,6 +328,7 @@ export async function drawTradeCard(
   ).toUpperCase();
   const exchange = String(data.exchange || "NSE").toUpperCase();
   const instrument = fno.typeLabel;
+  const rangeLabel = side === "Sell" ? "SELL RANGE" : "BUY RANGE";
 
   const rows: Array<{ label: string; value: string }> = [
     { label: "TYPE", value: instrument },
@@ -334,8 +339,7 @@ export async function drawTradeCard(
   if (fno.segment === "OPT") {
     rows.push({ label: "STRIKE", value: fno.strike || "—" });
   }
-  rows.push({ label: "ENTRY PRICE", value: entryPrice });
-  rows.push({ label: "BUY RANGE", value: buyRange });
+  rows.push({ label: rangeLabel, value: buyRange });
   rows.push({ label: "QUANTITY", value: quantity });
   rows.push({ label: "TARGET 1", value: t1 || "—" });
   if (t2) rows.push({ label: "TARGET 2", value: t2 });
@@ -636,7 +640,6 @@ export default function TradeShareCard({ data, theme = "classic", onClose, varia
           <ActionIcon name="share" /> Share
         </button>
       </div>
-      {!data.code ? <p className="sk-hint">Generate a link to unlock download / copy / share with QR.</p> : null}
     </div>
   );
 

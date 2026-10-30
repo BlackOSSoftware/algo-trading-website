@@ -5,12 +5,6 @@ import { useEffect, useState } from "react";
 import { clearSharekhanToken, getSharekhanToken } from "@/lib/auth";
 import { fetchSession, type SessionUser } from "@/lib/session";
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
-  const value = parts.map((part) => part[0]?.toUpperCase() || "").join("");
-  return value || "SK";
-}
-
 export default function SharekhanShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const pathname = usePathname();
@@ -57,13 +51,6 @@ export default function SharekhanShell({ children }: Readonly<{ children: React.
             <span>Sharekhan</span>
           </div>
           <div className="sk-account-right">
-            <div className="sk-user">
-              <span className="sk-avatar">{initials(user.name || user.email)}</span>
-              <div>
-                <strong>{user.name || "Operator"}</strong>
-                <span>{user.email}</span>
-              </div>
-            </div>
             <button
               className="sk-signout"
               type="button"

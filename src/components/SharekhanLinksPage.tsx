@@ -113,6 +113,36 @@ const blank: Details = {
   headline: "",
 };
 
+type Leg2Details = {
+  tradingSymbol: string;
+  scripCode: string;
+  stock: string;
+  side: string;
+  quantity: string;
+  price: string;
+  exchange: string;
+  segment: string;
+  expiry: string;
+  strike: string;
+  optionType: string;
+  buyRange: string;
+};
+
+const blankLeg2: Leg2Details = {
+  tradingSymbol: "",
+  scripCode: "",
+  stock: "",
+  side: "SELL",
+  quantity: "1",
+  price: "0",
+  exchange: "NFO",
+  segment: "OPT",
+  expiry: "",
+  strike: "",
+  optionType: "CE",
+  buyRange: "",
+};
+
 const equityExchanges = ["NSE", "BSE"];
 const derivativeExchanges = ["NFO", "BFO", "MCX", "CDS"];
 
@@ -224,7 +254,7 @@ function OrderPreview({ model, theme }: { model: PreviewModel; theme: CardThemeI
       <div className="sk-idea-headline">{model.headline}</div>
       <div className="sk-idea-stats sk-idea-stats-5">
         <div>
-          <span>Buy Range</span>
+          <span>{side === "SELL" ? "Sell Range" : "Buy Range"}</span>
           <strong>{model.buyRange || "—"}</strong>
         </div>
         <div className="is-target">
@@ -278,6 +308,10 @@ export default function SharekhanLinksPage() {
   const previewRef = useRef<HTMLElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const [details, setDetails] = useState<Details>(blank);
+  const [multiLeg, setMultiLeg] = useState(false);
+  const [leg2, setLeg2] = useState<Leg2Details>(blankLeg2);
+  const [strategyName, setStrategyName] = useState("");
+  const [approxMargin, setApproxMargin] = useState("");
   const [reuseFrom, setReuseFrom] = useState("");
   const [links, setLinks] = useState<LinkRecord[]>([]);
   const [busy, setBusy] = useState(false);
@@ -596,6 +630,18 @@ export default function SharekhanLinksPage() {
       setError("Enter a positive trigger price for stop-loss orders.");
       return;
     }
+    if (multiLeg) {
+      if (!leg2.tradingSymbol.trim() || !leg2.scripCode.trim()) {
+        setFormTab("order");
+        setError("2-leg order: fill Leg 2 trading symbol and scrip code.");
+        return;
+      }
+      if (!leg2.quantity || Number(leg2.quantity) < 1) {
+        setFormTab("order");
+        setError("2-leg order: enter a valid Leg 2 quantity.");
+        return;
+      }
+    }
     setBusy(true);
     try {
       const target1 = details.target1 || details.target;
@@ -610,6 +656,18 @@ export default function SharekhanLinksPage() {
         target: [target1, target2, target3].filter(Boolean).join(" / "),
         stopLoss: details.stopLoss,
         timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
+        strategyName: multiLeg ? strategyName : "",
+        approxMargin: multiLeg ? approxMargin : "",
+        ...(multiLeg
+          ? {
+              leg2: {
+                ...leg2,
+                buyRange: leg2.buyRange || (Number(leg2.price) > 0 ? leg2.price : ""),
+                exchange: leg2.exchange || details.exchange,
+                segment: leg2.segment || details.segment,
+              },
+            }
+          : {}),
         card: {
           buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
           target1,
@@ -618,7 +676,7 @@ export default function SharekhanLinksPage() {
           target: [target1, target2, target3].filter(Boolean).join(" / "),
           stopLoss: details.stopLoss,
           timeFrame: details.timeFrame || (details.productType === "INVESTMENT" ? "DELIVERY" : "INTRADAY"),
-          headline: details.headline,
+          headline: details.headline || (multiLeg ? strategyName : ""),
         },
       };
       const result = await apiPost("/api/v1/sharekhan/order-intents", { details: submitDetails }, getSharekhanToken()) as { link: LinkRecord };
@@ -813,11 +871,6 @@ export default function SharekhanLinksPage() {
             </span>
             <div>
               <h2>{reuseFrom ? `Edit / reuse · ${reuseFrom}` : "Create an order link"}</h2>
-              <p>
-                {reuseFrom
-                  ? "Details loaded from a recent link. Change what you need and generate a new link."
-                  : "Use the tabs below — less scrolling, same fields."}
-              </p>
             </div>
           </div>
 
@@ -1046,7 +1099,23 @@ export default function SharekhanLinksPage() {
               </label>
               <label className="sk-field">
                 <span className="sk-label">{details.orderType === "NORMAL" ? "Price" : "Limit price"} *</span>
-                <input className="sk-input" required type="number" min={details.orderType === "NORMAL" ? "0" : "0.01"} step="any" value={details.price} onChange={(event) => update("price", event.target.value)} />
+                <input
+                  className="sk-input"
+                  required
+                  type="number"
+                  min={details.orderType === "NORMAL" ? "0" : "0.01"}
+                  step="any"
+                  value={details.price}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDetails((prev) => ({
+                      ...prev,
+                      price: value,
+                      // Limit / order price drives the share-card buy/sell range.
+                      buyRange: Number(value) > 0 ? value : prev.buyRange,
+                    }));
+                  }}
+                />
               </label>
               <label className="sk-field">
                 <span className="sk-label">Order type</span>
@@ -1101,6 +1170,88 @@ export default function SharekhanLinksPage() {
                 </span>
               </div>
             </div>
+            <div className="sk-block" style={{ marginTop: 14 }}>
+              <div className="sk-block-head-row">
+                <strong>2-leg option / spread</strong>
+                <label className="sk-switch">
+                  <input
+                    type="checkbox"
+                    checked={multiLeg}
+                    onChange={(event) => {
+                      const on = event.target.checked;
+                      setMultiLeg(on);
+                      if (on) {
+                        setDetails((prev) => ({
+                          ...prev,
+                          segment: prev.segment === "EQ" ? "OPT" : prev.segment,
+                          exchange: ["NFO", "BFO", "MCX", "CDS"].includes(prev.exchange) ? prev.exchange : "NFO",
+                        }));
+                        setLeg2((prev) => ({
+                          ...prev,
+                          exchange: details.exchange === "BFO" ? "BFO" : "NFO",
+                          segment: "OPT",
+                          quantity: details.quantity || prev.quantity,
+                        }));
+                      }
+                    }}
+                  />
+                  <span>Enable 2 legs</span>
+                </label>
+              </div>
+              {multiLeg ? (
+                <div className="sk-grid-order" style={{ marginTop: 10 }}>
+                  <label className="sk-field">
+                    <span className="sk-label">Strategy name</span>
+                    <input className="sk-input" value={strategyName} onChange={(event) => setStrategyName(event.target.value)} placeholder="BULL CALL SPREAD INDIGO (2 Leg)" />
+                  </label>
+                  <label className="sk-field">
+                    <span className="sk-label">Approx margin</span>
+                    <input className="sk-input" value={approxMargin} onChange={(event) => setApproxMargin(event.target.value)} placeholder="70000" />
+                  </label>
+                  <label className="sk-field">
+                    <span className="sk-label">Leg 2 trading symbol *</span>
+                    <input className="sk-input" value={leg2.tradingSymbol} onChange={(event) => setLeg2((prev) => ({ ...prev, tradingSymbol: event.target.value.toUpperCase() }))} placeholder="INDIGO26NOV5200CE" />
+                  </label>
+                  <label className="sk-field">
+                    <span className="sk-label">Leg 2 scrip code *</span>
+                    <input className="sk-input" value={leg2.scripCode} onChange={(event) => setLeg2((prev) => ({ ...prev, scripCode: event.target.value.trim() }))} placeholder="103787" />
+                  </label>
+                  <label className="sk-field">
+                    <span className="sk-label">Leg 2 side</span>
+                    <select className="sk-input" value={leg2.side} onChange={(event) => setLeg2((prev) => ({ ...prev, side: event.target.value }))}>
+                      <option value="BUY">BUY</option>
+                      <option value="SELL">SELL</option>
+                    </select>
+                  </label>
+                  <label className="sk-field">
+                    <span className="sk-label">Leg 2 quantity *</span>
+                    <input className="sk-input" type="number" min="1" value={leg2.quantity} onChange={(event) => setLeg2((prev) => ({ ...prev, quantity: event.target.value }))} />
+                  </label>
+                  <label className="sk-field">
+                    <span className="sk-label">Leg 2 {leg2.side === "SELL" ? "sell" : "buy"} range / price</span>
+                    <input
+                      className="sk-input"
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={leg2.price}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setLeg2((prev) => ({
+                          ...prev,
+                          price: value,
+                          buyRange: Number(value) > 0 ? value : prev.buyRange,
+                        }));
+                      }}
+                    />
+                  </label>
+                  <label className="sk-field">
+                    <span className="sk-label">Leg 2 stock name</span>
+                    <input className="sk-input" value={leg2.stock} onChange={(event) => setLeg2((prev) => ({ ...prev, stock: event.target.value }))} placeholder="INDIGO" />
+                  </label>
+                </div>
+              ) : null}
+            </div>
             <div className="sk-tab-nav">
               <button className="sk-btn sk-btn-ghost" type="button" onClick={() => setFormTab("instrument")}>
                 Back
@@ -1123,8 +1274,13 @@ export default function SharekhanLinksPage() {
                 <input className="sk-input" value={details.headline} onChange={(event) => update("headline", event.target.value)} placeholder="Equity Intraday Buy" />
               </label>
               <label className="sk-field">
-                <span className="sk-label">Buy range</span>
-                <input className="sk-input" value={details.buyRange} onChange={(event) => update("buyRange", event.target.value)} placeholder={Number(details.price) > 0 ? details.price : "1063"} />
+                <span className="sk-label">{details.side === "SELL" ? "Sell range" : "Buy range"}</span>
+                <input
+                  className="sk-input"
+                  value={details.buyRange || (Number(details.price) > 0 ? details.price : "")}
+                  onChange={(event) => update("buyRange", event.target.value)}
+                  placeholder={Number(details.price) > 0 ? details.price : "1063"}
+                />
               </label>
               <label className="sk-field">
                 <span className="sk-label">First target</span>
@@ -1179,7 +1335,6 @@ export default function SharekhanLinksPage() {
               </span>
               <div>
                 <h2>Share card preview</h2>
-                <p>{pinned ? `Saved card for ${shown.tradingSymbol}. Edit the form to return to the live draft.` : "Pick a card style, then generate to download / share."}</p>
               </div>
             </div>
             <div className="sk-card-themes" role="radiogroup" aria-label="Share card style">
@@ -1241,7 +1396,6 @@ export default function SharekhanLinksPage() {
             </span>
             <div>
               <h2>Recent links</h2>
-              <p>Click a row or Edit to load it into the form, then generate a new link.</p>
             </div>
           </div>
           <div className="sk-filters">
@@ -1291,7 +1445,7 @@ export default function SharekhanLinksPage() {
                     onClick={canEdit ? () => reuseFromLink(link) : undefined}
                     title={preserved ? "Preserved demo link" : canEdit ? "Click to edit / reuse in the form" : undefined}
                   >
-                    <td>
+                    <td data-label="Instrument">
                       <div className="sk-instrument">
                         <span className={`sk-mark${segment === "EQ" ? "" : " alt"}`}>{symbol.slice(0, 1)}</span>
                         <div>
@@ -1300,20 +1454,20 @@ export default function SharekhanLinksPage() {
                         </div>
                       </div>
                     </td>
-                    <td>{segmentLabel(segment)}</td>
-                    <td><span className={`sk-chip sk-chip-${side.toLowerCase()}`}>{side}</span></td>
-                    <td>
+                    <td data-label="Segment">{segmentLabel(segment)}</td>
+                    <td data-label="Side"><span className={`sk-chip sk-chip-${side.toLowerCase()}`}>{side}</span></td>
+                    <td data-label="Order details">
                       {link.kind === "order-intent"
                         ? `Qty ${link.details.quantity || "—"} · ${orderTypeShort(link.details.orderType)}${product ? ` · ${product}` : ""} · ${String(link.details.validity || "GFD").toUpperCase()}`
                         : "One-tap"}
                     </td>
-                    <td>
+                    <td data-label="Status">
                       <span className={`sk-status${link.active ? " on" : ""}`}>
                         {preserved ? (link.active ? "Preserved" : "Preserved · Off") : link.active ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td>{link.clicks}</td>
-                    <td>
+                    <td data-label="Opens">{link.clicks}</td>
+                    <td data-label="Link">
                       <a
                         className="sk-url"
                         href={link.shortUrl}
@@ -1324,7 +1478,7 @@ export default function SharekhanLinksPage() {
                         {link.shortUrl}
                       </a>
                     </td>
-                    <td>
+                    <td data-label="Actions">
                       <div className="sk-row-actions" onClick={(event) => event.stopPropagation()}>
                         {canEdit ? (
                           <button className="sk-btn sk-btn-tiny" type="button" onClick={() => reuseFromLink(link)}>Edit</button>
@@ -1340,9 +1494,7 @@ export default function SharekhanLinksPage() {
                           <button className="sk-btn sk-btn-tiny sk-btn-danger" type="button" aria-label={`Delete ${symbol}`} onClick={() => removeLink(link.code, symbol)}>
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14" /><path d="M9 7V5h6v2" /><path d="M8 7l1 12h6l1-12" /></svg>
                           </button>
-                        ) : (
-                          <span className="sk-preserved-tag">Locked</span>
-                        )}
+                        ) : null}
                       </div>
                     </td>
                   </tr>
