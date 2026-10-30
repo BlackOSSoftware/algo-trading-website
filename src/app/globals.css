@@ -1841,7 +1841,7 @@ textarea {
 @media (max-width: 860px) {
   .sk-main { padding: 16px; }
   .sk-account { flex-direction: column; align-items: flex-start; }
-  .sk-account-right { width: 100%; justify-content: space-between; }
+  .sk-account-right { width: 100%; justify-content: flex-end; }
   .sk-top { flex-direction: column; }
   .sk-grid-3, .sk-grid-2, .sk-grid-card, .sk-grid-order, .sk-share-actions { grid-template-columns: 1fr; }
   .sk-grid-card > :first-child { grid-column: auto; }
@@ -1850,6 +1850,66 @@ textarea {
   .sk-table-head { flex-direction: column; }
   .sk-filters { justify-content: stretch; width: 100%; }
   .sk-filter-search { max-width: none; }
+  .sk-filter-select,
+  .sk-filters select.sk-input { flex: 1 1 140px; min-width: 0; }
+  .sk-table-wrap {
+    max-height: none;
+    overflow: visible;
+    border: none;
+    background: transparent;
+  }
+  .sk-table { min-width: 0; font-size: 13px; }
+  .sk-table thead { display: none; }
+  .sk-table tbody { display: grid; gap: 10px; }
+  .sk-table tr {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid #e8eef5;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+  }
+  .sk-table tr:hover td { background: transparent; }
+  .sk-table td {
+    display: grid;
+    grid-template-columns: minmax(88px, 34%) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    padding: 0;
+    border: none;
+    min-width: 0;
+  }
+  .sk-table td::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding-top: 2px;
+  }
+  .sk-table td[data-label="Instrument"] {
+    padding-bottom: 8px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid #eef2f7;
+  }
+  .sk-table td[data-label="Actions"] {
+    grid-template-columns: 1fr;
+    padding-top: 8px;
+    margin-top: 2px;
+    border-top: 1px solid #eef2f7;
+  }
+  .sk-table td[data-label="Actions"]::before { display: none; }
+  .sk-url {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .sk-row-actions { width: 100%; }
+  .sk-empty { display: block !important; text-align: center; padding: 24px 12px !important; }
+  .sk-empty::before { display: none !important; }
 }
 
 .page-header {
