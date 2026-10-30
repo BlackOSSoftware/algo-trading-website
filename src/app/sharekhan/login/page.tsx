@@ -10,6 +10,7 @@ export default function SharekhanLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -30,7 +31,13 @@ export default function SharekhanLoginPage() {
     {error && <div className="alert alert-error" role="alert">{error}</div>}
     <form className="form" onSubmit={submit}>
       <div className="input-group"><label className="label" htmlFor="sharekhan-email">Email</label><input className="input" id="sharekhan-email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-      <div className="input-group"><label className="label" htmlFor="sharekhan-password">Password</label><input className="input" id="sharekhan-password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+      <div className="input-group">
+        <label className="label" htmlFor="sharekhan-password">Password</label>
+        <div className="password-field">
+          <input className="input" id="sharekhan-password" type={showPassword ? "text" : "password"} autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          <button className="field-action" type="button" onClick={() => setShowPassword((current) => !current)}>{showPassword ? "Hide" : "Show"}</button>
+        </div>
+      </div>
       <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Signing in..." : "Sign in to Sharekhan"}</button>
     </form>
     <div className="helper">This login is separate from user and admin accounts.</div>

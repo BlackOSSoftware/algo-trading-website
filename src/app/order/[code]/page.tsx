@@ -14,6 +14,7 @@ type Leg = {
   expiry?: string;
   strike?: string;
   optionType?: string;
+  exchange?: string;
 };
 
 type Details = {
@@ -37,6 +38,8 @@ type Details = {
   strategyName?: string;
   approxMargin?: string;
   legs?: Leg[];
+  bracket?: { enabled?: boolean; targetPrice?: number; stopLossPrice?: number };
+  card?: { target?: string; target1?: string; stopLoss?: string; timeFrame?: string; buyRange?: string; headline?: string };
 };
 
 function isMobileUa(ua: string) {
@@ -47,6 +50,47 @@ function isIosUa(ua: string) {
   return /iPhone|iPad|iPod/i.test(ua);
 }
 
+function sideOf(value?: string) {
+  return String(value || "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY";
+}
+
+function productLabel(value?: string) {
+  if (value === "BIGTRADEPLUS") return "BigTrade+";
+  if (value === "BIGTRADE") return "Intraday";
+  if (value === "INVESTMENT") return "Delivery";
+  return value || "—";
+}
+
+function segmentLabel(value?: string) {
+  if (value === "OPT") return "Options";
+  if (value === "FUT") return "Futures";
+  return "Equity";
+}
+
+function orderTypeLabel(details: Details) {
+  if (details.orderType === "LIMIT") return "Limit";
+  if (details.orderType === "STOPLOSS") return "Stop loss";
+  if (details.orderType === "STOPLOSS_MARKET") return "Stop loss market";
+  if (details.orderType === "BRACKET") return "Bracket";
+  return Number(details.price) > 0 ? "Limit" : "Market";
+}
+
+function rangeOf(leg: { side?: string; price?: number; buyRange?: string }) {
+  const text = String(leg.buyRange || "").trim();
+  if (text) return text;
+  return Number(leg.price) > 0 ? String(leg.price) : "Market";
+}
+
+function rangeLabel(side?: string) {
+  return sideOf(side) === "SELL" ? "Sell range" : "Buy range";
+}
+
+function rupee(value?: string) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text.startsWith("₹") ? text : `₹${text}`;
+}
+
 export default function OrderDetailsPage() {
   const params = useParams<{ code: string }>();
   const [details, setDetails] = useState<Details | null>(null);
@@ -55,6 +99,7 @@ export default function OrderDetailsPage() {
   const [iosAppUrl, setIosAppUrl] = useState("");
   const [schemeUrl, setSchemeUrl] = useState("");
   const [opened, setOpened] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const mobileUrl = useMemo(() => {
     if (typeof navigator === "undefined") return androidAppUrl || iosAppUrl;
@@ -114,159 +159,205 @@ export default function OrderDetailsPage() {
     if (mobileUrl) window.location.href = mobileUrl;
   };
 
+  const multiLeg = Boolean(details && Array.isArray(details.legs) && details.legs.length >= 2);
+  const title = details?.strategyName || details?.card?.headline || details?.tradingSymbol || "Order";
+  const bracketOn = details?.orderType === "BRACKET" || Boolean(details?.bracket?.enabled);
+
   const summary = details
-    ? `${details.side} ${details.quantity} ${details.tradingSymbol} on ${details.exchange}; ${
-        details.price === 0 ? "Market" : `Limit price ${details.price}`
-      }; ${details.orderType}; Product ${details.productType}; Validity ${details.validity || "GFD"}`
+    ? multiLeg
+      ? [
+          title,
+          ...(details.legs || []).map((leg, index) => {
+            const side = sideOf(leg.side);
+            const contract = [leg.strike, leg.optionType].filter(Boolean).join(" ");
+            return `Leg ${index + 1} ${side} ${leg.tradingSymbol}${contract ? ` ${contract}` : ""} · ${rangeLabel(side)} ${rangeOf(leg)} · Qty ${leg.quantity ?? "—"}`;
+          }),
+          details.approxMargin ? `Approx margin ${rupee(details.approxMargin)}` : "",
+          `${details.exchange} · ${productLabel(details.productType)} · ${details.validity || "GFD"}`,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : `${details.side} ${details.quantity} ${details.tradingSymbol} on ${details.exchange}; ${
+          details.price === 0 ? "Market" : `Limit price ${details.price}`
+        }; ${details.orderType}; Product ${details.productType}; Validity ${details.validity || "GFD"}`
     : "";
 
+  const copyDetails = async () => {
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
+
   return (
-    <main style={{ maxWidth: 650, margin: "48px auto", padding: "0 18px" }}>
-      <div className="card" style={{ padding: 28 }}>
-        <h1>Order details to review</h1>
-        {error && <p role="alert">{error}</p>}
-        {!error && !details && <p>Loading order details...</p>}
-        {details && (
+    <main className="order-page">
+      <article className="order-sheet">
+        <p className="order-kicker">Order details to review</p>
+        {error ? <p className="order-alert" role="alert">{error}</p> : null}
+        {!error && !details ? <p className="order-loading">Loading order details...</p> : null}
+        {details ? (
           <>
-            <p>
-              <strong>{details.strategyName || details.tradingSymbol}</strong>
-              {details.stock ? ` · ${details.stock}` : ""}
-              {details.approxMargin ? ` · Approx margin ₹${details.approxMargin}` : ""}
-            </p>
-            {Array.isArray(details.legs) && details.legs.length >= 2 ? (
-              <div style={{ display: "grid", gap: 14, margin: "20px 0" }}>
-                {details.legs.map((leg, index) => {
-                  const legSide = String(leg.side || "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY";
-                  const range = leg.buyRange || (Number(leg.price) > 0 ? leg.price : "Market");
+            <header className="order-head">
+              <h1>{title}</h1>
+              <p className="order-sub">
+                {[details.stock, details.exchange, segmentLabel(details.segment), details.card?.timeFrame]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+              {details.approxMargin ? (
+                <p className="order-margin">
+                  Approx margin <strong>{rupee(details.approxMargin)}</strong>
+                </p>
+              ) : null}
+            </header>
+
+            {multiLeg ? (
+              <div className="order-legs">
+                {(details.legs || []).map((leg, index) => {
+                  const side = sideOf(leg.side);
+                  const contract = [leg.strike, leg.optionType].filter(Boolean).join(" ");
                   return (
-                    <div key={`${leg.scripCode || index}`} className="card" style={{ padding: 16, margin: 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                        <strong>Leg {index + 1}</strong>
-                        <span>{legSide}</span>
+                    <section key={`${leg.scripCode || leg.tradingSymbol || index}`} className={`order-leg is-${side.toLowerCase()}`}>
+                      <div className="order-leg-top">
+                        <span>Leg {index + 1}</span>
+                        <strong>{side}</strong>
                       </div>
-                      <p style={{ margin: "0 0 8px" }}>
-                        <strong>{leg.tradingSymbol}</strong>
-                        {leg.strike ? ` · ${leg.strike} ${leg.optionType || ""}` : ""}
+                      <h2>{leg.tradingSymbol}</h2>
+                      <p className="order-leg-contract">
+                        {[contract, leg.expiry ? `Exp ${leg.expiry}` : ""].filter(Boolean).join(" · ") || details.exchange}
                       </p>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <dl>
                         <div>
-                          {legSide === "SELL" ? "Sell range" : "Buy range"}
-                          <br />
-                          <strong>{range}</strong>
+                          <dt>{rangeLabel(side)}</dt>
+                          <dd>{rangeOf(leg)}</dd>
                         </div>
                         <div>
-                          Quantity
-                          <br />
-                          <strong>{leg.quantity}</strong>
+                          <dt>Quantity</dt>
+                          <dd>{leg.quantity ?? "—"}</dd>
                         </div>
-                      </div>
-                    </div>
+                      </dl>
+                    </section>
                   );
                 })}
               </div>
-            ) : null}
-            <div
-              style={{
-                display: Array.isArray(details.legs) && details.legs.length >= 2 ? "none" : "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 14,
-                margin: "20px 0",
-              }}
-            >
-              <div>
-                Side
-                <br />
-                <strong>{details.side}</strong>
-              </div>
-              <div>
-                Product / Action
-                <br />
-                <strong>{details.productType}</strong>
-              </div>
-              <div>
-                Exchange
-                <br />
-                <strong>{details.exchange}</strong>
-              </div>
-              <div>
-                Quantity
-                <br />
-                <strong>{details.quantity}</strong>
-              </div>
-              <div>
-                {String(details.side || "").toUpperCase() === "SELL" ? "Sell range" : "Buy range"}
-                <br />
-                <strong>{details.price === 0 ? "Market" : details.price}</strong>
-              </div>
-              <div>
-                Order type
-                <br />
-                <strong>{details.orderType}</strong>
-              </div>
-              {details.expiry ? (
+            ) : (
+              <dl className="order-facts">
                 <div>
-                  Expiry
-                  <br />
-                  <strong>{details.expiry}</strong>
+                  <dt>Side</dt>
+                  <dd><span className={`order-side is-${sideOf(details.side).toLowerCase()}`}>{details.side}</span></dd>
                 </div>
-              ) : null}
-              {details.strike ? (
                 <div>
-                  Strike / option
-                  <br />
-                  <strong>
-                    {details.strike} {details.optionType || ""}
-                  </strong>
+                  <dt>Product</dt>
+                  <dd>{productLabel(details.productType)}</dd>
                 </div>
-              ) : null}
-              <div>
-                Validity
-                <br />
-                <strong>{details.validity || "GFD"}</strong>
-                {String(details.validity || "GFD").toUpperCase() === "IOC" ? (
-                  <p style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                    One-tap / default form often opens as GFD. Confirm se pehle IOC select karo.
-                  </p>
+                <div>
+                  <dt>Exchange</dt>
+                  <dd>{details.exchange}</dd>
+                </div>
+                <div>
+                  <dt>Quantity</dt>
+                  <dd>{details.quantity}</dd>
+                </div>
+                <div>
+                  <dt>{rangeLabel(details.side)}</dt>
+                  <dd>{details.price === 0 ? "Market" : details.price}</dd>
+                </div>
+                <div>
+                  <dt>Order type</dt>
+                  <dd>{orderTypeLabel(details)}</dd>
+                </div>
+                {details.expiry ? (
+                  <div>
+                    <dt>Expiry</dt>
+                    <dd>{details.expiry}</dd>
+                  </div>
                 ) : null}
-              </div>
-              {details.triggerPrice ? (
+                {details.strike ? (
+                  <div>
+                    <dt>Strike</dt>
+                    <dd>{details.strike} {details.optionType || ""}</dd>
+                  </div>
+                ) : null}
                 <div>
-                  Trigger price
-                  <br />
-                  <strong>{details.triggerPrice}</strong>
+                  <dt>Validity</dt>
+                  <dd>{details.validity || "GFD"}</dd>
                 </div>
-              ) : null}
-            </div>
-            {details.notes && (
-              <p>
-                <strong>Notes:</strong> {details.notes}
-              </p>
+                {details.triggerPrice ? (
+                  <div>
+                    <dt>Trigger price</dt>
+                    <dd>{details.triggerPrice}</dd>
+                  </div>
+                ) : null}
+                {bracketOn ? (
+                  <>
+                    <div>
+                      <dt>Book profit</dt>
+                      <dd>{details.bracket?.targetPrice || details.card?.target1 || details.card?.target || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt>Stop loss</dt>
+                      <dd>{details.bracket?.stopLossPrice || details.card?.stopLoss || "—"}</dd>
+                    </div>
+                  </>
+                ) : null}
+              </dl>
             )}
-            <p>
-              <strong>Phone par yeh Sharekhan app ka order screen kholta hai</strong> — scrip, buy/sell,
-              qty aur price pehle se bhari hui. Order tabhi lagta hai jab aap app mein confirm karte ho.
+
+            {multiLeg ? (
+              <dl className="order-facts order-facts-compact">
+                <div>
+                  <dt>Exchange</dt>
+                  <dd>{details.exchange}</dd>
+                </div>
+                <div>
+                  <dt>Product</dt>
+                  <dd>{productLabel(details.productType)}</dd>
+                </div>
+                <div>
+                  <dt>Order type</dt>
+                  <dd>{orderTypeLabel(details)}</dd>
+                </div>
+                <div>
+                  <dt>Validity</dt>
+                  <dd>{details.validity || "GFD"}</dd>
+                </div>
+              </dl>
+            ) : null}
+
+            {String(details.validity || "GFD").toUpperCase() === "IOC" ? (
+              <p className="order-help">One-tap often opens as Day (GFD). Confirm se pehle IOC select karo.</p>
+            ) : null}
+            {details.notes ? (
+              <p className="order-note"><strong>Notes.</strong> {details.notes}</p>
+            ) : null}
+            <p className="order-help">
+              Phone par yeh Sharekhan app ka order screen kholta hai — scrip, buy/sell, qty aur price pehle se bhari hui.
+              {bracketOn
+                ? " Bracket link book profit aur stop loss bhi saath bhejta hai."
+                : ""}{" "}
+              Order tabhi lagta hai jab aap app mein confirm karte ho.
             </p>
             {!mobileUrl ? (
-              <p role="status">
-                Is contract ke liye Sharekhan mobile deep-link available nahi hai. Details copy karke app
-                mein manually enter karein.
+              <p className="order-alert" role="status">
+                Is contract ke liye Sharekhan mobile deep-link available nahi hai. Details copy karke app mein manually enter karein.
               </p>
             ) : null}
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => navigator.clipboard.writeText(summary)}
-            >
-              Copy order details
-            </button>{" "}
-            {mobileUrl ? (
-              <button type="button" className="btn btn-primary" onClick={openApp}>
-                Open Sharekhan app
+            <div className="order-actions">
+              <button type="button" className="btn btn-secondary" onClick={copyDetails}>
+                {copied ? "Copied" : "Copy order details"}
               </button>
-            ) : null}
+              {mobileUrl ? (
+                <button type="button" className="btn btn-primary" onClick={openApp}>
+                  Open Sharekhan app
+                </button>
+              ) : null}
+            </div>
           </>
-        )}
-      </div>
+        ) : null}
+      </article>
     </main>
   );
 }

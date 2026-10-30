@@ -28,6 +28,20 @@ export type TradeCardData = {
   expiry?: string;
   strike?: string;
   optionType?: string;
+  leg2?: {
+    tradingSymbol: string;
+    side: string;
+    quantity?: string | number;
+    price?: string | number;
+    buyRange?: string;
+    stock?: string;
+    exchange?: string;
+    segment?: string;
+    expiry?: string;
+    strike?: string;
+    optionType?: string;
+  };
+  approxMargin?: string;
 };
 
 export const CARD_THEMES: Array<{ id: CardThemeId; label: string; blurb: string }> = [
@@ -288,6 +302,177 @@ function dashedLine(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: nu
   ctx.restore();
 }
 
+async function drawSpreadCard(
+  canvas: HTMLCanvasElement,
+  data: TradeCardData,
+  themeId: CardThemeId
+) {
+  const theme = THEME_COLORS[themeId] || THEME_COLORS.classic;
+  const width = 720;
+  const headerH = 96;
+  const footerH = 56;
+  const cardH = 640;
+  const height = headerH + cardH + footerH + 24;
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas not available");
+
+  const page = ctx.createLinearGradient(0, 0, 0, height);
+  page.addColorStop(0, theme.page0);
+  page.addColorStop(1, theme.page1);
+  ctx.fillStyle = page;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = theme.title;
+  setFont(ctx, "700", 32);
+  ctx.fillText("Emotionless Traders", width / 2, 44);
+  ctx.fillStyle = theme.subtitle;
+  setFont(ctx, "400", 17);
+  ctx.fillText("2-leg Sharekhan order card", width / 2, 72);
+
+  const cardX = 40;
+  const cardY = headerH;
+  const cardW = width - 80;
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.10)";
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 10;
+  roundRect(ctx, cardX, cardY, cardW, cardH, 22);
+  ctx.fillStyle = theme.card;
+  ctx.fill();
+  ctx.restore();
+  roundRect(ctx, cardX, cardY, cardW, cardH, 22);
+  ctx.strokeStyle = theme.cardBorder;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const left = cardX + 28;
+  const right = cardX + cardW - 28;
+  const qrSize = 112;
+  const qrX = right - qrSize;
+  const qrY = cardY + 24;
+  roundRect(ctx, qrX - 8, qrY - 8, qrSize + 16, qrSize + 16, 14);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  if (data.code) {
+    try {
+      const qrUrl = `${resolveApiBaseUrl()}/api/v1/order-intents/${encodeURIComponent(data.code)}/qr.png?t=${Date.now()}`;
+      const qr = await loadImage(qrUrl);
+      ctx.drawImage(qr, qrX, qrY, qrSize, qrSize);
+    } catch {
+      ctx.fillStyle = theme.muted;
+      setFont(ctx, "600", 14);
+      ctx.textAlign = "center";
+      ctx.fillText("QR", qrX + qrSize / 2, qrY + qrSize / 2);
+    }
+  }
+
+  const title = String(data.headline || data.stock || "2-leg spread").trim();
+  const titleMax = qrX - left - 24;
+  ctx.textAlign = "left";
+  ctx.fillStyle = theme.text;
+  fitFont(ctx, title, titleMax, 34, "800", 20);
+  ctx.fillText(title, left, cardY + 58);
+  const titleW = Math.min(ctx.measureText(title).width, titleMax);
+  ctx.strokeStyle = theme.underline;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(left, cardY + 70);
+  ctx.lineTo(left + Math.max(titleW * 0.7, 90), cardY + 70);
+  ctx.stroke();
+
+  const timeFrame = String(data.timeFrame || "INTRADAY").toUpperCase();
+  const margin = String(data.approxMargin || "").trim();
+  const meta = [String(data.exchange || "NFO").toUpperCase(), "OPTIONS", timeFrame, margin ? `Margin ₹${margin}` : ""]
+    .filter(Boolean)
+    .join("   ·   ");
+  ctx.fillStyle = themeId === "classic" ? "#c2410c" : theme.subtitle;
+  setFont(ctx, "700", 15);
+  fitFont(ctx, meta, titleMax, 15, "700", 12);
+  ctx.fillText(meta, left, cardY + 104);
+
+  const legs = [
+    {
+      side: String(data.side || "BUY").toUpperCase() === "SELL" ? "SELL" : "BUY",
+      symbol: data.tradingSymbol,
+      strike: data.strike,
+      optionType: data.optionType,
+      expiry: data.expiry,
+      quantity: data.quantity,
+      range: data.buyRange,
+    },
+    {
+      side: String(data.leg2?.side || "SELL").toUpperCase() === "SELL" ? "SELL" : "BUY",
+      symbol: data.leg2?.tradingSymbol,
+      strike: data.leg2?.strike,
+      optionType: data.leg2?.optionType,
+      expiry: data.leg2?.expiry || data.expiry,
+      quantity: data.leg2?.quantity,
+      range: data.leg2?.buyRange,
+    },
+  ];
+
+  legs.forEach((leg, index) => {
+    const y = cardY + 150 + index * 220;
+    const sell = leg.side === "SELL";
+    roundRect(ctx, left, y, right - left, 200, 16);
+    ctx.fillStyle = sell ? "#fff5f5" : "#f0fdf4";
+    ctx.fill();
+    ctx.strokeStyle = sell ? "#fecaca" : "#bbf7d0";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = sell ? "#b91c1c" : "#166534";
+    setFont(ctx, "800", 16);
+    ctx.textAlign = "left";
+    ctx.fillText(`LEG ${index + 1}  ·  ${leg.side}`, left + 18, y + 32);
+
+    ctx.fillStyle = theme.text;
+    const symbol = String(leg.symbol || "Select contract");
+    fitFont(ctx, symbol, right - left - 36, 28, "800", 16);
+    ctx.fillText(symbol, left + 18, y + 72);
+
+    const fno = resolveFno({
+      ...data,
+      tradingSymbol: symbol,
+      strike: leg.strike,
+      optionType: leg.optionType,
+      expiry: leg.expiry,
+      segment: "OPT",
+    });
+    const contract = [fno.strike, fno.optionType].filter(Boolean).join(" ");
+    const detail = [contract, fno.expiryLabel ? `Exp ${fno.expiryLabel}` : ""].filter(Boolean).join("   ·   ") || "Option";
+    ctx.fillStyle = "#475569";
+    setFont(ctx, "600", 16);
+    ctx.fillText(detail, left + 18, y + 104);
+
+    ctx.fillStyle = "#64748b";
+    setFont(ctx, "600", 13);
+    ctx.fillText(sell ? "SELL RANGE" : "BUY RANGE", left + 18, y + 142);
+    ctx.fillText("QUANTITY", left + 250, y + 142);
+    ctx.fillStyle = theme.text;
+    setFont(ctx, "800", 26);
+    ctx.fillText(String(leg.range || "—"), left + 18, y + 174);
+    ctx.fillText(String(leg.quantity || "—"), left + 250, y + 174);
+  });
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = theme.muted;
+  setFont(ctx, "400", 14);
+  ctx.fillText(formatStamp(), right, cardY + cardH - 18);
+
+  ctx.textAlign = "left";
+  ctx.fillStyle = theme.muted;
+  setFont(ctx, "400", 12);
+  ctx.fillText(
+    "* Investments in securities market are subject to market risk. Scan the QR to open this order in Sharekhan.",
+    48,
+    height - 22
+  );
+}
+
 /**
  * Exact Emotionless Traders / Sharekhan order-card layout (WhatsApp reference).
  * Keeps Target 1 / 2 / 3 as separate rows when filled.
@@ -297,6 +482,10 @@ export async function drawTradeCard(
   data: TradeCardData,
   themeId: CardThemeId = "classic"
 ) {
+  if (data.leg2) {
+    await drawSpreadCard(canvas, data, themeId);
+    return;
+  }
   const theme = THEME_COLORS[themeId] || THEME_COLORS.classic;
 
   const t1 =
@@ -330,14 +519,11 @@ export async function drawTradeCard(
   const instrument = fno.typeLabel;
   const rangeLabel = side === "Sell" ? "SELL RANGE" : "BUY RANGE";
 
-  const rows: Array<{ label: string; value: string }> = [
-    { label: "TYPE", value: instrument },
-  ];
-  if (fno.segment === "FUT" || fno.segment === "OPT") {
-    rows.push({ label: "EXPIRY", value: fno.expiryLabel || "—" });
-  }
-  if (fno.segment === "OPT") {
-    rows.push({ label: "STRIKE", value: fno.strike || "—" });
+  const rows: Array<{ label: string; value: string }> = [];
+  if (!data.leg2) {
+    rows.push({ label: "TYPE", value: instrument });
+    if (fno.segment === "FUT" || fno.segment === "OPT") rows.push({ label: "EXPIRY", value: fno.expiryLabel || "—" });
+    if (fno.segment === "OPT") rows.push({ label: "STRIKE", value: fno.strike || "—" });
   }
   rows.push({ label: rangeLabel, value: buyRange });
   rows.push({ label: "QUANTITY", value: quantity });
@@ -473,13 +659,14 @@ export async function drawTradeCard(
 
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = theme.muted;
+    // These labels sit on a light card, so use a high contrast color in every theme.
+    ctx.fillStyle = "#475569";
     setFont(ctx, "600", 18);
     ctx.fillText(row.label, left, mid);
 
     ctx.textAlign = "right";
     ctx.fillStyle = theme.text;
-    fitFont(ctx, row.value, innerW * 0.55, 36, "700", 24);
+    fitFont(ctx, row.value, innerW * 0.55, 30, "700", 22);
     ctx.fillText(row.value, right, mid);
   });
   ctx.textBaseline = "alphabetic";

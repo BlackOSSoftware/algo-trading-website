@@ -51,20 +51,37 @@ type LinkRecord = {
 const PRESERVED_DEMOS: Array<{
   code: string;
   segment: "FUT" | "OPT";
+  label: string;
   tradingSymbol: string;
   payload: string;
 }> = [
   {
-    code: "1bb9d47de34f074fb2",
-    segment: "FUT",
-    tradingSymbol: "RELIANCE26NOVFUT",
-    payload: "131$12$61697$1$$1",
-  },
-  {
     code: "2345fbe7fe74f8223b",
     segment: "OPT",
+    label: "Option sample",
     tradingSymbol: "RELIANCE26NOV1400CE",
     payload: "131$12$126008$1$$1",
+  },
+  {
+    code: "Gyi-0b3PW3pLYCSC",
+    segment: "OPT",
+    label: "2 leg sample",
+    tradingSymbol: "INDIGO26NOV4900CE",
+    payload: "181$NF-127904-BUY-0-150_NF-103787-SELL-0-150$2826052",
+  },
+  {
+    code: "tCHsZSQE5SH0jdw7",
+    segment: "OPT",
+    label: "Bracket sample",
+    tradingSymbol: "INDIGO26NOV4900CE",
+    payload: "131$12$127904$1$0$1$0$0$130$78$0$2826052",
+  },
+  {
+    code: "1bb9d47de34f074fb2",
+    segment: "FUT",
+    label: "Future sample",
+    tradingSymbol: "RELIANCE26NOVFUT",
+    payload: "131$12$61697$1$$1",
   },
 ];
 type PreviewModel = {
@@ -151,10 +168,12 @@ const orderTypes = [
   { value: "LIMIT", label: "Limit" },
   { value: "STOPLOSS", label: "Stop loss limit" },
   { value: "STOPLOSS_MARKET", label: "Stop loss market" },
+  { value: "BRACKET", label: "Bracket (target + SL)" },
 ];
 const productTypes = [
   { value: "INVESTMENT", label: "Delivery (Investment)" },
   { value: "BIGTRADE", label: "Intraday (BigTrade)" },
+  { value: "BIGTRADEPLUS", label: "BigTrade+ (bracket)" },
 ];
 const segments = [
   { value: "EQ", label: "Equity" },
@@ -172,18 +191,31 @@ function orderTypeShort(value?: string) {
   if (value === "LIMIT") return "LMT";
   if (value === "STOPLOSS") return "SL";
   if (value === "STOPLOSS_MARKET") return "SL-M";
+  if (value === "BRACKET") return "BRACKET";
   return "MKT";
 }
 
 function productShort(value?: string) {
+  if (value === "BIGTRADEPLUS") return "BigTrade+";
   if (value === "BIGTRADE") return "Intraday";
   if (value === "INVESTMENT") return "Delivery";
   return value || "";
 }
 
+function secondLeg(details: object | null | undefined): Partial<Leg2Details> | undefined {
+  const source = details as { leg2?: Partial<Leg2Details>; legs?: Partial<Leg2Details>[] } | null | undefined;
+  const direct = source?.leg2;
+  if (direct && (direct.tradingSymbol || direct.scripCode)) return direct;
+  const fromLegs = source?.legs?.[1];
+  if (fromLegs && (fromLegs.tradingSymbol || fromLegs.scripCode)) return fromLegs;
+  return undefined;
+}
+
 function toCardData(link: LinkRecord): TradeCardData {
   const d = link.details || {};
   const card = d.card || {};
+  const extra = d as typeof d & { approxMargin?: string };
+  const leg = secondLeg(d);
   return {
     code: link.code,
     shortUrl: link.shortUrl,
@@ -207,6 +239,22 @@ function toCardData(link: LinkRecord): TradeCardData {
     stopLoss: String(card.stopLoss || d.stopLoss || ""),
     timeFrame: String(card.timeFrame || d.timeFrame || ""),
     headline: String(card.headline || d.headline || ""),
+    leg2: leg
+      ? {
+          tradingSymbol: String(leg.tradingSymbol || ""),
+          side: String(leg.side || "SELL"),
+          quantity: leg.quantity as string | number | undefined,
+          price: leg.price as string | number | undefined,
+          buyRange: String(leg.buyRange || ""),
+          stock: String(leg.stock || ""),
+          exchange: String(leg.exchange || ""),
+          segment: String(leg.segment || ""),
+          expiry: String(leg.expiry || ""),
+          strike: String(leg.strike || ""),
+          optionType: String(leg.optionType || ""),
+        }
+      : undefined,
+    approxMargin: String(extra.approxMargin || ""),
   };
 }
 
@@ -324,6 +372,11 @@ export default function SharekhanLinksPage() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [leg2Query, setLeg2Query] = useState("");
+  const [leg2Suggestions, setLeg2Suggestions] = useState<Instrument[]>([]);
+  const [leg2Searching, setLeg2Searching] = useState(false);
+  const [leg2SearchError, setLeg2SearchError] = useState("");
+  const [showLeg2Suggestions, setShowLeg2Suggestions] = useState(false);
   const [expiries, setExpiries] = useState<Expiry[]>([]);
   const [loadingExpiries, setLoadingExpiries] = useState(false);
   const [expiryError, setExpiryError] = useState("");
@@ -334,6 +387,42 @@ export default function SharekhanLinksPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [segmentFilter, setSegmentFilter] = useState("all");
   const [formTab, setFormTab] = useState<"instrument" | "order" | "card">("instrument");
+
+  useEffect(() => {
+    const term = leg2Query.trim();
+    if (!multiLeg || term.length < 2 || (leg2.scripCode && term === leg2.tradingSymbol)) {
+      setLeg2Suggestions([]);
+      setLeg2Searching(false);
+      setLeg2SearchError("");
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setLeg2Searching(true);
+      setLeg2SearchError("");
+      try {
+        const token = getSharekhanToken();
+        if (!token) throw new Error("Sharekhan session missing. Sign in again.");
+        const params = new URLSearchParams({ q: term, exchange: leg2.exchange || details.exchange, segment: "OPT", expiry: leg2.expiry || details.expiry, limit: "15" });
+        const response = await apiGet(`/api/v1/sharekhan/instruments/search?${params}`, token) as { instruments?: Instrument[]; hint?: string };
+        if (cancelled) return;
+        const rows = Array.isArray(response.instruments) ? response.instruments : [];
+        setLeg2Suggestions(rows);
+        if (!rows.length) setLeg2SearchError(response.hint || "No matching option contracts. Check exchange and expiry.");
+      } catch (err) {
+        if (!cancelled) { setLeg2Suggestions([]); setLeg2SearchError(err instanceof Error ? err.message : "Instrument search failed."); }
+      } finally { if (!cancelled) setLeg2Searching(false); }
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [leg2Query, leg2.exchange, leg2.expiry, leg2.scripCode, leg2.tradingSymbol, details.exchange, details.expiry, multiLeg]);
+
+  function selectLeg2Instrument(item: Instrument) {
+    setLeg2((prev) => ({ ...prev, tradingSymbol: item.symbol, scripCode: item.token, stock: item.name || item.symbol, exchange: item.exchange, segment: "OPT", expiry: item.expiry || prev.expiry, strike: item.strike || "", optionType: /PE$/i.test(item.symbol) ? "PE" : "CE" }));
+    setLeg2Query(item.symbol);
+    setLeg2Suggestions([]);
+    setLeg2SearchError("");
+    setShowLeg2Suggestions(false);
+  }
 
   const refresh = useCallback(async () => {
     const response = await apiGet("/api/v1/sharekhan/links", getSharekhanToken()) as { links: LinkRecord[] };
@@ -402,14 +491,22 @@ export default function SharekhanLinksPage() {
   useEffect(() => {
     if (details.segment === "EQ") { setExpiries([]); return; }
     let cancelled = false;
-    const params = new URLSearchParams({ exchange: details.exchange, segment: details.segment });
-    setLoadingExpiries(true);
-    setExpiryError("");
-    apiGet(`/api/v1/sharekhan/instruments/expiries?${params}`, getSharekhanToken())
+    const underlying = (query || leg2Query).trim();
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ exchange: details.exchange, segment: details.segment });
+      if (underlying.length >= 2) params.set("q", underlying);
+      setLoadingExpiries(true);
+      setExpiryError("");
+      apiGet(`/api/v1/sharekhan/instruments/expiries?${params}`, getSharekhanToken())
       .then((response) => {
         if (cancelled) return;
         const rows = (response as { expiries?: Expiry[] }).expiries || [];
         setExpiries(rows);
+        if (rows.length) {
+          const known = new Set(rows.map((item) => item.expiry));
+          setDetails((current) => (current.expiry && !known.has(current.expiry) ? { ...current, expiry: "" } : current));
+          setLeg2((current) => (current.expiry && !known.has(current.expiry) ? { ...current, expiry: "" } : current));
+        }
         if (!rows.length) setExpiryError("No contract expiries are available for this exchange. Check the instrument master and try again.");
       })
       .catch((err) => {
@@ -418,12 +515,20 @@ export default function SharekhanLinksPage() {
         setExpiryError(err instanceof Error ? err.message : "Could not load contract expiries. Please retry.");
       })
       .finally(() => { if (!cancelled) setLoadingExpiries(false); });
-    return () => { cancelled = true; };
-  }, [details.exchange, details.segment]);
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [details.exchange, details.segment, query, leg2Query]);
 
   function update(key: keyof Details, value: string) {
     setPinned(null);
     setDetails((current) => ({ ...current, [key]: value }));
+  }
+  function updateLeg2(key: keyof Leg2Details, value: string) {
+    setPinned(null);
+    setLeg2((current) => ({ ...current, [key]: value }));
   }
   function selectInstrument(item: Instrument) {
     const type = String(item.instrumentType || "").toUpperCase();
@@ -452,9 +557,10 @@ export default function SharekhanLinksPage() {
     }));
     // Keep only the symbol in the search box so we don't re-query "RELIANCE · NSE · ..."
     setQuery(item.symbol);
-    setFormTab("order");
+    setFormTab(multiLeg ? "instrument" : "order");
   }
   function setSegment(segment: string) {
+    if (segment !== "OPT") setMultiLeg(false);
     const exchange = segment === "EQ" ? "NSE" : "NFO";
     setPinned(null);
     setQuery("");
@@ -508,6 +614,14 @@ export default function SharekhanLinksPage() {
     setFormTab("instrument");
     setError("");
     setMessage("");
+    setMultiLeg(false);
+    setLeg2(blankLeg2);
+    setLeg2Query("");
+    setLeg2Suggestions([]);
+    setShowLeg2Suggestions(false);
+    setLeg2SearchError("");
+    setStrategyName("");
+    setApproxMargin("");
   }
   function pinCard(card: TradeCardData) {
     setShareCard(card);
@@ -532,13 +646,11 @@ export default function SharekhanLinksPage() {
     const target2 = asText(card.target2 || d.target2 || targetCombined.split("/")[1]).trim();
     const target3 = asText(card.target3 || d.target3 || targetCombined.split("/")[2]).trim();
     const symbol = asText(d.tradingSymbol || d.stock || link.code).toUpperCase();
+    const storedLegs = (d as { legs?: Partial<Leg2Details>[] }).legs;
+    const firstStored = storedLegs?.[0];
+    const secondStored = secondLeg(d);
     let orderTypeReuse = asText(d.orderType, "NORMAL").toUpperCase() || "NORMAL";
     let productReuse = asText(d.productType, "INVESTMENT").toUpperCase() || "INVESTMENT";
-    // Legacy bracket / BigTrade+ links → normal one-tap form (bracket removed from system)
-    if (orderTypeReuse === "BRACKET" || productReuse === "BIGTRADEPLUS") {
-      orderTypeReuse = Number(d.price) > 0 ? "LIMIT" : "NORMAL";
-      productReuse = "BIGTRADE";
-    }
     if (!orderTypes.some((item) => item.value === orderTypeReuse)) orderTypeReuse = "NORMAL";
     if (!productTypes.some((item) => item.value === productReuse)) productReuse = "INVESTMENT";
     setPinned(null);
@@ -557,16 +669,16 @@ export default function SharekhanLinksPage() {
       price: asText(d.price, "0"),
       exchange,
       segment,
-      expiry: asText(d.expiry),
-      strike: asText(d.strike),
-      optionType: asText(d.optionType),
+      expiry: asText(d.expiry || firstStored?.expiry),
+      strike: asText(d.strike || firstStored?.strike),
+      optionType: asText(d.optionType || firstStored?.optionType),
       lotSize: asText(d.lotSize),
       orderType: orderTypeReuse,
       productType: productReuse,
       validity: asText(d.validity, "GFD").toUpperCase() || "GFD",
       triggerPrice: asText(d.triggerPrice),
       notes: asText(d.notes),
-      buyRange: asText(card.buyRange || d.buyRange || (Number(d.price) > 0 ? d.price : "")),
+      buyRange: asText(card.buyRange || d.buyRange || firstStored?.buyRange || (Number(d.price) > 0 ? d.price : "")),
       target: targetCombined,
       target1,
       target2,
@@ -576,6 +688,30 @@ export default function SharekhanLinksPage() {
       headline: asText(card.headline || d.headline),
     });
     setQuery(symbol);
+    const hasTwo = Boolean(secondStored && (secondStored.tradingSymbol || secondStored.scripCode));
+    setMultiLeg(hasTwo);
+    setStrategyName(asText((d as { strategyName?: string }).strategyName || (hasTwo ? card.headline : "")));
+    setApproxMargin(asText((d as { approxMargin?: string }).approxMargin));
+    if (hasTwo && secondStored) {
+      setLeg2({
+        tradingSymbol: asText(secondStored.tradingSymbol),
+        scripCode: asText(secondStored.scripCode),
+        stock: asText(secondStored.stock),
+        side: asText(secondStored.side, "SELL").toUpperCase() === "SELL" ? "SELL" : "BUY",
+        quantity: asText(secondStored.quantity, asText(d.quantity, "1")),
+        price: asText(secondStored.price, "0"),
+        exchange: asText(secondStored.exchange, exchange),
+        segment: "OPT",
+        expiry: asText(secondStored.expiry || d.expiry || firstStored?.expiry),
+        strike: asText(secondStored.strike),
+        optionType: asText(secondStored.optionType),
+        buyRange: asText(secondStored.buyRange || (Number(secondStored.price) > 0 ? secondStored.price : "")),
+      });
+      setLeg2Query(asText(secondStored.tradingSymbol));
+    } else {
+      setLeg2(blankLeg2);
+      setLeg2Query("");
+    }
     setReuseFrom(symbol);
     setFormTab("order");
     setMessage(
@@ -594,7 +730,9 @@ export default function SharekhanLinksPage() {
     segment: details.segment || "EQ",
     headline:
       details.headline ||
-      `${details.productType === "INVESTMENT" ? "Equity Delivery" : "Equity Intraday"} ${details.side === "SELL" ? "Sell" : "Buy"}`,
+      (details.orderType === "BRACKET"
+        ? `${details.segment === "EQ" ? "Equity" : "Derivative"} Idea ${details.side === "SELL" ? "Sell" : "Buy"}`
+        : `${details.productType === "INVESTMENT" ? "Equity Delivery" : "Equity Intraday"} ${details.side === "SELL" ? "Sell" : "Buy"}`),
     buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : "—"),
     target: [details.target1, details.target2, details.target3].filter(Boolean).join(" / ") || details.target || "—",
     target1: details.target1 || "—",
@@ -620,10 +758,40 @@ export default function SharekhanLinksPage() {
       setError("Enter a valid quantity.");
       return;
     }
-    if (details.orderType !== "NORMAL" && !(Number(details.price) > 0)) {
+    if (details.orderType !== "NORMAL" && details.orderType !== "BRACKET" && !(Number(details.price) > 0)) {
       setFormTab("order");
       setError("Enter a positive limit price for this order type.");
       return;
+    }
+    if (details.orderType === "BRACKET") {
+      const entry = Number(details.price);
+      const target = Number(details.target1);
+      const stop = Number(details.stopLoss);
+      if (!(target > 0) || !(stop > 0)) {
+        setFormTab("order");
+        setError("Bracket order needs a book-profit (target) and a stop loss.");
+        return;
+      }
+      if (target === stop) {
+        setFormTab("order");
+        setError("Book profit and stop loss cannot be the same price.");
+        return;
+      }
+      if (entry > 0 && details.side === "BUY" && !(target > entry && stop < entry)) {
+        setFormTab("order");
+        setError("Buy bracket: target must be above the entry, and stop loss below it.");
+        return;
+      }
+      if (entry > 0 && details.side === "SELL" && !(stop > entry && target < entry)) {
+        setFormTab("order");
+        setError("Sell bracket: stop loss must be above the entry, and target below it.");
+        return;
+      }
+      if (multiLeg) {
+        setFormTab("order");
+        setError("Bracket orders are single-leg. Turn off the second leg first.");
+        return;
+      }
     }
     if (details.orderType.startsWith("STOPLOSS") && !(Number(details.triggerPrice) > 0)) {
       setFormTab("order");
@@ -632,8 +800,8 @@ export default function SharekhanLinksPage() {
     }
     if (multiLeg) {
       if (!leg2.tradingSymbol.trim() || !leg2.scripCode.trim()) {
-        setFormTab("order");
-        setError("2-leg order: fill Leg 2 trading symbol and scrip code.");
+        setFormTab("instrument");
+        setError("2-leg order: select the Leg 2 contract.");
         return;
       }
       if (!leg2.quantity || Number(leg2.quantity) < 1) {
@@ -702,6 +870,11 @@ export default function SharekhanLinksPage() {
         stopLoss: String(submitDetails.card.stopLoss || ""),
         timeFrame: String(submitDetails.card.timeFrame || ""),
         headline: String(submitDetails.card.headline || ""),
+        leg2: multiLeg ? {
+          ...leg2,
+          buyRange: leg2.buyRange || (Number(leg2.price) > 0 ? leg2.price : ""),
+        } : undefined,
+        approxMargin: multiLeg ? approxMargin : "",
       };
       pinCard(card);
       setReuseFrom("");
@@ -782,7 +955,7 @@ export default function SharekhanLinksPage() {
     try {
       if (demo.link) {
         reuseFromLink(demo.link);
-        showToast(`${demo.segment === "FUT" ? "Future" : "Option"} sample loaded`);
+        showToast(`${demo.label} loaded`);
         return;
       }
       const response = (await apiGet(`/api/v1/order-intents/${encodeURIComponent(demo.code)}`)) as {
@@ -804,13 +977,14 @@ export default function SharekhanLinksPage() {
         preserved: true,
         clicks: 0,
       });
-      showToast(`${demo.segment === "FUT" ? "Future" : "Option"} sample loaded`);
+      showToast(`${demo.label} loaded`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load sample into form");
     }
   }
 
   const visibleLinks = links.filter((link) => {
+    if (isPreservedLink(link.code, link)) return false;
     const text = `${link.details.tradingSymbol || ""} ${link.details.stock || ""}`.toLowerCase();
     if (tableQuery.trim() && !text.includes(tableQuery.trim().toLowerCase())) return false;
     if (statusFilter === "active" && !link.active) return false;
@@ -821,6 +995,49 @@ export default function SharekhanLinksPage() {
   });
 
   const searchOpen = showSuggestions && (query.trim().length >= 2 || (details.segment !== "EQ" && Boolean(details.expiry)));
+
+  const previewCard: TradeCardData = {
+    code: shareCard?.code || "",
+    shortUrl: shareCard?.shortUrl || "",
+    tradingSymbol: details.tradingSymbol || shown.tradingSymbol,
+    stock: details.stock || shown.stock,
+    side: details.side || shown.side,
+    exchange: details.exchange || shown.exchange,
+    segment: details.segment || shown.segment,
+    expiry: details.expiry,
+    strike: details.strike,
+    optionType: details.optionType,
+    quantity: details.quantity,
+    price: details.price,
+    productType: details.productType,
+    buyRange: details.buyRange || (Number(details.price) > 0 ? details.price : ""),
+    target: shown.target === "—" ? "" : shown.target,
+    target1: shown.target1 === "—" ? "" : shown.target1,
+    target2: shown.target2 === "—" ? "" : shown.target2,
+    target3: shown.target3 === "—" ? "" : shown.target3,
+    stopLoss: shown.stopLoss === "—" ? "" : shown.stopLoss,
+    timeFrame: details.timeFrame || (shown.timeFrame === "—" ? "" : shown.timeFrame),
+    headline: details.headline || (multiLeg ? strategyName : shown.headline),
+    notes: details.notes || (shown.notes === "Follow the plan and manage risk." ? "" : shown.notes),
+    ...(multiLeg
+      ? {
+          leg2: {
+            tradingSymbol: leg2.tradingSymbol,
+            side: leg2.side,
+            quantity: leg2.quantity,
+            price: leg2.price,
+            buyRange: leg2.buyRange || (Number(leg2.price) > 0 ? leg2.price : ""),
+            stock: leg2.stock || details.stock,
+            exchange: leg2.exchange || details.exchange,
+            segment: "OPT",
+            expiry: leg2.expiry || details.expiry,
+            strike: leg2.strike,
+            optionType: leg2.optionType,
+          },
+          approxMargin,
+        }
+      : {}),
+  };
 
   return (
     <div className="sk-page">
@@ -836,12 +1053,12 @@ export default function SharekhanLinksPage() {
         {demoCards.map((demo) => (
           <div key={demo.code} className="sk-sample">
             <button type="button" className="sk-sample-load" onClick={() => loadSample(demo)}>
-              {demo.segment === "FUT" ? "Future sample" : "Option sample"}
+              {demo.label}
             </button>
             <button
               type="button"
               onClick={() => copyLink(demo.shortUrl)}
-              aria-label={`Copy ${demo.segment === "FUT" ? "future" : "option"} sample link`}
+              aria-label={`Copy ${demo.label} link`}
             >
               Copy
             </button>
@@ -877,7 +1094,7 @@ export default function SharekhanLinksPage() {
           <div className="sk-tabs" role="tablist" aria-label="Create order link steps">
             {(
               [
-                { id: "instrument" as const, label: "1 · Instrument", ready: Boolean(details.tradingSymbol && details.scripCode) },
+                { id: "instrument" as const, label: "1 · Instrument", ready: Boolean(details.tradingSymbol && details.scripCode && (!multiLeg || (leg2.tradingSymbol && leg2.scripCode))) },
                 { id: "order" as const, label: "2 · Order", ready: Boolean(details.quantity) },
                 { id: "card" as const, label: "3 · Share card", ready: Boolean(details.headline || details.buyRange || details.target1) },
               ] as const
@@ -917,6 +1134,179 @@ export default function SharekhanLinksPage() {
                 ))}
               </div>
             </div>
+            <div className="sk-block" style={{ marginBottom: 14 }}>
+              <div className="sk-block-head-row">
+                <strong>2-leg option / spread</strong>
+                <label className="sk-switch">
+                  <span className="sk-switch-label">Enable 2 legs</span>
+                  <input aria-label="Enable 2 legs" type="checkbox" checked={multiLeg} onChange={(event) => {
+                    const on = event.target.checked;
+                    setMultiLeg(on);
+                    if (on) {
+                      const nextExchange = ["NFO", "BFO", "MCX", "CDS"].includes(details.exchange) ? details.exchange : "NFO";
+                      setDetails((prev) => ({
+                        ...prev,
+                        segment: "OPT",
+                        exchange: nextExchange,
+                        orderType: prev.orderType === "BRACKET" || prev.orderType.startsWith("STOPLOSS") ? "NORMAL" : prev.orderType,
+                        productType: prev.productType === "INVESTMENT" || prev.productType === "BIGTRADEPLUS" ? "BIGTRADE" : prev.productType,
+                      }));
+                      setLeg2((prev) => ({
+                        ...prev,
+                        exchange: nextExchange,
+                        segment: "OPT",
+                        expiry: details.expiry || prev.expiry,
+                        quantity: details.quantity || prev.quantity,
+                        side: prev.side || "SELL",
+                      }));
+                      setFormTab("instrument");
+                    }
+                  }} />
+                  <span className="sk-switch-track" aria-hidden="true" />
+                </label>
+              </div>
+              {multiLeg ? (
+                <>
+                  <div className="sk-grid-2" style={{ marginTop: 10 }}>
+                    <label className="sk-field">
+                      <span className="sk-label">Strategy name</span>
+                      <input className="sk-input" value={strategyName} onChange={(event) => setStrategyName(event.target.value)} placeholder="BULL CALL SPREAD INDIGO (2 Leg)" />
+                    </label>
+                    <label className="sk-field">
+                      <span className="sk-label">Approx margin</span>
+                      <input className="sk-input" value={approxMargin} onChange={(event) => setApproxMargin(event.target.value)} placeholder="70000" />
+                    </label>
+                  </div>
+                  <div className="sk-field">
+                    <span className="sk-label">Exchange</span>
+                    <div className="sk-pills" role="group" aria-label="Derivative exchange">
+                      {derivativeExchanges.map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          className={details.exchange === item ? "active" : ""}
+                          aria-pressed={details.exchange === item}
+                          onClick={() => {
+                            setExchange(item);
+                            setLeg2Query("");
+                            setLeg2((prev) => ({ ...prev, exchange: item, tradingSymbol: "", scripCode: "", strike: "", optionType: "" }));
+                          }}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="sk-field">
+                    <span className="sk-label">Contract expiry</span>
+                    <select
+                      className="sk-input"
+                      value={details.expiry}
+                      onChange={(event) => {
+                        const expiry = event.target.value;
+                        setPinned(null);
+                        setQuery("");
+                        setLeg2Query("");
+                        setDetails((current) => ({
+                          ...current,
+                          expiry,
+                          tradingSymbol: "",
+                          scripCode: "",
+                          strike: "",
+                          optionType: "",
+                          lotSize: "",
+                        }));
+                        setLeg2((prev) => ({ ...prev, expiry, tradingSymbol: "", scripCode: "", strike: "", optionType: "" }));
+                      }}
+                    >
+                      <option value="">{loadingExpiries ? "Loading expiries…" : "Select expiry"}</option>
+                      {expiries.map((item) => (
+                        <option key={item.expiry} value={item.expiry}>
+                          {item.expiry} ({item.contracts} contracts)
+                        </option>
+                      ))}
+                    </select>
+                    {expiryError ? <span className="sk-field-error" role="alert">{expiryError}</span> : null}
+                  </label>
+                  <div className="sk-leg-pair">
+                    <article className="sk-leg-card is-buy">
+                      <div className="sk-leg-card-head">
+                        <strong>Leg 1</strong>
+                        <span>Contract</span>
+                      </div>
+                      <div className="sk-field sk-search">
+                        <label className="sk-label" htmlFor="leg1-contract-search">Option contract *</label>
+                        <input id="leg1-contract-search" className="sk-input" value={query} onFocus={() => setShowSuggestions(true)} onBlur={() => setShowSuggestions(false)} onChange={(event) => { setQuery(event.target.value); setShowSuggestions(true); setDetails((current) => ({ ...current, tradingSymbol: event.target.value.toUpperCase(), scripCode: "", stock: "" })); }} placeholder="Search e.g. INDIGO 4900 CE" autoComplete="off" />
+                        {searchOpen ? <div role="listbox" className="sk-results">{searching ? <div className="sk-result-empty">Searching options…</div> : suggestions.length ? suggestions.map((item) => <button key={`leg1-${item.exchange}-${item.token}`} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => selectInstrument(item)}><strong>{item.symbol}</strong><small>{item.expiry ? `Expiry ${item.expiry} · ` : ""}{item.strike ? `Strike ${item.strike} · ` : ""}{item.instrumentType} · Scrip {item.token}</small></button>) : <div className="sk-result-empty">{searchError || "No matching option contracts."}</div>}</div> : null}
+                      </div>
+                      <div className="sk-grid-2">
+                        <label className="sk-field">
+                          <span className="sk-label">Symbol</span>
+                          <input className="sk-input" value={details.tradingSymbol} onChange={(event) => update("tradingSymbol", event.target.value.toUpperCase())} placeholder="INDIGO26NOV4900CE" />
+                        </label>
+                        <label className="sk-field">
+                          <span className="sk-label">Scrip code *</span>
+                          <input className="sk-input" value={details.scripCode} onChange={(event) => update("scripCode", event.target.value)} placeholder="127904" />
+                        </label>
+                      </div>
+                      <div className="sk-grid-2">
+                        <label className="sk-field">
+                          <span className="sk-label">Strike</span>
+                          <input className="sk-input" value={details.strike} onChange={(event) => update("strike", event.target.value)} />
+                        </label>
+                        <label className="sk-field">
+                          <span className="sk-label">Option type</span>
+                          <select className="sk-input" value={details.optionType} onChange={(event) => update("optionType", event.target.value)}>
+                            <option value="">CE / PE</option>
+                            <option value="CE">Call (CE)</option>
+                            <option value="PE">Put (PE)</option>
+                          </select>
+                        </label>
+                      </div>
+                    </article>
+                    <article className="sk-leg-card is-sell">
+                      <div className="sk-leg-card-head">
+                        <strong>Leg 2</strong>
+                        <span>Contract</span>
+                      </div>
+                      <div className="sk-field sk-search">
+                        <label className="sk-label" htmlFor="leg2-contract-search">Option contract *</label>
+                        <input id="leg2-contract-search" className="sk-input" value={leg2Query} onFocus={() => setShowLeg2Suggestions(true)} onBlur={() => setShowLeg2Suggestions(false)} onChange={(event) => { const value = event.target.value; setLeg2Query(value); setShowLeg2Suggestions(true); setLeg2((prev) => ({ ...prev, tradingSymbol: value.toUpperCase(), scripCode: "" })); }} placeholder="Search e.g. INDIGO 5200 CE" autoComplete="off" />
+                        {showLeg2Suggestions && (leg2Query.trim().length >= 2 || leg2Searching) ? <div role="listbox" className="sk-results">{leg2Searching ? <div className="sk-result-empty">Searching options…</div> : leg2Suggestions.length ? leg2Suggestions.map((item) => <button key={`leg2-${item.exchange}-${item.token}`} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => selectLeg2Instrument(item)}><strong>{item.symbol}</strong><small>{item.expiry ? `Expiry ${item.expiry} · ` : ""}{item.strike ? `Strike ${item.strike} · ` : ""}{item.instrumentType} · Scrip {item.token}</small></button>) : <div className="sk-result-empty">{leg2SearchError || "No matching option contracts."}</div>}</div> : null}
+                        {leg2SearchError && !showLeg2Suggestions ? <span className="sk-field-error">{leg2SearchError}</span> : null}
+                      </div>
+                      <div className="sk-grid-2">
+                        <label className="sk-field">
+                          <span className="sk-label">Symbol</span>
+                          <input className="sk-input" value={leg2.tradingSymbol} onChange={(event) => { updateLeg2("tradingSymbol", event.target.value.toUpperCase()); setLeg2Query(event.target.value.toUpperCase()); }} placeholder="INDIGO26NOV5200CE" />
+                        </label>
+                        <label className="sk-field">
+                          <span className="sk-label">Scrip code *</span>
+                          <input className="sk-input" value={leg2.scripCode} onChange={(event) => updateLeg2("scripCode", event.target.value)} placeholder="103787" />
+                        </label>
+                      </div>
+                      <div className="sk-grid-2">
+                        <label className="sk-field">
+                          <span className="sk-label">Strike</span>
+                          <input className="sk-input" value={leg2.strike} onChange={(event) => updateLeg2("strike", event.target.value)} />
+                        </label>
+                        <label className="sk-field">
+                          <span className="sk-label">Option type</span>
+                          <select className="sk-input" value={leg2.optionType} onChange={(event) => updateLeg2("optionType", event.target.value)}>
+                            <option value="">CE / PE</option>
+                            <option value="CE">Call (CE)</option>
+                            <option value="PE">Put (PE)</option>
+                          </select>
+                        </label>
+                      </div>
+                    </article>
+                  </div>
+                  <p className="sk-hint">Next step me har leg ka Buy/Sell, quantity, price aur range alag se bhara jata hai.</p>
+                </>
+              ) : null}
+            </div>
+            {!multiLeg ? (
+            <>
             {details.segment !== "EQ" ? (
               <label className="sk-field">
                 <span className="sk-label">Contract expiry</span>
@@ -1062,16 +1452,18 @@ export default function SharekhanLinksPage() {
                   : "Derivatives: NFO / BFO / MCX / CDS. Pick expiry, then search the contract."}
               </span>
             </div>
+            </>
+            ) : null}
             <div className="sk-tab-nav">
               <span className="sk-hint">
                 {details.tradingSymbol && details.scripCode
-                  ? `${details.tradingSymbol} · scrip ${details.scripCode}`
+                  ? `${details.tradingSymbol} · scrip ${details.scripCode}${multiLeg ? ` | Leg 2: ${leg2.tradingSymbol || "select contract"}${leg2.scripCode ? ` · scrip ${leg2.scripCode}` : ""}` : ""}`
                   : "Search and select an instrument first."}
               </span>
               <button
                 className="sk-btn sk-btn-primary"
                 type="button"
-                disabled={!details.tradingSymbol || !details.scripCode}
+                disabled={!details.tradingSymbol || !details.scripCode || (multiLeg && (!leg2.tradingSymbol || !leg2.scripCode))}
                 onClick={() => setFormTab("order")}
               >
                 Next · Order
@@ -1085,6 +1477,65 @@ export default function SharekhanLinksPage() {
             role="tabpanel"
             hidden={formTab !== "order"}
           >
+            {multiLeg ? (
+              <>
+                <p className="sk-hint">Har leg ka side, quantity, app price aur card range alag hai. Upar wala ek range dono par nahi lagta.</p>
+                <div className="sk-leg-pair">
+                  <article className={`sk-leg-card ${details.side === "SELL" ? "is-sell" : "is-buy"}`}>
+                    <div className="sk-leg-card-head">
+                      <strong>Leg 1 order</strong>
+                      <span>{details.tradingSymbol || "Select contract"}</span>
+                    </div>
+                    <div className="sk-field">
+                      <span className="sk-label">Buy / Sell *</span>
+                      <div className="sk-pills sk-pills-side" role="group" aria-label="Leg 1 side">
+                        <button type="button" className={details.side === "BUY" ? "active buy" : ""} aria-pressed={details.side === "BUY"} onClick={() => update("side", "BUY")}>BUY</button>
+                        <button type="button" className={details.side === "SELL" ? "active sell" : ""} aria-pressed={details.side === "SELL"} onClick={() => update("side", "SELL")}>SELL</button>
+                      </div>
+                    </div>
+                    <label className="sk-field">
+                      <span className="sk-label">Quantity *</span>
+                      <input className="sk-input" type="number" min="1" step="1" value={details.quantity} onChange={(event) => update("quantity", event.target.value)} />
+                    </label>
+                    <label className="sk-field">
+                      <span className="sk-label">App price (0 = market) *</span>
+                      <input className="sk-input" type="number" min="0" step="any" value={details.price} onChange={(event) => update("price", event.target.value)} />
+                    </label>
+                    <label className="sk-field">
+                      <span className="sk-label">{details.side === "SELL" ? "Sell range" : "Buy range"} *</span>
+                      <input className="sk-input" value={details.buyRange} onChange={(event) => update("buyRange", event.target.value)} placeholder="113" />
+                    </label>
+                  </article>
+                  <article className={`sk-leg-card ${leg2.side === "SELL" ? "is-sell" : "is-buy"}`}>
+                    <div className="sk-leg-card-head">
+                      <strong>Leg 2 order</strong>
+                      <span>{leg2.tradingSymbol || "Select contract"}</span>
+                    </div>
+                    <div className="sk-field">
+                      <span className="sk-label">Buy / Sell *</span>
+                      <div className="sk-pills sk-pills-side" role="group" aria-label="Leg 2 side">
+                        <button type="button" className={leg2.side === "BUY" ? "active buy" : ""} aria-pressed={leg2.side === "BUY"} onClick={() => updateLeg2("side", "BUY")}>BUY</button>
+                        <button type="button" className={leg2.side === "SELL" ? "active sell" : ""} aria-pressed={leg2.side === "SELL"} onClick={() => updateLeg2("side", "SELL")}>SELL</button>
+                      </div>
+                    </div>
+                    <label className="sk-field">
+                      <span className="sk-label">Quantity *</span>
+                      <input className="sk-input" type="number" min="1" step="1" value={leg2.quantity} onChange={(event) => updateLeg2("quantity", event.target.value)} />
+                    </label>
+                    <label className="sk-field">
+                      <span className="sk-label">App price (0 = market) *</span>
+                      <input className="sk-input" type="number" min="0" step="any" value={leg2.price} onChange={(event) => updateLeg2("price", event.target.value)} />
+                    </label>
+                    <label className="sk-field">
+                      <span className="sk-label">{leg2.side === "SELL" ? "Sell range" : "Buy range"} *</span>
+                      <input className="sk-input" value={leg2.buyRange} onChange={(event) => updateLeg2("buyRange", event.target.value)} placeholder="34.10" />
+                    </label>
+                  </article>
+                </div>
+              </>
+            ) : null}
+            {!multiLeg ? (
+            <>
             <div className="sk-grid-order">
               <div className="sk-field">
                 <span className="sk-label">Buy / Sell *</span>
@@ -1098,12 +1549,12 @@ export default function SharekhanLinksPage() {
                 <input className="sk-input" required type="number" min={details.lotSize || "1"} step={details.segment === "EQ" ? "1" : details.lotSize || "1"} value={details.quantity} onChange={(event) => update("quantity", event.target.value)} />
               </label>
               <label className="sk-field">
-                <span className="sk-label">{details.orderType === "NORMAL" ? "Price" : "Limit price"} *</span>
+                <span className="sk-label">{details.orderType === "BRACKET" ? "Entry price (0 = market)" : details.orderType === "NORMAL" ? "Price" : "Limit price"} *</span>
                 <input
                   className="sk-input"
                   required
                   type="number"
-                  min={details.orderType === "NORMAL" ? "0" : "0.01"}
+                  min={details.orderType === "LIMIT" || details.orderType.startsWith("STOPLOSS") ? "0.01" : "0"}
                   step="any"
                   value={details.price}
                   onChange={(event) => {
@@ -1122,7 +1573,15 @@ export default function SharekhanLinksPage() {
                 <select
                   className="sk-input"
                   value={details.orderType}
-                  onChange={(event) => update("orderType", event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setDetails((prev) => ({
+                      ...prev,
+                      orderType: next,
+                      productType: next === "BRACKET" && prev.productType === "INVESTMENT" ? "BIGTRADEPLUS" : prev.productType,
+                      timeFrame: next === "BRACKET" && !prev.timeFrame ? "1-2DAYS" : prev.timeFrame,
+                    }));
+                  }}
                 >
                   {orderTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
@@ -1134,13 +1593,35 @@ export default function SharekhanLinksPage() {
                 <input className="sk-input" required type="number" min="0.01" step="any" value={details.triggerPrice} onChange={(event) => update("triggerPrice", event.target.value)} />
               </label>
             ) : null}
+            {details.orderType === "BRACKET" ? (
+              <div className="sk-grid-2">
+                <label className="sk-field">
+                  <span className="sk-label">Book profit (target) *</span>
+                  <input className="sk-input" required type="number" min="0.01" step="any" value={details.target1} onChange={(event) => update("target1", event.target.value)} placeholder="38" />
+                </label>
+                <label className="sk-field">
+                  <span className="sk-label">Stop loss *</span>
+                  <input className="sk-input" required type="number" min="0.01" step="any" value={details.stopLoss} onChange={(event) => update("stopLoss", event.target.value)} placeholder="18" />
+                </label>
+                <p className="sk-hint">
+                  Deeplink follows Sharekhan research one-tap (same shape as gi9 links): entry, book profit, and stop loss open in the app. A second target stays on the share card only.
+                </p>
+              </div>
+            ) : null}
             <div className="sk-grid-2">
               <label className="sk-field">
                 <span className="sk-label">Product / Action (Sharekhan)</span>
                 <select
                   className="sk-input"
                   value={details.productType}
-                  onChange={(event) => update("productType", event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setDetails((prev) => ({
+                      ...prev,
+                      productType: next,
+                      orderType: next === "BIGTRADEPLUS" ? "BRACKET" : prev.orderType,
+                    }));
+                  }}
                 >
                   {productTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
@@ -1170,88 +1651,26 @@ export default function SharekhanLinksPage() {
                 </span>
               </div>
             </div>
-            <div className="sk-block" style={{ marginTop: 14 }}>
-              <div className="sk-block-head-row">
-                <strong>2-leg option / spread</strong>
-                <label className="sk-switch">
-                  <input
-                    type="checkbox"
-                    checked={multiLeg}
-                    onChange={(event) => {
-                      const on = event.target.checked;
-                      setMultiLeg(on);
-                      if (on) {
-                        setDetails((prev) => ({
-                          ...prev,
-                          segment: prev.segment === "EQ" ? "OPT" : prev.segment,
-                          exchange: ["NFO", "BFO", "MCX", "CDS"].includes(prev.exchange) ? prev.exchange : "NFO",
-                        }));
-                        setLeg2((prev) => ({
-                          ...prev,
-                          exchange: details.exchange === "BFO" ? "BFO" : "NFO",
-                          segment: "OPT",
-                          quantity: details.quantity || prev.quantity,
-                        }));
-                      }
-                    }}
-                  />
-                  <span>Enable 2 legs</span>
+            </>
+            ) : null}
+            {multiLeg ? (
+              <div className="sk-grid-2">
+                <label className="sk-field">
+                  <span className="sk-label">Product / Action (Sharekhan)</span>
+                  <select className="sk-input" value={details.productType === "BIGTRADEPLUS" ? "BIGTRADE" : details.productType} onChange={(event) => update("productType", event.target.value)}>
+                    <option value="BIGTRADE">Intraday (BigTrade)</option>
+                    <option value="INVESTMENT">Delivery (Investment)</option>
+                  </select>
                 </label>
-              </div>
-              {multiLeg ? (
-                <div className="sk-grid-order" style={{ marginTop: 10 }}>
-                  <label className="sk-field">
-                    <span className="sk-label">Strategy name</span>
-                    <input className="sk-input" value={strategyName} onChange={(event) => setStrategyName(event.target.value)} placeholder="BULL CALL SPREAD INDIGO (2 Leg)" />
-                  </label>
-                  <label className="sk-field">
-                    <span className="sk-label">Approx margin</span>
-                    <input className="sk-input" value={approxMargin} onChange={(event) => setApproxMargin(event.target.value)} placeholder="70000" />
-                  </label>
-                  <label className="sk-field">
-                    <span className="sk-label">Leg 2 trading symbol *</span>
-                    <input className="sk-input" value={leg2.tradingSymbol} onChange={(event) => setLeg2((prev) => ({ ...prev, tradingSymbol: event.target.value.toUpperCase() }))} placeholder="INDIGO26NOV5200CE" />
-                  </label>
-                  <label className="sk-field">
-                    <span className="sk-label">Leg 2 scrip code *</span>
-                    <input className="sk-input" value={leg2.scripCode} onChange={(event) => setLeg2((prev) => ({ ...prev, scripCode: event.target.value.trim() }))} placeholder="103787" />
-                  </label>
-                  <label className="sk-field">
-                    <span className="sk-label">Leg 2 side</span>
-                    <select className="sk-input" value={leg2.side} onChange={(event) => setLeg2((prev) => ({ ...prev, side: event.target.value }))}>
-                      <option value="BUY">BUY</option>
-                      <option value="SELL">SELL</option>
-                    </select>
-                  </label>
-                  <label className="sk-field">
-                    <span className="sk-label">Leg 2 quantity *</span>
-                    <input className="sk-input" type="number" min="1" value={leg2.quantity} onChange={(event) => setLeg2((prev) => ({ ...prev, quantity: event.target.value }))} />
-                  </label>
-                  <label className="sk-field">
-                    <span className="sk-label">Leg 2 {leg2.side === "SELL" ? "sell" : "buy"} range / price</span>
-                    <input
-                      className="sk-input"
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={leg2.price}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setLeg2((prev) => ({
-                          ...prev,
-                          price: value,
-                          buyRange: Number(value) > 0 ? value : prev.buyRange,
-                        }));
-                      }}
-                    />
-                  </label>
-                  <label className="sk-field">
-                    <span className="sk-label">Leg 2 stock name</span>
-                    <input className="sk-input" value={leg2.stock} onChange={(event) => setLeg2((prev) => ({ ...prev, stock: event.target.value }))} placeholder="INDIGO" />
-                  </label>
+                <div className="sk-field">
+                  <span className="sk-label">Validity</span>
+                  <div className="sk-pills" role="group" aria-label="Validity">
+                    <button type="button" className={details.validity === "GFD" ? "active" : ""} aria-pressed={details.validity === "GFD"} onClick={() => update("validity", "GFD")}>Day (GFD)</button>
+                    <button type="button" className={details.validity === "IOC" ? "active" : ""} aria-pressed={details.validity === "IOC"} onClick={() => update("validity", "IOC")}>IOC</button>
+                  </div>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
             <div className="sk-tab-nav">
               <button className="sk-btn sk-btn-ghost" type="button" onClick={() => setFormTab("instrument")}>
                 Back
@@ -1271,8 +1690,23 @@ export default function SharekhanLinksPage() {
             <div className="sk-grid-card">
               <label className="sk-field">
                 <span className="sk-label">Card headline</span>
-                <input className="sk-input" value={details.headline} onChange={(event) => update("headline", event.target.value)} placeholder="Equity Intraday Buy" />
+                <input className="sk-input" value={details.headline} onChange={(event) => update("headline", event.target.value)} placeholder={multiLeg ? strategyName || "BULL CALL SPREAD INDIGO (2 Leg)" : "Equity Intraday Buy"} />
               </label>
+              {multiLeg ? (
+                <div className="sk-leg-pair">
+                  <div className={`sk-leg-card ${details.side === "SELL" ? "is-sell" : "is-buy"}`}>
+                    <div className="sk-leg-card-head"><strong>Leg 1 on card</strong><span>{details.side}</span></div>
+                    <p className="sk-hint">{details.tradingSymbol || "Contract"} · {details.strike} {details.optionType}</p>
+                    <p className="sk-hint">{details.side === "SELL" ? "Sell" : "Buy"} range {details.buyRange || "—"} · Qty {details.quantity}</p>
+                  </div>
+                  <div className={`sk-leg-card ${leg2.side === "SELL" ? "is-sell" : "is-buy"}`}>
+                    <div className="sk-leg-card-head"><strong>Leg 2 on card</strong><span>{leg2.side}</span></div>
+                    <p className="sk-hint">{leg2.tradingSymbol || "Contract"} · {leg2.strike} {leg2.optionType}</p>
+                    <p className="sk-hint">{leg2.side === "SELL" ? "Sell" : "Buy"} range {leg2.buyRange || "—"} · Qty {leg2.quantity}</p>
+                  </div>
+                </div>
+              ) : (
+                <>
               <label className="sk-field">
                 <span className="sk-label">{details.side === "SELL" ? "Sell range" : "Buy range"}</span>
                 <input
@@ -1298,6 +1732,8 @@ export default function SharekhanLinksPage() {
                 <span className="sk-label">Stop loss (SL)</span>
                 <input className="sk-input" value={details.stopLoss} onChange={(event) => update("stopLoss", event.target.value)} placeholder="1050" />
               </label>
+                </>
+              )}
               <label className="sk-field">
                 <span className="sk-label">Time frame</span>
                 <input className="sk-input" value={details.timeFrame} onChange={(event) => update("timeFrame", event.target.value)} placeholder="INTRADAY" />
@@ -1354,32 +1790,7 @@ export default function SharekhanLinksPage() {
               ))}
             </div>
             <TradeShareCard
-              data={
-                shareCard || {
-                  code: "",
-                  shortUrl: "",
-                  tradingSymbol: shown.tradingSymbol,
-                  stock: shown.stock,
-                  side: shown.side,
-                  exchange: shown.exchange,
-                  segment: shown.segment,
-                  expiry: details.expiry,
-                  strike: details.strike,
-                  optionType: details.optionType,
-                  quantity: details.quantity,
-                  price: details.price,
-                  productType: details.productType,
-                  buyRange: shown.buyRange === "—" ? "" : shown.buyRange,
-                  target: shown.target === "—" ? "" : shown.target,
-                  target1: shown.target1 === "—" ? "" : shown.target1,
-                  target2: shown.target2 === "—" ? "" : shown.target2,
-                  target3: shown.target3 === "—" ? "" : shown.target3,
-                  stopLoss: shown.stopLoss === "—" ? "" : shown.stopLoss,
-                  timeFrame: shown.timeFrame === "—" ? "" : shown.timeFrame,
-                  headline: shown.headline,
-                  notes: shown.notes,
-                }
-              }
+              data={multiLeg ? previewCard : shareCard || previewCard}
               theme={cardTheme}
               variant="preview"
             />
