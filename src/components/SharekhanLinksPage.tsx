@@ -813,6 +813,11 @@ export default function SharekhanLinksPage() {
             </span>
             <div>
               <h2>{reuseFrom ? `Edit / reuse · ${reuseFrom}` : "Create an order link"}</h2>
+              <p>
+                {reuseFrom
+                  ? "Details loaded from a recent link. Change what you need and generate a new link."
+                  : "Use the tabs below — less scrolling, same fields."}
+              </p>
             </div>
           </div>
 
@@ -1174,6 +1179,7 @@ export default function SharekhanLinksPage() {
               </span>
               <div>
                 <h2>Share card preview</h2>
+                <p>{pinned ? `Saved card for ${shown.tradingSymbol}. Edit the form to return to the live draft.` : "Pick a card style, then generate to download / share."}</p>
               </div>
             </div>
             <div className="sk-card-themes" role="radiogroup" aria-label="Share card style">
@@ -1235,6 +1241,7 @@ export default function SharekhanLinksPage() {
             </span>
             <div>
               <h2>Recent links</h2>
+              <p>Click a row or Edit to load it into the form, then generate a new link.</p>
             </div>
           </div>
           <div className="sk-filters">
@@ -1284,7 +1291,7 @@ export default function SharekhanLinksPage() {
                     onClick={canEdit ? () => reuseFromLink(link) : undefined}
                     title={preserved ? "Preserved demo link" : canEdit ? "Click to edit / reuse in the form" : undefined}
                   >
-                    <td data-label="Instrument">
+                    <td>
                       <div className="sk-instrument">
                         <span className={`sk-mark${segment === "EQ" ? "" : " alt"}`}>{symbol.slice(0, 1)}</span>
                         <div>
@@ -1293,20 +1300,20 @@ export default function SharekhanLinksPage() {
                         </div>
                       </div>
                     </td>
-                    <td data-label="Segment">{segmentLabel(segment)}</td>
-                    <td data-label="Side"><span className={`sk-chip sk-chip-${side.toLowerCase()}`}>{side}</span></td>
-                    <td data-label="Order details">
+                    <td>{segmentLabel(segment)}</td>
+                    <td><span className={`sk-chip sk-chip-${side.toLowerCase()}`}>{side}</span></td>
+                    <td>
                       {link.kind === "order-intent"
                         ? `Qty ${link.details.quantity || "—"} · ${orderTypeShort(link.details.orderType)}${product ? ` · ${product}` : ""} · ${String(link.details.validity || "GFD").toUpperCase()}`
                         : "One-tap"}
                     </td>
-                    <td data-label="Status">
+                    <td>
                       <span className={`sk-status${link.active ? " on" : ""}`}>
                         {preserved ? (link.active ? "Preserved" : "Preserved · Off") : link.active ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td data-label="Opens">{link.clicks}</td>
-                    <td data-label="Link">
+                    <td>{link.clicks}</td>
+                    <td>
                       <a
                         className="sk-url"
                         href={link.shortUrl}
@@ -1317,7 +1324,7 @@ export default function SharekhanLinksPage() {
                         {link.shortUrl}
                       </a>
                     </td>
-                    <td data-label="Actions">
+                    <td>
                       <div className="sk-row-actions" onClick={(event) => event.stopPropagation()}>
                         {canEdit ? (
                           <button className="sk-btn sk-btn-tiny" type="button" onClick={() => reuseFromLink(link)}>Edit</button>
@@ -1333,7 +1340,9 @@ export default function SharekhanLinksPage() {
                           <button className="sk-btn sk-btn-tiny sk-btn-danger" type="button" aria-label={`Delete ${symbol}`} onClick={() => removeLink(link.code, symbol)}>
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14" /><path d="M9 7V5h6v2" /><path d="M8 7l1 12h6l1-12" /></svg>
                           </button>
-                        ) : null}
+                        ) : (
+                          <span className="sk-preserved-tag">Locked</span>
+                        )}
                       </div>
                     </td>
                   </tr>

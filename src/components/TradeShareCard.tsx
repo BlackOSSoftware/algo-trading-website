@@ -636,6 +636,7 @@ export default function TradeShareCard({ data, theme = "classic", onClose, varia
           <ActionIcon name="share" /> Share
         </button>
       </div>
+      {!data.code ? <p className="sk-hint">Generate a link to unlock download / copy / share with QR.</p> : null}
     </div>
   );
 
